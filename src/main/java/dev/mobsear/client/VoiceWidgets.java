@@ -19,14 +19,14 @@ final class VoiceWidgets {
 
     record Palette(int backdropTop, int backdropBottom, int panel, int header, int line,
                    int control, int hover, int primary, int accent, int focus, int text, int muted) {
-        static final Palette UWU = new Palette(0x6632172d, 0x98180d17, 0xff281b26, 0xff432237,
-                0xff81516c, 0xff3d2a38, 0xff55354a, 0xff733c57, 0xffff92c2, 0xffffd9eb, 0xfffff2f7, 0xffdeb9cd);
-        static final Palette EMO = new Palette(0x70111219, 0xa414101e, 0xff1a1a22, 0xff2d283b,
-                0xff646078, 0xff2c2b37, 0xff3c374b, 0xff493d65, 0xffc3acf9, 0xfff1ddff, 0xfff6f2ff, 0xffcbc3dc);
-        static final Palette VANILLA = new Palette(0xb32e251b, 0xbc1d1814, 0xff393328, 0xff534b39,
-                0xff8e856d, 0xff514b3d, 0xff665d49, 0xff635237, 0xffe4cc8c, 0xfffff0cb, 0xfffff9ee, 0xffded4b7);
-        static final Palette AMETHYST = new Palette(0xb3221743, 0xca181329, 0xff271e35, 0xff45335d,
-                0xff83649b, 0xff3d304e, 0xff554168, 0xff644579, 0xffdfa7ff, 0xffffdfff, 0xfff9eeff, 0xffd9c6e7);
+        static final Palette UWU = new Palette(0x6632172d, 0x98180d17, 0xff60304b, 0xffa34a71,
+                0xffbd829e, 0xff813a59, 0xff964c6c, 0xff994869, 0xffffa7d0, 0xffffe2f0, 0xfffff5fa, 0xffffe1ee);
+        static final Palette EMO = new Palette(0x70111219, 0xa414101e, 0xff16191e, 0xff30313d,
+                0xff626371, 0xff292c33, 0xff3b3e4b, 0xff454255, 0xffb7b1cf, 0xfff3eaff, 0xfff6f2ff, 0xffcbc9d6);
+        static final Palette VANILLA = new Palette(0x6630281b, 0x971f1c18, 0xff454938, 0xff6c654d,
+                0xffa39d81, 0xff625f4b, 0xff716b55, 0xff716345, 0xffe5cf8e, 0xfffff1ce, 0xfffff9ee, 0xfff6edd7);
+        static final Palette AMETHYST = new Palette(0x75281b45, 0xa2221339, 0xff34245c, 0xff644785,
+                0xff9b81ba, 0xff504277, 0xff685189, 0xff74518f, 0xffd8adff, 0xffffe4ff, 0xfffbf4ff, 0xffecd6fb);
 
         static Palette forTheme(String id) {
             return switch (id) {

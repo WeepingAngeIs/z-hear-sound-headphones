@@ -242,7 +242,7 @@ final class MenuSmoke {
                 total++;
             }
         }
-        check(changed * 4 >= total, theme + " did not change palette across menu band " + band);
+        check(changed * 4 >= total, theme + " palette band " + band + " changed " + changed + "/" + total + " samples");
     }
 
     private static void check(boolean success, String message) {

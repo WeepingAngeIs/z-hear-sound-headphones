@@ -78,6 +78,7 @@ jobs:
       - name: Send generated audio across real game connections
         run: xvfb-run -a -s '-screen 0 1024x768x24' bash ci/multiplayer/run.sh
       - name: Keep in-game menu previews
+        if: ${{ !cancelled() && hashFiles('build/menu-previews/*.png') != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: menu-previews

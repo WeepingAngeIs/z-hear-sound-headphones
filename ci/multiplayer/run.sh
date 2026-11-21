@@ -49,6 +49,11 @@ cleanup() {
   local status=$?
   trap - EXIT
   if ((status != 0)); then
+    local image
+    mkdir -p build/menu-previews
+    for image in "$MOBSEAR_SMOKE_DIR/smokeListener/screenshots/"menu-{uwu,dark,vanilla,amethyst}.png; do
+      if [[ -f $image ]]; then cp "$image" build/menu-previews/; fi
+    done
     for role in "${roles[@]}"; do
       echo "--- $role ---"
       grep -E 'MOBSEAR_SMOKE_FAIL|Caused by:|/FATAL\]|Exception in thread' "$MOBSEAR_SMOKE_DIR/$role.console" \
