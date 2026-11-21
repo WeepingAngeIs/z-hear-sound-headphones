@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: prototype-${{ github.ref }}
+  group: prototype-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   game:

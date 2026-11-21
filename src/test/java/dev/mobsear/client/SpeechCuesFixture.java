@@ -74,8 +74,11 @@ public final class SpeechCuesFixture {
         byte[] enderman = synthesize("ender man");
         byte[] greeting = synthesize("hey");
         byte[] unrelated = synthesize("the garden is beautiful");
-        byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000], greetingZombie, zombies};
-        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1};
+        byte[] conversation = synthesize("let me see");
+        byte[] greetingOnly = synthesize("hey there");
+        byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000], greetingZombie,
+                zombies, conversation, greetingOnly, zombie};
+        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1};
         int[] decisions = decisions(SpeechCues.launch(), cases);
         if (!Arrays.equals(decisions, expected)) {
             diagnoseSyntheticDecisions(cases);

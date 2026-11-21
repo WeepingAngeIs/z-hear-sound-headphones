@@ -40,6 +40,12 @@ try {
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
         16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,
         [System.Speech.AudioFormat.AudioChannel]::Mono)
+    # Exercise the newly loaded grammars before accepting the player's first utterance.
+    $warmup = [System.IO.MemoryStream]::new([byte[]]::new(16000), $false)
+    $engine.SetInputToAudioStream($warmup, $format)
+    $null = $engine.Recognize()
+    $engine.SetInputToNull()
+    $warmup.Dispose()
     $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
     $output = [Console]::OpenStandardOutput()
     $output.WriteByte(82)
@@ -54,10 +60,10 @@ try {
         try {
             $engine.SetInputToAudioStream($stream, $format)
             $result = $engine.Recognize()
-            $minConfidence = 0.72
-            # For an ambiguous rejection only, rescore once using the command vocabulary.
-            # Keep the background model's verdict when it actually recognized ordinary speech.
-            if ($null -eq $result) {
+            $minConfidence = 0.58
+            # Rescore a rejection or very weak dictation hypothesis with the command grammar.
+            # Keep ordinary speech with a credible match in the background vocabulary.
+            if ($null -eq $result -or ($result.Grammar.Name -ne 'mob call' -and $result.Confidence -lt 0.12)) {
                 $engine.SetInputToNull()
                 $stream.Dispose()
                 $stream = [System.IO.MemoryStream]::new($pcm, $false)
@@ -68,7 +74,7 @@ try {
                 } finally {
                     $background.Enabled = $true
                 }
-                $minConfidence = 0.86
+                $minConfidence = 0.72
             }
             if ($null -ne $result -and $result.Grammar.Name -eq 'mob call' -and $result.Confidence -ge $minConfidence) {
                 $phrase = $result.Text.ToLowerInvariant()
