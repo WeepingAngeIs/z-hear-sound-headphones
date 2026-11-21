@@ -67,13 +67,15 @@ public final class SpeechCuesFixture {
     }
 
     private static void checkWindows(SpeechCues speech, ArrayBlockingQueue<Cue> received) throws Exception {
-        byte[] zombie = synthesize("hey zombie");
+        byte[] zombie = synthesize("zombie");
+        byte[] greetingZombie = synthesize("hey zombie");
+        byte[] zombies = synthesize("zombies");
         byte[] mobs = synthesize("mobs");
         byte[] enderman = synthesize("ender man");
         byte[] greeting = synthesize("hey");
         byte[] unrelated = synthesize("the garden is beautiful");
-        byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000]};
-        int[] expected = {1, 2, 3, 0, 0, 0};
+        byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000], greetingZombie, zombies};
+        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1};
         int[] decisions = decisions(SpeechCues.launch(), cases);
         if (!Arrays.equals(decisions, expected)) {
             diagnoseSyntheticDecisions(cases);
@@ -114,7 +116,7 @@ public final class SpeechCuesFixture {
     }
 
     // This instrumentation exists only in the fixture source set. It prints fixed grammar labels,
-    // scores and exception locations for the six synthetic cases, without displaying words or PCM.
+    // scores and exception locations for synthetic cases, without displaying words or PCM.
     private static void diagnoseSyntheticDecisions(byte[][] cases) throws Exception {
         try (var source = SpeechCues.class.getResourceAsStream("recognize.ps1")) {
             require(source != null, "Missing speech helper resource");

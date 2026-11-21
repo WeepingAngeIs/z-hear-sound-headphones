@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
@@ -36,7 +36,7 @@ jobs:
           bash gradlew --no-daemon -PvoiceGameTests runGameTestServer 2>&1 | tee "$RUNNER_TEMP/gametest.log"
           grep -Ei 'all [1-9][0-9]* required tests passed' "$RUNNER_TEMP/gametest.log"
       - name: Keep the verified prototype jar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mobsear-prototype
           path: dist/mobsear-0.1.0-prototype.jar
@@ -46,10 +46,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
@@ -62,3 +62,18 @@ jobs:
           javac --release 21 -d ci-classes src/main/java/dev/mobsear/net/Cue.java src/main/java/dev/mobsear/client/SpeechCues.java src/test/java/dev/mobsear/client/SpeechCuesFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           java -cp 'ci-classes;src/main/resources' dev.mobsear.client.SpeechCuesFixture --windows-speech
+  multiplayer:
+    name: Two NeoForge clients on a disposable server
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Send generated audio across real game connections
+        run: xvfb-run -a -s '-screen 0 1024x768x24' bash ci/multiplayer/run.sh

@@ -30,6 +30,10 @@ neoForge {
     }
 }
 
+if (providers.gradleProperty('voiceMultiplayer').isPresent()) {
+    apply from: 'ci/multiplayer/runs.gradle'
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }

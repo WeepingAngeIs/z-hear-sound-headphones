@@ -1,0 +1,22 @@
+// Opted into only for the hosted multiplayer fixture.
+sourceSets.main.java.srcDir('ci/multiplayer/java')
+def gameRoot = new File(providers.environmentVariable('MOBSEAR_SMOKE_DIR').get())
+def offlineId = { String name ->
+    UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes('UTF-8')).toString()
+}
+
+neoForge.runs.create('smokeServer') {
+    server()
+    gameDirectory = new File(gameRoot, 'server')
+    programArgument '--nogui'
+    jvmArguments = ['-Xms256m', '-Xmx800m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC']
+}
+['smokeSpeaker': 'MicFixtureA', 'smokeListener': 'MicFixtureB'].each { runName, playerName ->
+    neoForge.runs.create(runName) {
+        client()
+        gameDirectory = new File(gameRoot, runName)
+        programArguments = ['--username', playerName, '--uuid', offlineId(playerName),
+                            '--quickPlayMultiplayer', '127.0.0.1:25576', '--width', '360', '--height', '240']
+        jvmArguments = ['-Xms256m', '-Xmx1050m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC']
+    }
+}

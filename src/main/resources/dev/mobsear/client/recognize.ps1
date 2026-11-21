@@ -34,7 +34,8 @@ try {
     $calls.Priority = 1
     $engine.LoadGrammar($calls)
     # Unrelated speech can match the desktop vocabulary. Its text is never read.
-    $engine.LoadGrammar([System.Speech.Recognition.DictationGrammar]::new())
+    $background = [System.Speech.Recognition.DictationGrammar]::new()
+    $engine.LoadGrammar($background)
 
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
         16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,
@@ -53,7 +54,23 @@ try {
         try {
             $engine.SetInputToAudioStream($stream, $format)
             $result = $engine.Recognize()
-            if ($null -ne $result -and $result.Grammar.Name -eq 'mob call' -and $result.Confidence -ge 0.72) {
+            $minConfidence = 0.72
+            # For an ambiguous rejection only, rescore once using the command vocabulary.
+            # Keep the background model's verdict when it actually recognized ordinary speech.
+            if ($null -eq $result) {
+                $engine.SetInputToNull()
+                $stream.Dispose()
+                $stream = [System.IO.MemoryStream]::new($pcm, $false)
+                $background.Enabled = $false
+                try {
+                    $engine.SetInputToAudioStream($stream, $format)
+                    $result = $engine.Recognize()
+                } finally {
+                    $background.Enabled = $true
+                }
+                $minConfidence = 0.86
+            }
+            if ($null -ne $result -and $result.Grammar.Name -eq 'mob call' -and $result.Confidence -ge $minConfidence) {
                 $phrase = $result.Text.ToLowerInvariant()
                 if ($phrase.StartsWith('hey ')) { $phrase = $phrase.Substring(4) }
                 if ($aliases.ContainsKey($phrase)) { $decision = $aliases[$phrase] }
