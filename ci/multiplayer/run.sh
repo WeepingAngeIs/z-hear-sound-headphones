@@ -24,7 +24,10 @@ max-players=2
 sync-chunk-writes=false
 CONFIG
 echo 'eula=true' > "$MOBSEAR_SMOKE_DIR/server/eula.txt"
+mkdir -p "$MOBSEAR_SMOKE_DIR/server/config"
+echo 'hordeEnabled = true' > "$MOBSEAR_SMOKE_DIR/server/config/mobsear-server.toml"
 for role in smokeSpeaker smokeListener; do
+  mkdir -p "$MOBSEAR_SMOKE_DIR/$role"/{tmp,natives}
   cat > "$MOBSEAR_SMOKE_DIR/$role/options.txt" <<'OPTIONS'
 version:3955
 onboardAccessibility:false
@@ -105,15 +108,26 @@ wait_for() {
 launch smokeServer
 wait_for smokeServer 'Done (' 240
 launch smokeSpeaker
+wait_for smokeSpeaker 'MOBSEAR_CLIENT_READY' 200
 launch smokeListener
 wait_for smokeServer 'MOBSEAR_MULTIPLAYER_PASS' 600
+grep -Fq 'MOBSEAR_HORDE_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -F 'MOBSEAR_PITCH_AUDIO' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -Fq 'MOBSEAR_PITCH_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
+mkdir -p build/pitch-previews
+for sample in bypass squeaky deep low-end high-end center restored; do
+  cp "$MOBSEAR_SMOKE_DIR/pitch-audio/received-$sample.wav" build/pitch-previews/
+done
 collect_images
 snapshots=()
 for theme in uwu{,_lotus,_blossom,_petals,_hearts} emo{,_skulls,_thorns,_shards,_eclipse} \
              vanilla{,_ferns,_grove,_jungle,_beach} amethyst{,_nebula,_rings,_void,_stars}; do
   snapshots+=("menu-$theme")
+  if [[ $theme == *_* ]]; then
+    for frame in {0..7}; do snapshots+=("menu-$theme-frame-$frame"); done
+  fi
 done
 for role in hud nameplate; do
   for family in uwu emo vanilla amethyst; do
@@ -122,7 +136,19 @@ for role in hud nameplate; do
   snapshots+=("$role-effects-reduced" "$role-effects-off" "$role-hidden")
 done
 snapshots+=(nameplate-out-of-range nameplate-team-visible nameplate-team-hidden status-speaking status-quiet gain-zero device-meter)
-snapshots+=(menu-compact)
-snapshots+=(menu-uwu_lotus-frame-{0,1,2,3,4,5,6,7} menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
+snapshots+=(menu-compact menu-voice-changer)
+snapshots+=(menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
 for name in "${snapshots[@]}"; do test -s "build/state-previews/$name.png" || { echo "Missing $name"; exit 1; }; done
 printf 'MOBSEAR_CAPTURE %s.png\n' "${snapshots[@]}"
+
+# Restore the exact file saved when the tester closed Voice Changer with a preset and custom value.
+# The first listener subsequently exercised Reset and the remaining sound checks in the same profile.
+listener_pid=${pids[2]}
+kill -TERM -- "-$listener_pid" 2>/dev/null || true
+wait "$listener_pid" 2>/dev/null || true
+unset 'pids[2]'
+cp "$MOBSEAR_SMOKE_DIR/pitch-persistence.properties" "$MOBSEAR_SMOKE_DIR/smokeListener/config/mobsear-client.properties"
+export MOBSEAR_RESTART_CHECK=1
+launch smokeListener
+wait_for smokeListener 'MOBSEAR_GAME_RESTART_PASS' 210
+grep -F 'MOBSEAR_GAME_RESTART_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"

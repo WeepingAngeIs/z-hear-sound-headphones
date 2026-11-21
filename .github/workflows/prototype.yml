@@ -109,3 +109,9 @@ jobs:
           name: state-previews
           path: build/state-previews/*.png
           if-no-files-found: error
+      - name: Keep synthetic receiving-client audio
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pitch-previews
+          path: build/pitch-previews/*.wav
+          if-no-files-found: error

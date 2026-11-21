@@ -43,7 +43,7 @@ final class VoiceWidgets {
     static final class Button extends AbstractButton {
         private final Palette colors;
         private final Style style;
-        private final boolean selected;
+        private boolean selected;
         private final Runnable press;
         private final Component label;
         private final Component detail;
@@ -60,6 +60,7 @@ final class VoiceWidgets {
         }
 
         @Override public void onPress() { press.run(); }
+        void setSelected(boolean selected) { this.selected = selected; }
 
         @Override protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             Font font = Minecraft.getInstance().font;
@@ -96,6 +97,7 @@ final class VoiceWidgets {
         private final IntFunction<Component> message;
         private final IntConsumer change;
         private final int maximum;
+        private final IntFunction<Component> valueLabel;
 
         Slider(int x, int y, int width, int height, Component label, int initial,
                Palette colors, IntFunction<Component> message, IntConsumer change) {
@@ -104,14 +106,25 @@ final class VoiceWidgets {
 
         Slider(int x, int y, int width, int height, Component label, int initial, int maximum,
                Palette colors, IntFunction<Component> message, IntConsumer change) {
+            this(x, y, width, height, label, initial, maximum, colors, message, change,
+                    n -> Component.translatable("mobsear.settings.percent", n));
+        }
+
+        Slider(int x, int y, int width, int height, Component label, int initial, int maximum,
+               Palette colors, IntFunction<Component> message, IntConsumer change, IntFunction<Component> valueLabel) {
             super(x, y, width, height, message.apply(initial), initial / (double) maximum);
             this.maximum = maximum;
+            this.valueLabel = valueLabel;
             this.label = label;
             this.colors = colors;
             this.message = message;
             this.change = change;
         }
 
+        void showValue(int number) {
+            value = Math.clamp(number / (double)maximum, 0, 1);
+            updateMessage();
+        }
         private int percent() { return (int) Math.round(value * maximum); }
         @Override protected void updateMessage() { setMessage(message.apply(percent())); }
         @Override protected void applyValue() { change.accept(percent()); }
@@ -126,7 +139,7 @@ final class VoiceWidgets {
             g.fill(x + 4, rail, handle, rail + 2, colors.accent);
             g.fill(handle - 2, rail - 1, handle + 2, rail + 3, colors.focus);
             if (isFocused()) g.renderOutline(x, y, getWidth(), getHeight(), colors.focus);
-            Component number = Component.translatable("mobsear.settings.percent", percent());
+            Component number = valueLabel.apply(percent());
             int ty = y + Math.max(1, (getHeight() - 15) / 2);
             text(g, font, label, x + 8, end - 18 - font.width(number), ty, colors.text, false);
             text(g, font, number, x + 8, end - 8, ty, colors.muted, true);

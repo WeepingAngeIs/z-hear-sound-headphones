@@ -60,6 +60,7 @@ public final class VoiceAudioFixture {
         assertFrame(mixer.mixNext(), FrameMixer.MAX_SPEAKERS);
 
         exerciseGate();
+        PitchFixture.check();
         exerciseSyntheticDevices();
         System.out.println("Audio fixture passed");
     }

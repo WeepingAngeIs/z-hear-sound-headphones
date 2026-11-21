@@ -214,7 +214,8 @@ final class VisualStates {
         boolean hidden = namePhase == SmokeControl.TEAM_HIDDEN;
         if (far) {
             if (distance < 33*33 || VoiceClient.remoteState(SPEAKER) != null || observedTag != -1) return;
-        } else if (distance > 5*5 || peer.getTeam() == null || VoiceClient.remoteState(SPEAKER) == null ||
+        } else if (distance > 5*5 || peer.getTeam() == null || (VoiceClient.remoteState(SPEAKER) == null) != hidden ||
+                (observedTag == -1) != hidden ||
                 (peer.getTeam().getNameTagVisibility() == net.minecraft.world.scores.Team.Visibility.NEVER) != hidden ||
                 vanillaWouldRender == hidden) return;
         if (++rendered < 6) return;

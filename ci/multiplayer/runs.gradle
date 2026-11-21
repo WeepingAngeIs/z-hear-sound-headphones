@@ -18,6 +18,8 @@ neoForge.runs.create('smokeServer') {
         programArguments = ['--username', playerName, '--uuid', offlineId(playerName),
                             '--quickPlayMultiplayer', '127.0.0.1:25576',
                             '--width', '854', '--height', '480']
-        jvmArguments = ['-Xms256m', '-Xmx1050m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC']
+        jvmArguments = ['-Xms256m', '-Xmx1050m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC',
+                        "-Djava.io.tmpdir=${new File(gameRoot, runName + '/tmp')}",
+                        "-Dorg.lwjgl.system.SharedLibraryExtractPath=${new File(gameRoot, runName + '/natives')}"]
     }
 }

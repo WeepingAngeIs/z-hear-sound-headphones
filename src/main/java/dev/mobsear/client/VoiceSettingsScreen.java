@@ -134,6 +134,8 @@ public final class VoiceSettingsScreen extends Screen {
         players.setScrollAmount(scroll);
         add("players", players);
         int doneWidth = Math.min(72, rightWidth);
+        addButton("voice_changer", leftX, footerY, Math.min(96, leftWidth), 17, t("pitch.title"),
+                Style.ROW, false, () -> minecraft.setScreen(new PitchSettingsScreen(this, prefs)));
         addButton("done", rightX + rightWidth - doneWidth, footerY, doneWidth, 17, CommonComponents.GUI_DONE,
                 Style.PRIMARY, false, this::onClose);
     }
@@ -247,6 +249,25 @@ public final class VoiceSettingsScreen extends Screen {
 
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         if (minecraft.level == null) renderPanorama(g, partialTick);
+        drawFrame(g, colors, scene, sceneFrame(), font, getTitle(), width, height, left, top, panelWidth, panelHeight, bodyY);
+        section(g, leftX, bodyY, leftWidth, appearanceY - 2, t("audio"));
+        section(g, leftX, appearanceY, leftWidth, footerY - 4, t("appearance"));
+        section(g, rightX, bodyY, rightWidth, footerY - 4, t("players"));
+        if (VoiceClient.testingMic()) {
+            int y = footerY + 4, start = leftX + Math.min(96, leftWidth) + 6;
+            int end = rightX + rightWidth - Math.min(72, rightWidth) - 6;
+            int split = Math.min(start + 49, (start + end) / 2);
+            VoiceWidgets.text(g, font, t("meter.active"), start, split, y, colors.text(), false);
+            int x = split + 2;
+            g.fill(x, y + 2, end, y + 7, colors.control());
+            int bar = (int)((end - x) * Math.min(1, VoiceClient.inputLevel()));
+            if (bar > 0) g.fill(x, y + 2, x + bar, y + 7, colors.accent());
+        }
+    }
+
+    static void drawFrame(GuiGraphics g, Palette colors, ResourceLocation scene, int frame,
+                          net.minecraft.client.gui.Font font, Component title, int width, int height,
+                          int left, int top, int panelWidth, int panelHeight, int bodyY) {
         int right = left + panelWidth, bottom = top + panelHeight;
         g.fillGradient(0, 0, width, height, colors.backdropTop(), colors.backdropBottom());
         g.fill(left + 2, top + 3, right + 2, bottom + 3, 0x89000000);
@@ -255,7 +276,6 @@ public final class VoiceSettingsScreen extends Screen {
         g.renderOutline(left, top, panelWidth, panelHeight, colors.line());
         g.fillGradient(left + 1, top + 1, right - 1, bodyY - 3, colors.header(), colors.panel());
         if (scene != null) {
-            int frame = sceneFrame();
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             g.blit(scene, left + 1, top + 2, panelWidth - 2, panelHeight - 4,
@@ -270,20 +290,8 @@ public final class VoiceSettingsScreen extends Screen {
         int titleY = top + (bodyY - top - 9) / 2;
         if (scene != null) g.fill(left + panelWidth / 2 - 50, titleY - 3,
                 left + panelWidth / 2 + 50, titleY + 11, 0xa018131b);
-        g.drawCenteredString(font, getTitle().copy().withStyle(ChatFormatting.BOLD), left + panelWidth / 2,
+        g.drawCenteredString(font, title.copy().withStyle(ChatFormatting.BOLD), left + panelWidth / 2,
                 titleY, colors.text());
-        section(g, leftX, bodyY, leftWidth, appearanceY - 2, t("audio"));
-        section(g, leftX, appearanceY, leftWidth, footerY - 4, t("appearance"));
-        section(g, rightX, bodyY, rightWidth, footerY - 4, t("players"));
-        if (VoiceClient.testingMic()) {
-            int y = footerY + 4;
-            VoiceWidgets.text(g, font, t("meter.active"), leftX, leftX + leftWidth / 2, y, colors.text(), false);
-            int x = leftX + leftWidth / 2 + 2;
-            int end = leftX + leftWidth;
-            g.fill(x, y + 2, end, y + 7, colors.control());
-            int bar = (int)((end - x) * Math.min(1, VoiceClient.inputLevel()));
-            if (bar > 0) g.fill(x, y + 2, x + bar, y + 7, colors.accent());
-        }
     }
 
     int sceneFrame() { return prefs.effects().equals("full") ? (int)(Util.getMillis() / 400L % 8L) : 0; }

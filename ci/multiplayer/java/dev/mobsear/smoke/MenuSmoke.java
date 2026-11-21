@@ -3,6 +3,7 @@ package dev.mobsear.smoke;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.mobsear.client.FixtureSound;
 import dev.mobsear.client.MenuTheme;
+import dev.mobsear.client.PitchSettingsScreen;
 import dev.mobsear.client.VoiceClient;
 import dev.mobsear.client.VoicePreferences;
 import java.awt.image.BufferedImage;
@@ -32,7 +33,7 @@ import org.lwjgl.glfw.GLFW;
 final class MenuSmoke {
     private enum Step {
         FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, ANIMATION, REDUCED, CLOSE, REOPEN,
-        AUDIO_MODE, RESTORE_MODE, COMPACT, RESTORE_SIZE, DONE
+        AUDIO_MODE, RESTORE_MODE, COMPACT, RESTORE_SIZE, PITCH, PITCH_CAPTURE, PITCH_BACK, DONE
     }
     private static final String[] THEMES = {"UwU", "Dark / Emo", "Vanilla", "Amethyst"};
     private static final MenuTheme[] BACKDROPS = MenuTheme.values();
@@ -41,7 +42,7 @@ final class MenuSmoke {
     private final Minecraft mc = Minecraft.getInstance();
     private final ClientPacketListener connection = mc.getConnection();
     private final Runnable acknowledge;
-    private final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(100);
+    private final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(250);
     private final Path screenshots = mc.gameDirectory.toPath().resolve("screenshots");
     private Step step = Step.FOCUS;
     private int theme;
@@ -50,6 +51,7 @@ final class MenuSmoke {
     private int fixedX, fixedY;
     private int framesSeen;
     private long reducedAt;
+    private Screen pitchParent;
 
     MenuSmoke(Runnable acknowledge) {
         this.acknowledge = acknowledge;
@@ -154,6 +156,63 @@ final class MenuSmoke {
             }
             case RESTORE_SIZE -> {
                 if (mc.getWindow().getWidth() != 854 || mc.screen.width != 427) return;
+                pitchParent = mc.screen;
+                pointer(widget("Voice Changer", false), .5);
+                step = Step.PITCH;
+            }
+            case PITCH -> {
+                check(mc.screen instanceof PitchSettingsScreen && mc.screen.getTitle().getString().equals("Voice Changer"),
+                        "missing native Voice Changer submenu");
+                var prefs = VoiceClient.options();
+                check(!prefs.pitchEnabled() && prefs.pitchCents() == 0 && prefs.pitchPreset().equals("natural"),
+                        "unexpected initial pitch preferences");
+                pointer(widget("Deep", false), .5);
+                check(prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.DEEP_CENTS, "Deep preset");
+                pointer(widget("Pitch", true), .5);
+                check(prefs.pitchCents() == 0, "pitch slider midpoint");
+                pointer(widget("Pitch", true), .625);
+                check(prefs.pitchCents() == 300 && prefs.pitchPreset().equals("custom"),
+                        "manual pitch did not select Custom at a quarter octave");
+                pointer(widget("Squeaky", false), .5);
+                pointer(widget("Voice effect", true), .5);
+                check(!prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS,
+                        "bypass discarded preset");
+                pointer(widget("Voice effect", true), .5);
+                check(prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS,
+                        "could not restore selected pitch");
+                renderedFrames = 0;
+                step = Step.PITCH_CAPTURE;
+            }
+            case PITCH_BACK -> {
+                pointer(widget("Back", false), .5);
+                check(mc.screen == pitchParent, "Voice Changer Back lost the parent");
+                pointer(widget("Voice Changer", false), .5);
+                var prefs = VoiceClient.options();
+                check(prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS,
+                        "reopened Voice Changer lost preset");
+                pointer(widget("Custom", false), .5);
+                check(prefs.pitchEnabled() && prefs.pitchCents() == 300, "Custom lost the manual slider value");
+                pointer(widget("Voice effect", true), .5);
+                pointer(widget("Back", false), .5);
+                pointer(widget("Voice Changer", false), .5);
+                check(!prefs.pitchEnabled() && prefs.pitchCents() == 300, "reopening lost the bypassed custom setting");
+                pointer(widget("Squeaky", false), .5);
+                pointer(widget("Voice effect", true), .5);
+                pointer(widget("Back", false), .5);
+                check(!prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS
+                                && prefs.pitchPreset().equals("squeaky") && prefs.customPitchCents() == 300,
+                        "could not persist bypassed Squeaky selection");
+                try {
+                    Files.copy(FMLPaths.CONFIGDIR.get().resolve("mobsear-client.properties"),
+                            Path.of(System.getenv("MOBSEAR_SMOKE_DIR"), "pitch-persistence.properties"));
+                } catch (IOException ex) { throw SmokeControl.failure("cannot preserve real UI preferences: " + ex); }
+                pointer(widget("Voice Changer", false), .5);
+                pointer(widget("Reset to Defaults", false), .5);
+                pointer(widget("Back", false), .5);
+                check(mc.screen == pitchParent && prefs.theme().equals("amethyst_stars") && !prefs.pitchEnabled()
+                                && prefs.pitchCents() == 0 && prefs.pitchPreset().equals("natural")
+                                && prefs.customPitchCents() == 0 && prefs.volume() == 50 && prefs.gain(SPEAKER_ID) == 150,
+                        "pitch reset changed unrelated preferences or failed to restore natural bypass");
                 mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 check(mc.screen == null && mc.getConnection() == connection, "voice session did not survive settings");
                 step = Step.DONE;
@@ -165,6 +224,11 @@ final class MenuSmoke {
     }
 
     private void render(ScreenEvent.Render.Post event) {
+        if (step == Step.PITCH_CAPTURE && event.getScreen() instanceof PitchSettingsScreen && ++renderedFrames >= 3) {
+            save(event, "menu-voice-changer.png");
+            step = Step.PITCH_BACK;
+            return;
+        }
         if (!inSettings() || event.getScreen() != mc.screen) return;
         displayed = true;
         if (step == Step.COMPACT) {
@@ -189,13 +253,16 @@ final class MenuSmoke {
                 if (now % 400 < 65 || now % 400 > 315) return;
                 int frame = FixtureSound.sceneFrame();
                 if ((framesSeen & (1 << frame)) == 0) {
-                    save(event, "menu-uwu_lotus-frame-" + frame + ".png");
+                    save(event, "menu-" + BACKDROPS[theme].id() + "-frame-" + frame + ".png");
                     framesSeen |= 1 << frame;
                 }
                 if (framesSeen == 255) {
-                    VoiceClient.options().setEffects("reduced");
-                    reducedAt = now;
-                    step = Step.REDUCED;
+                    checkScenePixels();
+                    if (BACKDROPS[theme] == MenuTheme.LOTUS) {
+                        VoiceClient.options().setEffects("reduced");
+                        reducedAt = now;
+                        step = Step.REDUCED;
+                    } else nextTheme();
                 }
             } else {
                 check(FixtureSound.sceneFrame() == 0, "reduced motion did not freeze scene");
@@ -204,7 +271,10 @@ final class MenuSmoke {
                     framesSeen++;
                 } else if (framesSeen == 256 && now - reducedAt > 1900) {
                     save(event, "menu-uwu_lotus-reduced-check.png");
-                    checkScenePixels();
+                    try {
+                        check(java.util.Arrays.equals(headerStamp("reduced"), headerStamp("reduced-check")),
+                                "reduced motion changed the scene header pixels");
+                    } catch (IOException ex) { throw SmokeControl.failure("could not verify the reduced scene"); }
                     VoiceClient.options().setEffects("full");
                     nextTheme();
                 }
@@ -214,7 +284,10 @@ final class MenuSmoke {
         if (step != Step.CAPTURE || ++renderedFrames < 3) return;
         renderedFrames = 0;
         save(event, "menu-" + BACKDROPS[theme].id() + ".png");
-        if (BACKDROPS[theme] == MenuTheme.LOTUS) step = Step.ANIMATION;
+        if (BACKDROPS[theme].hasScene()) {
+            framesSeen = 0;
+            step = Step.ANIMATION;
+        }
         else nextTheme();
     }
 
@@ -238,16 +311,14 @@ final class MenuSmoke {
             for (int i = 0; i < 8; i++) {
                 int[] stamp = headerStamp("frame-" + i);
                 check(sections.stream().noneMatch(previous -> java.util.Arrays.equals(previous, stamp)),
-                        "two scenic phases rendered the same header stamp");
+                        "two scenic phases rendered the same header stamp for " + BACKDROPS[theme].id());
                 sections.add(stamp);
             }
-            check(java.util.Arrays.equals(headerStamp("reduced"), headerStamp("reduced-check")),
-                    "reduced motion changed the scene header pixels");
         } catch (IOException ex) { throw SmokeControl.failure("could not compare actual scene frames"); }
     }
 
     private int[] headerStamp(String suffix) throws IOException {
-        var image = ImageIO.read(screenshots.resolve("menu-uwu_lotus-" + suffix + ".png").toFile());
+        var image = ImageIO.read(screenshots.resolve("menu-" + BACKDROPS[theme].id() + "-" + suffix + ".png").toFile());
         // 854x480, GUI scale 2, fixed 4-unit panel margin. Crop inside the native header ornament.
         return image.getRGB(738, 16, 96, 48, null, 0, 96);
     }

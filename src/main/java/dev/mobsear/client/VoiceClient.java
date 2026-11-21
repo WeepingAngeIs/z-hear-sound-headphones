@@ -128,6 +128,7 @@ public final class VoiceClient {
 
     private Screen settingsScreen(Screen parent) {
         var mc = Minecraft.getInstance();
+        preferences.bindPitchAccount(mc.getUser().getProfileId());
         var link = mc.getConnection();
         boolean available = mc.player != null && link != null && link.hasChannel(Packets.Call.TYPE);
         return new VoiceSettingsScreen(parent, preferences, () -> recognition,
@@ -137,6 +138,7 @@ public final class VoiceClient {
 
     private void tick(ClientTickEvent.Post event) {
         var mc = Minecraft.getInstance();
+        preferences.bindPitchAccount(mc.getUser().getProfileId());
         var current = mc.getConnection();
         if (connection != current) {
             disconnect();
@@ -232,6 +234,7 @@ public final class VoiceClient {
         final SpeakingActivity activity = new SpeakingActivity();
         final ArrayBlockingQueue<byte[]> frames = new ArrayBlockingQueue<>(12);
         final CaptureGate gate = new CaptureGate();
+        final OutgoingPitch pitch = new OutgoingPitch();
         final AtomicReference<Cue> cue = new AtomicReference<>();
         final AtomicReference<VoiceAudio.Problem> problem = new AtomicReference<>();
         final SpeechCues speech = new SpeechCues(cue::set, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"));
@@ -258,10 +261,14 @@ public final class VoiceClient {
             if ((!held && !monitoring) || prefs.muted() || prefs.deafened()) return;
             lastMeter = System.nanoTime();
             gate.accept(frame, automatic && !monitoring, prefs.sensitivity(), prefs.noiseSuppression(), pcm -> {
-                if (monitoring || !held || !frames.offer(pcm)) return;
-                if (VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
-                speech.acceptFrame(pcm);
-            }, speech::endUtterance);
+                if (monitoring || !held) return;
+                int cents = prefs.pitchEnabled() ? prefs.pitchCents() : 0;
+                if (pitch.route(pcm, cents, frames::offer, speech::acceptFrame)
+                        && VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
+            }, () -> {
+                pitch.reset();
+                speech.endUtterance();
+            });
         }
 
         synchronized boolean speaking() {
@@ -276,6 +283,7 @@ public final class VoiceClient {
             if (monitoring == enable) return;
             monitoring = enable;
             gate.reset();
+            pitch.reset();
             audio.setTransmitting(enable);
         }
 
@@ -289,6 +297,7 @@ public final class VoiceClient {
             automatic = voiceActivation;
             held = value;
             gate.reset();
+            pitch.reset();
             lastSpeaking = 0;
             audio.setTransmitting(value);
             if (!value) speech.endUtterance();
@@ -299,6 +308,7 @@ public final class VoiceClient {
             held = false;
             suspended = true;
             gate.reset();
+            pitch.reset();
             lastSpeaking = 0;
             audio.setTransmitting(false);
             speech.setEnabled(false);

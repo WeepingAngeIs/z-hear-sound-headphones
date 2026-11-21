@@ -85,6 +85,8 @@ public final class VoicePreferencesFixture {
         require(prefs.theme().equals("uwu") && prefs.volume() == 100 && prefs.gain(PLAYER) == 100, "Defaults");
         require(!prefs.muted() && !prefs.deafened() && !prefs.noiseSuppression() && prefs.sensitivity() == 50,
                 "Default audio controls");
+        require(!prefs.pitchEnabled() && prefs.pitchCents() == 0 && prefs.pitchPreset().equals("natural")
+                && prefs.customPitchCents() == 0, "Default is natural/bypass");
         require(prefs.hudVisible() && prefs.nameplates() && prefs.effects().equals("full")
                 && prefs.accent().equals("auto") && prefs.micStyle().equals("auto"), "Default appearance controls");
         require(enumerations.get() == 0 && !Files.exists(file), "Construction had side effects");
@@ -98,6 +100,12 @@ public final class VoicePreferencesFixture {
         prefs.setMuted(true);
         prefs.setDeafened(true);
         prefs.setNoiseSuppression(true);
+        prefs.setPitchEnabled(true);
+        prefs.setPitchCents(-32_000);
+        require(prefs.pitchCents() == -VoicePreferences.PITCH_RANGE_CENTS, "Pitch lower bound");
+        prefs.setPitchCents(32_000);
+        require(prefs.pitchCents() == VoicePreferences.PITCH_RANGE_CENTS, "Pitch upper bound");
+        prefs.setPitchCents(367);
         prefs.setSensitivity(140);
         prefs.setHudVisible(false);
         prefs.setNameplates(false);
@@ -134,6 +142,28 @@ public final class VoicePreferencesFixture {
                 "Settings round trip");
         require(prefs.muted() && prefs.deafened() && prefs.noiseSuppression() && prefs.sensitivity() == 100,
                 "Persist audio and clamp sensitivity");
+        require(prefs.pitchEnabled() && prefs.pitchCents() == 367, "Persist custom pitch independent of presets");
+        prefs.setPitchPreset("deep");
+        prefs.setPitchEnabled(false);
+        require(prefs.save(), "Save bypass and selected quick preset");
+        prefs = new VoicePreferences(file, sound);
+        require(!prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.DEEP_CENTS
+                && prefs.pitchPreset().equals("deep") && prefs.customPitchCents() == 367, "Persist separate preset and custom position");
+        prefs.setPitchPreset("squeaky");
+        require(prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS && prefs.customPitchCents() == 367,
+                "A quick preset should retain the manual position");
+        prefs.setPitchPreset("custom");
+        require(prefs.pitchCents() == 367 && !prefs.pitchEnabled(), "Restoring custom must leave bypass under user control");
+        prefs.setPitchPreset("natural");
+        require(prefs.pitchCents() == 0 && prefs.customPitchCents() == 367, "Natural preset discarded custom position");
+        prefs.setPitchEnabled(true);
+        prefs.resetPitch();
+        require(prefs.save(), "Save pitch-only reset");
+        prefs = new VoicePreferences(file, sound);
+        require(!prefs.pitchEnabled() && prefs.pitchCents() == 0 && prefs.customPitchCents() == 0
+                && prefs.pitchPreset().equals("natural"), "Pitch-only reset defaults");
+        require(prefs.theme().equals("amethyst") && prefs.muted() && prefs.deafened() && prefs.noiseSuppression()
+                && prefs.volume() == 133 && prefs.gain(PLAYER) == 200, "Pitch reset changed unrelated settings");
         require(!prefs.hudVisible() && !prefs.nameplates() && prefs.effects().equals("reduced")
                 && prefs.accent().equals("mint") && prefs.resolvedMicStyle().equals("emo"), "Independent style and local appearance");
         require(prefs.device(true).equals(micId) && prefs.device(false).equals(speakerId), "Device ID round trip");

@@ -17,15 +17,42 @@ import javax.sound.sampled.TargetDataLine;
 
 /** Local device and playback preferences. Loading settings never accesses audio devices. */
 public final class VoicePreferences {
+    public static final int PITCH_RANGE_CENTS = 1200;
+    public static final int SQUEAKY_CENTS = 700;
+    public static final int DEEP_CENTS = -500;
     public record Device(String id, String label) {}
 
     private final Path file;
     private final VoiceDevices sound;
     private final Properties values = new Properties();
+    private static final List<String> PITCH_KEYS = List.of("pitchEnabled", "pitchCents", "pitchPreset");
+    private UUID pitchAccount;
+    private String pitchPrefix = "";
     private long deviceRevision;
 
     public VoicePreferences(Path file) {
         this(file, new VoiceDevices());
+    }
+
+    public VoicePreferences(Path file, UUID localUser) {
+        this(file);
+        bindPitchAccount(localUser);
+    }
+
+    public synchronized void bindPitchAccount(UUID localUser) {
+        Objects.requireNonNull(localUser);
+        if (localUser.equals(pitchAccount)) return;
+        pitchAccount = localUser;
+        pitchPrefix = "account." + localUser + ".";
+        // The first local account to open an older profile retains the former unscoped settings.
+        boolean migrated = false;
+        for (String key : PITCH_KEYS) {
+            Object legacy = values.remove(key);
+            if (legacy == null) continue;
+            values.putIfAbsent(pitchPrefix + key, legacy);
+            migrated = true;
+        }
+        if (migrated) save();
     }
 
     VoicePreferences(Path file, VoiceDevices sound) {
@@ -56,6 +83,42 @@ public final class VoicePreferences {
     public synchronized void setDeafened(boolean value) { setFlag("deafened", value); }
     public synchronized boolean noiseSuppression() { return flag("noiseSuppression", false); }
     public synchronized void setNoiseSuppression(boolean value) { setFlag("noiseSuppression", value); }
+    public synchronized boolean pitchEnabled() { return flag(pitchPrefix + "pitchEnabled", false); }
+    public synchronized void setPitchEnabled(boolean value) { setFlag(pitchPrefix + "pitchEnabled", value); }
+    public synchronized int customPitchCents() {
+        try { return Math.clamp(Integer.parseInt(values.getProperty(pitchPrefix + "pitchCents", "0")), -PITCH_RANGE_CENTS, PITCH_RANGE_CENTS); }
+        catch (NumberFormatException invalid) { return 0; }
+    }
+    public synchronized String pitchPreset() {
+        String preset = values.getProperty(pitchPrefix + "pitchPreset");
+        if (preset == null) return customPitchCents() == 0 ? "natural" : "custom";
+        return switch (preset) {
+            case "custom", "deep", "squeaky" -> preset;
+            default -> "natural";
+        };
+    }
+    public synchronized void setPitchPreset(String preset) {
+        String selected = switch (Objects.toString(preset, "")) {
+            case "custom", "deep", "squeaky" -> preset;
+            default -> "natural";
+        };
+        values.setProperty(pitchPrefix + "pitchPreset", selected);
+    }
+    public synchronized int pitchCents() {
+        return switch (pitchPreset()) {
+            case "custom" -> customPitchCents();
+            case "deep" -> DEEP_CENTS;
+            case "squeaky" -> SQUEAKY_CENTS;
+            default -> 0;
+        };
+    }
+    public synchronized void setPitchCents(int value) {
+        values.setProperty(pitchPrefix + "pitchCents", Integer.toString(Math.clamp(value, -PITCH_RANGE_CENTS, PITCH_RANGE_CENTS)));
+        setPitchPreset("custom");
+    }
+    public synchronized void resetPitch() {
+        for (String key : PITCH_KEYS) values.remove(pitchPrefix + key);
+    }
     public synchronized boolean hudVisible() { return flag("hudVisible", true); }
     public synchronized void setHudVisible(boolean value) { setFlag("hudVisible", value); }
     public synchronized boolean nameplates() { return flag("nameplates", true); }

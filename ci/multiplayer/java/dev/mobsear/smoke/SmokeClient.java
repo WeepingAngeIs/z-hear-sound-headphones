@@ -22,6 +22,7 @@ public final class SmokeClient {
     private int nextPhase;
     private MenuSmoke menu;
     private VisualStates visuals;
+    private PitchClientSmoke pitch;
     private boolean installedSound;
 
     public SmokeClient() {
@@ -33,8 +34,13 @@ public final class SmokeClient {
             FixtureSound.install();
             installedSound = true;
         }
+        if (System.getenv("MOBSEAR_RESTART_CHECK") != null) {
+            PitchRestartSmoke.tick();
+            return;
+        }
         if (menu != null) menu.tick();
         if (visuals != null) visuals.tick();
+        if (pitch != null) pitch.tick();
         var mc = Minecraft.getInstance();
         var connection = mc.getConnection();
         if (ready || mc.player == null || mc.level == null || connection == null) return;
@@ -56,10 +62,19 @@ public final class SmokeClient {
         };
         SmokeControl.client = this::barrier;
         ready = true;
+        System.out.println("MOBSEAR_CLIENT_READY " + mc.getUser().getName());
         PacketDistributor.sendToServer(new SmokeControl.Barrier(SmokeControl.READY));
     }
 
     private void barrier(int phase) {
+        if (phase == PitchSmoke.NEAR || phase == PitchSmoke.FAR) {
+            pitch = new PitchClientSmoke(sender, phase);
+            return;
+        }
+        if (phase <= HordeSmoke.DENIED && phase >= HordeSmoke.LEAVE) {
+            HordeSmokeClient.begin(phase, sender);
+            return;
+        }
         if (phase == SmokeControl.VISUAL) {
             visuals = new VisualStates(sender);
             return;

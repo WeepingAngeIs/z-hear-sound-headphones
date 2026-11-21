@@ -62,6 +62,14 @@ public final class SmokeControl {
         var server = player.serverLevel().getServer();
         var speaker = server.getPlayerList().getPlayerByName(SPEAKER);
         var listener = server.getPlayerList().getPlayerByName(LISTENER);
+        if (value == PitchSmoke.NEAR || value == PitchSmoke.FAR) {
+            PitchSmoke.receive(player, value);
+            return;
+        }
+        if (value <= HordeSmoke.DENIED && value >= HordeSmoke.LEAVE) {
+            HordeSmoke.acknowledge(player, value);
+            return;
+        }
         if (value == READY) {
             if ((player != speaker && player != listener) || !ready.add(player.getUUID())) {
                 throw failure("unrecognized or duplicate client");
@@ -81,7 +89,7 @@ public final class SmokeControl {
             }
             if (visualReady.size() == 2) {
                 visualReady.clear();
-                if (phase == TEAM_HIDDEN) System.out.println("MOBSEAR_MULTIPLAYER_PASS");
+                if (phase == TEAM_HIDDEN) HordeSmoke.start(speaker, listener);
                 else beginVisual(speaker, listener, phase - 1);
             }
             return;

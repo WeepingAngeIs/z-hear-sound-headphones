@@ -36,7 +36,11 @@ public final class FixtureSound {
                     case "getFormat" -> info.getFormats()[0];
                     case "isOpen", "isRunning", "isActive" -> open;
                     case "getLineInfo" -> info;
-                    case "write" -> { played.incrementAndGet(); yield (int) args[2]; }
+                    case "write" -> {
+                        played.incrementAndGet();
+                        PitchFixtureAudio.write((byte[])args[0], (int)args[1], (int)args[2]);
+                        yield (int)args[2];
+                    }
                     case "read" -> {
                         byte[] bytes = (byte[]) args[0];
                         int start = (int) args[1], count = (int) args[2];
@@ -46,6 +50,7 @@ public final class FixtureSound {
                             bytes[start + 2*n] = (byte) sample;
                             bytes[start + 2*n + 1] = (byte) (sample >> 8);
                         }
+                        if (PitchFixtureAudio.enabled) PitchFixtureAudio.fill(bytes, start, count);
                         nextFrame = System.nanoTime() + 20_000_000L;
                         yield count;
                     }

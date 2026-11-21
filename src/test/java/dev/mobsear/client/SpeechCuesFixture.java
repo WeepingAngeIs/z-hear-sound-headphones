@@ -126,21 +126,32 @@ public final class SpeechCuesFixture {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25);
         while (speech.status() == SpeechCues.Status.STARTING && System.nanoTime() < deadline) Thread.sleep(25);
         require(speech.status() == SpeechCues.Status.READY, "Recognizer startup");
-        var acousticClips = new ArrayList<byte[]>();
-        var segmentation = new SpeechCues.Utterances(acousticClips::add);
-        for (int offset = 0; offset < zombie.length; offset += FRAME) {
-            byte[] frame = Arrays.copyOfRange(zombie, offset, offset + FRAME);
-            segmentation.accept(frame);
-            speech.acceptFrame(frame);
-        }
-        segmentation.finish();
-        speech.endUtterance();
-        Cue actual = received.poll(10, TimeUnit.SECONDS);
-        if (actual != Cue.ZOMBIE) {
-            System.err.println("End-to-end status=" + speech.status() + " clip bytes="
-                    + acousticClips.stream().map(a -> a.length).toList() + " source bytes=" + zombie.length);
-            diagnoseSyntheticDecisions(acousticClips.toArray(byte[][]::new), aliasFile);
-            throw new AssertionError("End-to-end cue was " + actual);
+        for (int cents : new int[]{VoicePreferences.SQUEAKY_CENTS, VoicePreferences.DEEP_CENTS}) {
+            var acousticClips = new ArrayList<byte[]>();
+            var segmentation = new SpeechCues.Utterances(acousticClips::add);
+            var pitch = new OutgoingPitch();
+            var changed = new java.util.concurrent.atomic.AtomicBoolean();
+            for (int offset = 0; offset < zombie.length; offset += FRAME) {
+                byte[] frame = Arrays.copyOfRange(zombie, offset, offset + FRAME);
+                pitch.route(frame, cents, wire -> {
+                    if (!Arrays.equals(wire, frame)) changed.set(true);
+                    return true;
+                }, original -> {
+                    require(original == frame, "The recognizer received a processed pitch frame");
+                    segmentation.accept(original);
+                    speech.acceptFrame(original);
+                });
+            }
+            require(changed.get(), "Outgoing synthetic speech was never shifted");
+            segmentation.finish();
+            speech.endUtterance();
+            Cue actual = received.poll(10, TimeUnit.SECONDS);
+            if (actual != Cue.ZOMBIE) {
+                System.err.println("End-to-end status=" + speech.status() + " clip bytes="
+                        + acousticClips.stream().map(a -> a.length).toList() + " source bytes=" + zombie.length);
+                diagnoseSyntheticDecisions(acousticClips.toArray(byte[][]::new), aliasFile);
+                throw new AssertionError("End-to-end cue was " + actual + " with outgoing cents " + cents);
+            }
         }
         speech.setEnabled(false);
         require(speech.status() == SpeechCues.Status.OFF && received.isEmpty(), "Opt-out or duplicate cue");
