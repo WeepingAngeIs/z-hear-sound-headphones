@@ -76,9 +76,12 @@ final class VoiceWidgets {
                 return;
             }
             int gutter = 8;
-            int middle = x + Math.min(getWidth() / 2, font.width(label) + gutter * 2);
-            text(g, font, label, x + gutter, middle - 2, y + (getHeight() - 9) / 2, ink, false);
-            text(g, font, detail, middle + 2, right - gutter, y + (getHeight() - 9) / 2, colors.muted, true);
+            int available = getWidth() - gutter * 2 - 4;
+            int detailWidth = Math.min(font.width(detail), available / 2);
+            int labelWidth = Math.min(font.width(label), available - detailWidth);
+            int labelEnd = x + gutter + labelWidth;
+            text(g, font, label, x + gutter, labelEnd, y + (getHeight() - 9) / 2, ink, false);
+            text(g, font, detail, labelEnd + 4, right - gutter, y + (getHeight() - 9) / 2, colors.muted, true);
         }
 
         @Override public void updateWidgetNarration(NarrationElementOutput out) {
