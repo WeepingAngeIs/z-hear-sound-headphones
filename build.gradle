@@ -7,6 +7,11 @@ group = 'dev.mobsear'
 version = '0.1.0-prototype'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+if (providers.gradleProperty('voiceGameTests').isPresent()) {
+    sourceSets.main.java.srcDir('ci/gametest')
+    sourceSets.main.resources.srcDir('ci/gametest-resources')
+}
+
 neoForge {
     version = '21.1.255'
     runs {

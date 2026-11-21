@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   game:
-    name: NeoForge build
+    name: Build, synthetic audio and dedicated GameTests
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -22,4 +22,44 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - run: bash gradlew --no-daemon build
+      - name: Build the production jar and fixture classes
+        run: bash gradlew --no-daemon build
+      - name: Check audio, speech segmentation and rate limits without devices
+        run: |
+          cp=build/classes/java/test:build/classes/java/main:build/resources/main
+          java -cp "$cp" dev.mobsear.client.VoiceAudioFixture
+          java -cp "$cp" dev.mobsear.client.SpeechCuesFixture
+          java -cp "$cp" dev.mobsear.server.TalkWindowFixture
+      - name: Exercise the server in a disposable world
+        shell: bash
+        run: |
+          set -o pipefail
+          bash gradlew --no-daemon -PvoiceGameTests runGameTestServer 2>&1 | tee "$RUNNER_TEMP/gametest.log"
+          grep -Ei 'all [1-9][0-9]* required tests passed' "$RUNNER_TEMP/gametest.log"
+      - name: Keep the verified prototype jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobsear-prototype
+          path: build/libs/mobsear-0.1.0-prototype.jar
+          if-no-files-found: error
+  windows-speech:
+    name: Offline Windows speech from synthetic PCM
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Exercise the desktop recognizer in memory
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Speech
+          [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object Id,Culture
+          New-Item -ItemType Directory ci-classes | Out-Null
+          javac --release 21 -d ci-classes src/main/java/dev/mobsear/net/Cue.java src/main/java/dev/mobsear/client/SpeechCues.java src/test/java/dev/mobsear/client/SpeechCuesFixture.java
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          java -cp 'ci-classes;src/main/resources' dev.mobsear.client.SpeechCuesFixture --windows-speech
