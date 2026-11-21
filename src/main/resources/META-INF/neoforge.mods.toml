@@ -1,0 +1,23 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="mobsear"
+version="0.1.0-prototype"
+displayName="Mobs Hear U"
+description="Proximity voice with optional local speech cues for nearby hostile mobs."
+
+[[dependencies.mobsear]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.255,21.2)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.mobsear]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="BOTH"
