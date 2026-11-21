@@ -199,6 +199,35 @@ public final class VoicePreferencesFixture {
                 && prefs.effects().equals("full") && prefs.accent().equals("auto") && prefs.sensitivity() == 50
                 && prefs.hudVisible(), "Invalid options recover independently");
         require(prefs.save() && Files.readString(file).contains("future=value"), "Preserve unknown keys");
+        checkPitchAccounts(file, sound);
+    }
+
+    private static void checkPitchAccounts(Path file, VoiceDevices sound) throws Exception {
+        var first = new UUID(0, 101);
+        var second = new UUID(0, 102);
+        Files.writeString(file, "pitchEnabled=true\npitchCents=367\npitchPreset=squeaky\nvolume=135\n");
+        var prefs = new VoicePreferences(file, sound);
+        prefs.bindPitchAccount(first);
+        require(prefs.pitchEnabled() && prefs.pitchPreset().equals("squeaky") && prefs.customPitchCents() == 367,
+                "Existing local settings did not migrate to their first account");
+        var other = new VoicePreferences(file, second);
+        require(!other.pitchEnabled() && other.pitchPreset().equals("natural") && other.customPitchCents() == 0
+                && other.volume() == 135, "The next local account inherited someone else's voice effect");
+        other.setPitchCents(-281);
+        other.setPitchPreset("deep");
+        other.setPitchEnabled(true);
+        require(other.save(), "Save second account selections");
+        prefs = new VoicePreferences(file, first);
+        require(prefs.pitchPreset().equals("squeaky") && prefs.customPitchCents() == 367, "First account lost its preset");
+        prefs.bindPitchAccount(second);
+        require(prefs.pitchPreset().equals("deep") && prefs.customPitchCents() == -281, "Account switch did not restore pitch");
+        prefs.resetPitch();
+        require(prefs.save(), "Reset second account");
+        prefs = new VoicePreferences(file, first);
+        require(prefs.pitchEnabled() && prefs.pitchPreset().equals("squeaky") && prefs.customPitchCents() == 367
+                && prefs.volume() == 135, "Reset changed another local account");
+        prefs.bindPitchAccount(second);
+        require(!prefs.pitchEnabled() && prefs.pitchCents() == 0 && prefs.customPitchCents() == 0, "Reset scoped account");
     }
 
     private static void requireUnavailable(VoicePreferences prefs) throws Exception {
