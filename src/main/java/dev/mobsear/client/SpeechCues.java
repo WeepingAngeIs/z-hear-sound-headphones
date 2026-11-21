@@ -201,8 +201,10 @@ public final class SpeechCues implements AutoCloseable {
     static final class Utterances {
         static final int FRAME_BYTES = 640;
         private static final int END_SILENCE_FRAMES = 18;
+        private static final int DECODER_TAIL_FRAMES = 28;
         private final byte[] current = new byte[150 * FRAME_BYTES];
-        private final byte[] preRoll = new byte[3 * FRAME_BYTES];
+        // Preserve quiet initial consonants and give the desktop decoder a stable noise floor.
+        private final byte[] preRoll = new byte[10 * FRAME_BYTES];
         private final Consumer<byte[]> output;
         private int used;
         private int silenceFrames;
@@ -248,7 +250,8 @@ public final class SpeechCues implements AutoCloseable {
 
         void finish() {
             if (used > 0 && !tooLong) {
-                int padding = (END_SILENCE_FRAMES - silenceFrames) * FRAME_BYTES;
+                // Append synthetic silence in memory without delaying the PTT-release endpoint.
+                int padding = (DECODER_TAIL_FRAMES - silenceFrames) * FRAME_BYTES;
                 output.accept(Arrays.copyOf(current, Math.min(current.length, used + padding)));
             }
             clear();

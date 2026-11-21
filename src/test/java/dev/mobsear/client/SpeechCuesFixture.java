@@ -44,8 +44,8 @@ public final class SpeechCuesFixture {
         require(clips.isEmpty(), "Silence was queued");
         segments.accept(signal);
         for (int i = 0; i < 18; i++) segments.accept(silence);
-        require(clips.size() == 1 && clips.getFirst().length == 22 * FRAME, "Silence endpoint");
-        require(Arrays.equals(clips.getFirst(), 3 * FRAME, 4 * FRAME, signal, 0, FRAME), "PCM changed");
+        require(clips.size() == 1 && clips.getFirst().length == 39 * FRAME, "Silence endpoint");
+        require(Arrays.equals(clips.getFirst(), 10 * FRAME, 11 * FRAME, signal, 0, FRAME), "PCM changed");
         segments.finish();
         require(clips.size() == 1, "Release duplicated a cue");
         for (int i = 0; i < 600; i++) segments.accept(signal);
@@ -90,11 +90,22 @@ public final class SpeechCuesFixture {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25);
         while (speech.status() == SpeechCues.Status.STARTING && System.nanoTime() < deadline) Thread.sleep(25);
         require(speech.status() == SpeechCues.Status.READY, "Recognizer startup");
+        var acousticClips = new ArrayList<byte[]>();
+        var segmentation = new SpeechCues.Utterances(acousticClips::add);
         for (int offset = 0; offset < zombie.length; offset += FRAME) {
-            speech.acceptFrame(Arrays.copyOfRange(zombie, offset, offset + FRAME));
+            byte[] frame = Arrays.copyOfRange(zombie, offset, offset + FRAME);
+            segmentation.accept(frame);
+            speech.acceptFrame(frame);
         }
+        segmentation.finish();
         speech.endUtterance();
-        require(received.poll(10, TimeUnit.SECONDS) == Cue.ZOMBIE, "End-to-end cue");
+        Cue actual = received.poll(10, TimeUnit.SECONDS);
+        if (actual != Cue.ZOMBIE) {
+            System.err.println("End-to-end status=" + speech.status() + " clip bytes="
+                    + acousticClips.stream().map(a -> a.length).toList() + " source bytes=" + zombie.length);
+            diagnoseSyntheticDecisions(acousticClips.toArray(byte[][]::new));
+            throw new AssertionError("End-to-end cue was " + actual);
+        }
         speech.setEnabled(false);
         require(speech.status() == SpeechCues.Status.OFF && received.isEmpty(), "Opt-out or duplicate cue");
     }
