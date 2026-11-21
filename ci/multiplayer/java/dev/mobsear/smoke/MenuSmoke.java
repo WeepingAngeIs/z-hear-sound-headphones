@@ -30,7 +30,10 @@ import org.lwjgl.glfw.GLFW;
 
 /** Runs after the four network phases. Closing the menu allows the final near frame to be sent. */
 final class MenuSmoke {
-    private enum Step { FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, ANIMATION, REDUCED, CLOSE, REOPEN, DONE }
+    private enum Step {
+        FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, ANIMATION, REDUCED, CLOSE, REOPEN,
+        AUDIO_MODE, RESTORE_MODE, COMPACT, RESTORE_SIZE, DONE
+    }
     private static final String[] THEMES = {"UwU", "Dark / Emo", "Vanilla", "Amethyst"};
     private static final MenuTheme[] BACKDROPS = MenuTheme.values();
     private static final UUID SPEAKER_ID = UUID.nameUUIDFromBytes(
@@ -124,6 +127,33 @@ final class MenuSmoke {
                 check(saved.volume() == 50 && saved.gain(SPEAKER_ID) == 150
                         && saved.theme().equals("amethyst_stars"), "saved preferences did not reload");
                 compareThemes();
+                step = Step.AUDIO_MODE;
+            }
+            case AUDIO_MODE, RESTORE_MODE -> {
+                var audio = list("VoiceControlList");
+                var mode = widget("Input mode", true);
+                if (!visibleRow(audio, "Input mode")) {
+                    wheel(audio, -1);
+                    return;
+                }
+                if (mode.getY() == 0) return; // The just-rebuilt native row is positioned during render.
+                if (mode.getY() < audio.getY() || mode.getBottom() > audio.getBottom()) {
+                    wheel(audio, mode.getY() < audio.getY() ? 1 : -1);
+                    return;
+                }
+                boolean enabling = step == Step.AUDIO_MODE;
+                pointer(mode, .5);
+                check(VoiceClient.voiceActivated() == enabling && roster().getScrollAmount() == 0
+                                && value(SmokeControl.SPEAKER, 150), "audio toggle changed the right pane or missed input");
+                if (enabling) step = Step.RESTORE_MODE;
+                else {
+                    mc.getWindow().setWindowed(640, 480);
+                    step = Step.COMPACT;
+                    renderedFrames = 0;
+                }
+            }
+            case RESTORE_SIZE -> {
+                if (mc.getWindow().getWidth() != 854 || mc.screen.width != 427) return;
                 mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 check(mc.screen == null && mc.getConnection() == connection, "voice session did not survive settings");
                 step = Step.DONE;
@@ -137,6 +167,21 @@ final class MenuSmoke {
     private void render(ScreenEvent.Render.Post event) {
         if (!inSettings() || event.getScreen() != mc.screen) return;
         displayed = true;
+        if (step == Step.COMPACT) {
+            if (mc.screen.width != 320 || mc.screen.height != 240 || ++renderedFrames < 4) return;
+            var audio = list("VoiceControlList");
+            var people = roster();
+            var peer = widget(SmokeControl.SPEAKER, true);
+            check(audio.getRight() < people.getX() && peer.getX() >= people.getX() && peer.getRight() <= people.getRight()
+                    && visibleRow(people, SmokeControl.SPEAKER), "compact controls overlap or clip the first peer");
+            pointer(peer, .75);
+            check(mc.screen.getFocused() == people && people.getFocused() != null && value(SmokeControl.SPEAKER, 150),
+                    "compact roster could not take focus and preserve gain");
+            save(event, "menu-compact.png");
+            mc.getWindow().setWindowed(854, 480);
+            step = Step.RESTORE_SIZE;
+            return;
+        }
         if (step == Step.ANIMATION || step == Step.REDUCED) {
             long now = Util.getMillis();
             if (step == Step.ANIMATION) {
@@ -178,7 +223,8 @@ final class MenuSmoke {
     private void save(ScreenEvent.Render.Post event, String filename) {
         event.getGuiGraphics().flush();
         try (var picture = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-            check(picture.getWidth() == 854 && picture.getHeight() == 480, "unexpected framebuffer dimensions");
+            check(picture.getWidth() == (step == Step.COMPACT ? 640 : 854) && picture.getHeight() == 480,
+                    "unexpected framebuffer dimensions");
             Files.createDirectories(screenshots);
             picture.writeToFile(screenshots.resolve(filename));
         } catch (IOException e) {
@@ -240,9 +286,13 @@ final class MenuSmoke {
     }
 
     private AbstractSelectionList<?> roster() {
-        return mc.screen.children().stream().filter(item -> item.getClass().getSimpleName().equals("OnlineVoiceList"))
+        return list("OnlineVoiceList");
+    }
+
+    private AbstractSelectionList<?> list(String type) {
+        return mc.screen.children().stream().filter(item -> item.getClass().getSimpleName().equals(type))
                 .map(item -> (AbstractSelectionList<?>) item).findFirst()
-                .orElseThrow(() -> SmokeControl.failure("missing native roster"));
+                .orElseThrow(() -> SmokeControl.failure("missing native list " + type));
     }
 
     private void wheel(AbstractSelectionList<?> list, double dy) {

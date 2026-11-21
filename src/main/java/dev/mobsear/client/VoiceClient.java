@@ -116,7 +116,7 @@ public final class VoiceClient {
         var pkt = seen.snapshot();
         if (!pkt.dimension().equals(mc.level.dimension().location()) || System.nanoTime() - seen.arrival() > 1_000_000_000L) return null;
         var other = mc.level.getPlayerByUUID(id);
-        if (other == null || other == mc.player || !other.isAlive() || other.isSpectator() || other.isInvisibleTo(mc.player)
+        if (other == null || other == mc.player || !other.isAlive() || other.isSpectator() || !MicPresence.nameVisible(other, mc.player)
                 || other.distanceToSqr(mc.player) >= (double) pkt.radius() * pkt.radius()) return null;
         return pkt;
     }
@@ -160,9 +160,9 @@ public final class VoiceClient {
             preferences.setDeafened(!preferences.deafened());
             preferences.save();
         }
-        if (!usable || (session != null && (session.level != mc.level
+        if (session != null && (!usable || session.level != mc.level
                 || session.deviceRevision != preferences.deviceRevision()
-                || session.deafened != preferences.deafened()))) closeSession();
+                || session.deafened != preferences.deafened())) closeSession();
         if (!usable) return;
         if (session == null) session = new Session(mc.level, preferences);
         publishControls(current);
@@ -179,7 +179,7 @@ public final class VoiceClient {
         if (session.recognition != recognition) session.enableRecognition(recognition);
         if (focused && !inputBlocked) {
             session.setHeld(held, activation);
-            session.send();
+            session.send(current);
         }
         session.reportStatus(mc);
     }
@@ -312,13 +312,18 @@ public final class VoiceClient {
             if (!enable) cue.set(null);
         }
 
-        void send() {
+        void send(ClientPacketListener link) {
             byte[] frame;
             for (int i = 0; i < 12 && (frame = frames.poll()) != null; i++) {
                 PacketDistributor.sendToServer(new Packets.Up(frame));
             }
             Cue ready = cue.getAndSet(null);
-            if (ready != null && recognition) PacketDistributor.sendToServer(new Packets.Call(ready));
+            if (ready == null || !recognition || !link.hasChannel(Packets.Call.TYPE)) return;
+            boolean supported = switch (ready) {
+                case ZOMBIE, MOBS, ENDERMAN -> true;
+                default -> link.hasChannel(MicPresence.Controls.TYPE);
+            };
+            if (supported) PacketDistributor.sendToServer(new Packets.Call(ready));
         }
 
         void reportStatus(Minecraft mc) {

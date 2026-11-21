@@ -64,8 +64,8 @@ public final class SmokeClient {
             visuals = new VisualStates(sender);
             return;
         }
-        if (phase == SmokeControl.FAR) {
-            visuals.far();
+        if (phase <= SmokeControl.FAR) {
+            visuals.inspectName(phase);
             return;
         }
         if (phase != nextPhase++ || phase >= SmokeControl.PHASES.length) {

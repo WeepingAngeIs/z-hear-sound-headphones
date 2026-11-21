@@ -78,7 +78,7 @@ public final class NearbyMics {
                 c.style(), state, state == MicState.SPEAKING ? status.level : 0);
         for (var viewer : nearby) {
             if (viewer == speaker || viewer.level() != level || viewer.isSpectator() || !viewer.isAlive()
-                    || viewer.isRemoved() || speaker.isInvisibleTo(viewer)
+                    || viewer.isRemoved() || !MicPresence.nameVisible(speaker, viewer)
                     || viewer.distanceToSqr(speaker) >= (double) radius * radius) continue;
             emit.accept(viewer, snapshot);
         }

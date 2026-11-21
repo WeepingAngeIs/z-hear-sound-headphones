@@ -54,7 +54,9 @@ final class VisualStates {
     private final Path output = SYNC.resolve("visuals");
     private final BufferedImage[] atlases = new BufferedImage[FAMILIES.size()];
     private int index, rendered, firstFrame = -1, observedTag = -2;
-    private boolean configured, captured, reported, atDistance, requestedMenu;
+    private boolean configured, captured, reported, requestedMenu, vanillaWouldRender;
+    private int namePhase;
+    private final java.util.BitSet teamLetters = new java.util.BitSet();
     private long deadline, firstAt, tagAt;
 
     VisualStates(boolean sender) {
@@ -80,16 +82,25 @@ final class VisualStates {
         if (sender || !event.getEntity().getUUID().equals(SPEAKER)) return;
         String label = event.getContent().getString();
         observedTag = label.chars().filter(c -> c >= 0xe100 && c < 0xe100 + 4*6*13).findFirst().orElse(-1);
+        if (namePhase <= SmokeControl.TEAM_VISIBLE) {
+            try {
+                var renderRule = net.minecraft.client.renderer.entity.EntityRenderer.class.getDeclaredMethod(
+                        "shouldShowName", net.minecraft.world.entity.Entity.class);
+                renderRule.setAccessible(true);
+                vanillaWouldRender = (boolean) renderRule.invoke(event.getEntityRenderer(), event.getEntity());
+            } catch (ReflectiveOperationException ex) { throw SmokeControl.failure("cannot verify vanilla label rule: " + ex); }
+        }
         tagAt = System.nanoTime();
     }
 
     void tick() {
         if (reported) return;
         if (System.nanoTime() > deadline) throw SmokeControl.failure("visual step " + index + " sender=" + sender
-                + " far=" + atDistance + " local=" + VoiceClient.localState() + " remote=" + VoiceClient.remoteState(SPEAKER)
-                + " tag=" + observedTag + " focus=" + mc.isWindowActive() + " menu=" + mc.screen + " frames=" + rendered);
+                + " namePhase=" + namePhase + " local=" + VoiceClient.localState() + " remote=" + VoiceClient.remoteState(SPEAKER)
+                + " tag=" + observedTag + " fresh=" + recentTag() + " peer=" + mc.level.getPlayerByUUID(SPEAKER)
+                + " focus=" + mc.isWindowActive() + " menu=" + mc.screen + " frames=" + rendered);
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
-        if (atDistance) return;
+        if (namePhase != 0) return;
         if (index == CASES.size()) {
             if (mc.screen instanceof VoiceSettingsScreen) mc.screen.onClose();
             FixtureSound.tone = false;
@@ -138,8 +149,8 @@ final class VisualStates {
         }
     }
 
-    void far() {
-        atDistance = true;
+    void inspectName(int phase) {
+        namePhase = phase;
         reported = false;
         rendered = 0;
         tagAt = 0;
@@ -148,13 +159,8 @@ final class VisualStates {
 
     private void render(RenderFrameEvent.Post ignored) {
         if (reported || !VoiceClient.connected() || mc.player == null) return;
-        if (atDistance) {
-            if (sender) { report(SmokeControl.FAR); return; }
-            var peer = mc.level.getPlayerByUUID(SPEAKER);
-            if (peer == null || peer.distanceToSqr(mc.player) < 39 * 39 || VoiceClient.remoteState(SPEAKER) != null
-                    || !recentTag() || observedTag != -1 || ++rendered < 4) return;
-            try (var picture = Screenshot.takeScreenshot(mc.getMainRenderTarget())) { write(picture, "nameplate-out-of-range"); }
-            report(SmokeControl.FAR);
+        if (namePhase != 0) {
+            inspectRenderedName();
             return;
         }
         if (index >= CASES.size() || !configured || captured) return;
@@ -196,6 +202,47 @@ final class VisualStates {
                 if (System.nanoTime() - firstAt < 450_000_000L) return;
             }
             finish();
+        }
+    }
+
+    private void inspectRenderedName() {
+        if (sender) { report(namePhase); return; }
+        var peer = mc.level.getPlayerByUUID(SPEAKER);
+        if (peer == null || !recentTag()) return;
+        double distance = peer.distanceToSqr(mc.player);
+        boolean far = namePhase == SmokeControl.FAR;
+        boolean hidden = namePhase == SmokeControl.TEAM_HIDDEN;
+        if (far) {
+            if (distance < 33*33 || VoiceClient.remoteState(SPEAKER) != null || observedTag != -1) return;
+        } else if (distance > 5*5 || peer.getTeam() == null || VoiceClient.remoteState(SPEAKER) == null ||
+                (peer.getTeam().getNameTagVisibility() == net.minecraft.world.scores.Team.Visibility.NEVER) != hidden ||
+                vanillaWouldRender == hidden) return;
+        if (++rendered < 6) return;
+        try (var picture = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+            if (!far) compareTeamLetters(picture, hidden);
+            write(picture, far ? "nameplate-out-of-range" : hidden ? "nameplate-team-hidden" : "nameplate-team-visible");
+        }
+        report(namePhase);
+    }
+
+    /** Vanilla white name pixels above the peer's head disappear on the same camera after team visibility changes. */
+    private void compareTeamLetters(NativeImage picture, boolean hidden) {
+        var mask = new java.util.BitSet();
+        for (int y = 95; y < 225; y++) for (int x = 310; x < 544; x++) {
+            int pixel = picture.getPixelRGBA(x, y);
+            if ((pixel & 255) > 243 && (pixel >> 8 & 255) > 243 && (pixel >> 16 & 255) > 243) {
+                mask.set(y*picture.getWidth()+x);
+            }
+        }
+        if (!hidden) {
+            if (mask.cardinality() < 24) throw SmokeControl.failure("control capture has no legible in-world name");
+            teamLetters.or(mask);
+        } else {
+            var gone = (java.util.BitSet) teamLetters.clone();
+            gone.andNot(mask);
+            if (gone.cardinality() < 24 || gone.cardinality() * 2 < teamLetters.cardinality()) {
+                throw SmokeControl.failure("team-hidden capture retained the white name text");
+            }
         }
     }
 

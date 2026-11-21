@@ -4,9 +4,11 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.imageio.ImageIO;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.Line;
@@ -25,11 +27,46 @@ public final class VoicePreferencesFixture {
         Path file = dir.resolve("voice.properties");
         try {
             check(file);
+            checkBackdropStrips();
         } finally {
             Files.deleteIfExists(file);
             Files.deleteIfExists(dir);
         }
         System.out.println("Voice preferences and device selection fixture passed.");
+    }
+
+    private static void checkBackdropStrips() throws Exception {
+        int sceneCount = 0;
+        for (MenuTheme theme : MenuTheme.values()) {
+            if (!theme.hasScene()) continue;
+            sceneCount++;
+            String path = "/assets/mobsear/textures/gui/themes/" + theme.id() + ".png";
+            try (var stream = VoicePreferencesFixture.class.getResourceAsStream(path)) {
+                require(stream != null, "Missing backdrop " + path);
+                var strip = ImageIO.read(stream);
+                require(strip != null && strip.getWidth() == 192 && strip.getHeight() == 768, "Eight-frame strip " + path);
+                var frames = new ArrayList<int[]>();
+                var stamps = new ArrayList<int[]>();
+                for (int frame = 0; frame < 8; frame++) {
+                    int[] pixels = strip.getRGB(0, frame * 96, 192, 96, null, 0, 192);
+                    for (int pixel : pixels) require(pixel >>> 24 == 208, "Backdrop alpha in " + path);
+                    int[] stamp = new int[48 * 24];
+                    for (int y = 0; y < 24; y++) {
+                        for (int x = 0; x < 48; x++) stamp[y * 48 + x] = pixels[(y * 4 + 2) * 192 + x * 4 + 2];
+                    }
+                    for (int[] old : stamps) require(!Arrays.equals(stamp, old), "Repeated GUI-scale phase in " + path);
+                    frames.add(pixels);
+                    stamps.add(stamp);
+                }
+                for (int i = 0; i < frames.size(); i++) {
+                    int changed = 0;
+                    int[] current = frames.get(i), next = frames.get((i + 1) % frames.size());
+                    for (int j = 0; j < current.length; j++) if (current[j] != next[j]) changed++;
+                    require(changed > 0 && changed < current.length * 0.15, "Abrupt backdrop transition in " + path);
+                }
+            }
+        }
+        require(sceneCount == 16, "Expected four animated options in each of four theme families");
     }
 
     private static void check(Path file) throws Exception {

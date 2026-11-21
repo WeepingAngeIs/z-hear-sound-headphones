@@ -34,7 +34,7 @@ public final class HordeGameTests {
     public static void quietConsentAndLoudness(GameTestHelper test) {
         var mode = new HordeMode();
         var player = player(test, "Quiet", 5.5, 5.5);
-        var zombie = test.spawn(EntityType.ZOMBIE, 6, 1, 5);
+        var zombie = test.spawn(EntityType.ZOMBIE, 6, 2, 5);
         test.assertTrue(!MobsEar.hordeAvailable(), "The disposable server must start with quiet horror off");
         test.assertTrue(!mode.consent(player, true, OFF), "A player bypassed the server switch");
         sound(mode, player, LOUD, 0, 90);
@@ -62,14 +62,14 @@ public final class HordeGameTests {
         var mode = new HordeMode();
         var player = player(test, "Noise", 5.5, 5.5);
         var other = player(test, "Bystander", 6.5, 7.5);
-        var first = test.spawn(EntityType.ZOMBIE, 6, 1, 5);
-        var second = test.spawn(EntityType.HUSK, 4, 1, 5);
-        var surplus = test.spawn(EntityType.ZOMBIE, 8, 1, 5);
-        var outside = test.spawn(EntityType.ZOMBIE, 10, 1, 10);
-        var engaged = test.spawn(EntityType.ZOMBIE, 5, 1, 6);
-        var neutral = test.spawn(EntityType.ZOMBIFIED_PIGLIN, 5, 1, 4);
-        var enderman = test.spawn(EntityType.ENDERMAN, 7, 1, 5);
-        var cow = test.spawn(EntityType.COW, 5, 1, 7);
+        var first = test.spawn(EntityType.ZOMBIE, 6, 2, 5);
+        var second = test.spawn(EntityType.HUSK, 4, 2, 5);
+        var surplus = test.spawn(EntityType.ZOMBIE, 8, 2, 5);
+        var outside = test.spawn(EntityType.ZOMBIE, 10, 2, 10);
+        var engaged = test.spawn(EntityType.ZOMBIE, 5, 2, 6);
+        var neutral = test.spawn(EntityType.ZOMBIFIED_PIGLIN, 5, 2, 4);
+        var enderman = test.spawn(EntityType.ENDERMAN, 7, 2, 5);
+        var cow = test.spawn(EntityType.COW, 5, 2, 7);
         engaged.setTarget(other);
         mode.consent(player, true, ON);
         sound(mode, player, LOUD, 1, 65);
@@ -95,7 +95,7 @@ public final class HordeGameTests {
     @GameTest(template = "hearing_floor")
     public static void hordeUsesVanillaMelee(GameTestHelper test) {
         var mode = new HordeMode();
-        var zombie = test.spawn(EntityType.ZOMBIE, 7, 1, 5);
+        var zombie = test.spawn(EntityType.ZOMBIE, 7, 2, 5);
         var player = new FakePlayer(test.getLevel(), new GameProfile(UUID.randomUUID(), "MeleeFixture")) {
             boolean struck;
             @Override public boolean hurt(DamageSource source, float amount) {
@@ -105,12 +105,13 @@ public final class HordeGameTests {
             }
         };
         player.setGameMode(GameType.SURVIVAL);
-        player.setPos(test.absoluteVec(new Vec3(4.5, 1, 5.5)));
+        player.setPos(test.absoluteVec(new Vec3(4.5, 2, 5.5)));
         mode.consent(player, true, ON);
         sound(mode, player, LOUD, 0, 65);
         test.assertTrue(zombie.getTarget() == player, "Horde did not assign melee target");
         test.succeedWhen(() -> {
-            test.assertTrue(player.struck, "Vanilla zombie AI never closed the gap and struck its target");
+            test.assertTrue(player.struck, "Vanilla zombie AI never struck the fixture; distance="
+                    + zombie.distanceTo(player) + " target=" + (zombie.getTarget() == player));
             mode.clear();
         });
     }
@@ -121,14 +122,16 @@ public final class HordeGameTests {
         var player = player(test, "WaveOwner", 2.5, 5.5);
         var bystander = player(test, "WaveOther", 1.5, 2.5);
         mode.consent(player, true, ON);
-        BlockPos spawn = test.absolutePos(new BlockPos(9, 1, 5));
+        BlockPos spawn = test.absolutePos(new BlockPos(9, 2, 5));
+        test.assertTrue(test.getLevel().getBlockState(spawn.below()).is(Blocks.STONE)
+                && test.getLevel().getBlockState(spawn).isAir(), "Fixture needs stone below empty feet");
         test.assertTrue(mode.trySpawnAt(player, player.blockPosition(), 12) == null, "Wave spawned on speaker");
         test.assertTrue(mode.trySpawnAt(player, spawn, 4) == null, "Wave spawned outside voice range");
         // Seal a dark two-block-high room on the structure's stone floor. Allow lighting to settle.
         for (int x = 8; x <= 10; x++) {
             for (int z = 4; z <= 6; z++) {
-                for (int y = 1; y <= 3; y++) {
-                    if (x != 9 || z != 5 || y == 3) test.setBlock(x, y, z, Blocks.STONE);
+                for (int y = 2; y <= 4; y++) {
+                    if (x != 9 || z != 5 || y == 4) test.setBlock(x, y, z, Blocks.STONE);
                 }
             }
         }
@@ -154,7 +157,7 @@ public final class HordeGameTests {
     private static ServerPlayer player(GameTestHelper test, String name, double x, double z) {
         var player = new FakePlayer(test.getLevel(), new GameProfile(UUID.randomUUID(), name));
         player.setGameMode(GameType.SURVIVAL);
-        player.setPos(test.absoluteVec(new Vec3(x, 1, z)));
+        player.setPos(test.absoluteVec(new Vec3(x, 2, z)));
         return player;
     }
 }

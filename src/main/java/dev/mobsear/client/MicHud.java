@@ -64,7 +64,7 @@ public final class MicHud {
         var mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui || !VoiceClient.connected() || !VoiceClient.options().nameplates()
                 || event.canRender() == TriState.FALSE || !(event.getEntity() instanceof AbstractClientPlayer player)
-                || player == mc.player || player.isInvisibleTo(mc.player) || player.distanceToSqr(mc.player) >= 32 * 32) return;
+                || player == mc.player || player.isInvisibleTo(mc.player)) return;
         var id = player.getUUID();
         MicState state = VoiceClient.remoteState(id);
         if (state == null) return;

@@ -17,7 +17,7 @@ level-type=minecraft:flat
 generate-structures=false
 gamemode=creative
 difficulty=peaceful
-view-distance=3
+view-distance=5
 simulation-distance=3
 spawn-protection=0
 max-players=2
@@ -29,7 +29,7 @@ for role in smokeSpeaker smokeListener; do
 version:3955
 onboardAccessibility:false
 skipMultiplayerWarning:true
-renderDistance:2
+renderDistance:5
 simulationDistance:5
 enableVsync:false
 maxFps:20
@@ -121,7 +121,8 @@ for role in hud nameplate; do
   done
   snapshots+=("$role-effects-reduced" "$role-effects-off" "$role-hidden")
 done
-snapshots+=(nameplate-out-of-range status-speaking status-quiet gain-zero device-meter)
+snapshots+=(nameplate-out-of-range nameplate-team-visible nameplate-team-hidden status-speaking status-quiet gain-zero device-meter)
+snapshots+=(menu-compact)
 snapshots+=(menu-uwu_lotus-frame-{0,1,2,3,4,5,6,7} menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
 for name in "${snapshots[@]}"; do test -s "build/state-previews/$name.png" || { echo "Missing $name"; exit 1; }; done
 printf 'MOBSEAR_CAPTURE %s.png\n' "${snapshots[@]}"

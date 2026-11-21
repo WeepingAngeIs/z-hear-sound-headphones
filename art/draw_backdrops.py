@@ -74,7 +74,10 @@ def paint_frame(name, palette, scene, frame):
                 disc(x+dx,y+dy,2,"#e8a24e"); d.point((x+dx-1,y+dy-1),white)
             # A little dappled light runs across adjacent leaves while the fruit stays still.
             for j, (dx,dy) in enumerate([(-8,-6),(-1,-10),(6,-4),(2,-8)]):
-                for k in range(3): glint(x+dx+k,y+dy,x+j,12)
+                for k in range(5):
+                    glint(x+dx+k,y+dy,x+j,13)
+                    glint(x+dx+k-1,y+dy+1,x+j,10)
+                    glint(x+dx+k-2,y+dy+2,x+j,7)
     def palm(x,y,h,flip=1):
         tx,ty=x+flip*7,y-h
         poly([(x-3,y),(x+3,y),(tx+2,ty),(tx-1,ty)],"#96754c")
@@ -262,7 +265,13 @@ def paint(name, palette, scene):
     sheet = Image.new("RGBA",(192,768))
     for i, frame in enumerate(frames):
         sheet.paste(frame,(0,i*96))
-    sheet.save(DEST / (name + ".png"), optimize=True)
+    # Each scene uses a small hand-picked palette and one opacity across every phase.
+    # Store exact palette entries with PNG tRNS, then verify the decoded RGBA pixels.
+    rgb = sheet.convert("RGB")
+    indexed = rgb.convert("P", palette=Image.Palette.ADAPTIVE, colors=len(rgb.getcolors()))
+    indexed.info["transparency"] = bytes([208] * (indexed.getextrema()[1] + 1))
+    assert indexed.convert("RGBA").tobytes() == sheet.tobytes()
+    indexed.save(DEST / (name + ".png"), optimize=True)
 
 
 if __name__ == "__main__":

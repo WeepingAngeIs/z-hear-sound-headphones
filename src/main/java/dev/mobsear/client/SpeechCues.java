@@ -83,10 +83,6 @@ public final class SpeechCues implements AutoCloseable {
         return executor;
     }
 
-    static Process launch() throws IOException {
-        return launch(null);
-    }
-
     static Process launch(Path aliases) throws IOException {
         String windows = System.getenv("SystemRoot");
         if (windows == null) throw new IOException("Missing Windows system directory");

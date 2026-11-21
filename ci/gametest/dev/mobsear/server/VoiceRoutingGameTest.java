@@ -18,6 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.Team;
 import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
@@ -94,6 +95,51 @@ public final class VoiceRoutingGameTest {
         helper.assertTrue(recipients.equals(List.of(nearby)), "A mic-muted player should still hear proximity audio");
         ServerVoice.forget(speaker);
         ServerVoice.forget(nearby);
+        helper.succeed();
+    }
+
+    @GameTest(template = "hearing_floor")
+    public static void teamNameTagPrivacy(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var center = helper.absoluteVec(new Vec3(4.5, 2, 4.5));
+        var speaker = player(level, "TagSpeaker", center);
+        var ally = player(level, "TagAlly", center);
+        var rival = player(level, "TagRival", center);
+        var unteamed = player(level, "TagNeutral", center);
+        var candidates = List.of(ally, rival, unteamed);
+        var board = level.getScoreboard();
+        var friends = board.addPlayerTeam("ear_tag_friends");
+        var opponents = board.addPlayerTeam("ear_tag_rivals");
+        try {
+            board.addPlayerToTeam(speaker.getScoreboardName(), friends);
+            board.addPlayerToTeam(ally.getScoreboardName(), friends);
+            board.addPlayerToTeam(rival.getScoreboardName(), opponents);
+            NearbyMics.controls(speaker, new MicPresence.Controls(0, false, false));
+            for (var rule : Team.Visibility.values()) {
+                friends.setNameTagVisibility(rule);
+                var recipients = new ArrayList<ServerPlayer>();
+                NearbyMics.distribute(speaker, candidates, 8, (viewer, status) -> recipients.add(viewer));
+                List<ServerPlayer> expected = switch (rule) {
+                    case ALWAYS -> candidates;
+                    case NEVER -> List.of();
+                    case HIDE_FOR_OTHER_TEAMS -> List.of(ally, unteamed);
+                    case HIDE_FOR_OWN_TEAM -> List.of(rival, unteamed);
+                };
+                helper.assertTrue(recipients.equals(expected), "Mic status ignored team name-tag rule " + rule);
+            }
+            friends.setNameTagVisibility(Team.Visibility.ALWAYS);
+            speaker.setInvisible(true);
+            friends.setSeeFriendlyInvisibles(false);
+            NearbyMics.distribute(speaker, candidates, 8, (v, status) -> helper.fail("Invisible tag leaked mic status"));
+            friends.setSeeFriendlyInvisibles(true);
+            var visible = new ArrayList<ServerPlayer>();
+            NearbyMics.distribute(speaker, candidates, 8, (v, status) -> visible.add(v));
+            helper.assertTrue(visible.equals(List.of(ally)), "Friendly invisible tag visibility");
+        } finally {
+            NearbyMics.forget(speaker);
+            board.removePlayerTeam(friends);
+            board.removePlayerTeam(opponents);
+        }
         helper.succeed();
     }
 
