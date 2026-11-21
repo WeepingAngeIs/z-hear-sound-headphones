@@ -37,6 +37,7 @@ graphicsMode:0
 soundCategory_master:0.0
 OPTIONS
 done
+echo 'guiScale:2' >> "$MOBSEAR_SMOKE_DIR/smokeListener/options.txt"
 
 bash gradlew --no-daemon --max-workers=2 -PvoiceMultiplayer \
   classes prepareSmokeServerRun prepareSmokeSpeakerRun prepareSmokeListenerRun \
@@ -85,3 +86,8 @@ launch smokeSpeaker
 launch smokeListener
 wait_for smokeServer 'MOBSEAR_MULTIPLAYER_PASS' 420
 grep -F 'MOBSEAR_' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
+grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+mkdir -p build/menu-previews
+for theme in uwu dark vanilla amethyst; do
+  cp "$MOBSEAR_SMOKE_DIR/smokeListener/screenshots/menu-$theme.png" build/menu-previews/
+done

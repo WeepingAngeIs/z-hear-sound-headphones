@@ -19,12 +19,14 @@ public final class SmokeClient {
     private boolean sender;
     private Packets.Down received;
     private int nextPhase;
+    private MenuSmoke menu;
 
     public SmokeClient() {
         NeoForge.EVENT_BUS.addListener(this::tick);
     }
 
     private void tick(ClientTickEvent.Post event) {
+        if (menu != null) menu.tick();
         var mc = Minecraft.getInstance();
         var connection = mc.getConnection();
         if (ready || mc.player == null || mc.level == null || connection == null) return;
@@ -53,7 +55,7 @@ public final class SmokeClient {
         if (sender) {
             PacketDistributor.sendToServer(new Packets.Up(samples));
         } else {
-            boolean audible = phase == 0 || phase == 3;
+            boolean audible = phase != 1 && phase != 2;
             if (audible != (received != null)) throw SmokeControl.failure("incorrect near/far/dimension routing");
             if (audible) {
                 UUID expected = UUID.nameUUIDFromBytes(("OfflinePlayer:" + SmokeControl.SPEAKER)
@@ -64,6 +66,10 @@ public final class SmokeClient {
                 }
             }
             received = null;
+            if (phase == 3) {
+                menu = new MenuSmoke(() -> PacketDistributor.sendToServer(new SmokeControl.Barrier(phase)));
+                return;
+            }
         }
         PacketDistributor.sendToServer(new SmokeControl.Barrier(phase));
     }

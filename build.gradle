@@ -42,6 +42,7 @@ tasks.withType(JavaCompile).configureEach {
 tasks.named('test') { failOnNoDiscoveredTests = false }
 [
     audioFixture: 'dev.mobsear.client.VoiceAudioFixture',
+    preferencesFixture: 'dev.mobsear.client.VoicePreferencesFixture',
     segmentationFixture: 'dev.mobsear.client.SpeechCuesFixture',
     talkWindowFixture: 'dev.mobsear.server.TalkWindowFixture'
 ].each { taskName, fixture ->

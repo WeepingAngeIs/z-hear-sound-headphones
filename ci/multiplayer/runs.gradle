@@ -15,8 +15,10 @@ neoForge.runs.create('smokeServer') {
     neoForge.runs.create(runName) {
         client()
         gameDirectory = new File(gameRoot, runName)
+        def preview = playerName == 'MicFixtureB'
         programArguments = ['--username', playerName, '--uuid', offlineId(playerName),
-                            '--quickPlayMultiplayer', '127.0.0.1:25576', '--width', '360', '--height', '240']
+                            '--quickPlayMultiplayer', '127.0.0.1:25576',
+                            '--width', preview ? '854' : '360', '--height', preview ? '480' : '240']
         jvmArguments = ['-Xms256m', '-Xmx1050m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC']
     }
 }

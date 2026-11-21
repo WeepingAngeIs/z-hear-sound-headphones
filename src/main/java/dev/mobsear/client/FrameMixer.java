@@ -32,7 +32,8 @@ final class FrameMixer {
         if (frames.size() >= MAX_FRAMES_PER_SPEAKER) {
             frames.removeFirst();
         }
-        frames.addLast(new Frame(samples.clone(), Math.min(1.0, gain)));
+        // Distance attenuation is multiplied by the master and per-player sliders (up to 2x each).
+        frames.addLast(new Frame(samples.clone(), Math.min(4.0, gain)));
         return true;
     }
 

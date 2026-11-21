@@ -1,6 +1,11 @@
 package dev.mobsear.smoke;
 
+import com.mojang.authlib.GameProfile;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.IntConsumer;
@@ -8,6 +13,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -15,6 +22,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
@@ -24,7 +32,8 @@ public final class SmokeControl {
     static final String SPEAKER = "MicFixtureA";
     static final String LISTENER = "MicFixtureB";
     static final int READY = -1;
-    static final String[] PHASES = {"near", "far", "nether", "near-again"};
+    static final int LISTED_GUESTS = 12;
+    static final String[] PHASES = {"near", "far", "nether", "near-again", "after-settings"};
     static IntConsumer client = phase -> { throw failure("client fixture unavailable"); };
 
     record Barrier(int phase) implements CustomPacketPayload {
@@ -35,6 +44,7 @@ public final class SmokeControl {
     }
 
     private final Set<UUID> ready = new HashSet<>();
+    private final List<UUID> listedGuests = new ArrayList<>();
     private int phase = READY;
     private boolean speakerAck;
 
@@ -84,8 +94,22 @@ public final class SmokeControl {
         ServerLevel destination = phase == 2 ? server.getLevel(Level.NETHER) : overworld;
         if (destination == null) throw failure("missing test dimension");
         place(listener, destination, phase == 1 ? 48 : 8);
+        if (phase == 3) {
+            var extras = new ArrayList<ServerPlayer>();
+            for (int i = 1; i <= LISTED_GUESTS; i++) {
+                String name = guestName(i);
+                UUID id = UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8));
+                extras.add(new FakePlayer(overworld, new GameProfile(id, name)));
+                listedGuests.add(id);
+            }
+            listener.connection.send(ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(extras));
+        } else if (phase == 4) {
+            listener.connection.send(new ClientboundPlayerInfoRemovePacket(listedGuests));
+        }
         PacketDistributor.sendToPlayer(speaker, new Barrier(phase));
     }
+
+    static String guestName(int number) { return String.format(Locale.ROOT, "VoiceGuest%02d", number); }
 
     private static void place(ServerPlayer player, ServerLevel level, int x) {
         var feet = new BlockPos(x, 96, 0);

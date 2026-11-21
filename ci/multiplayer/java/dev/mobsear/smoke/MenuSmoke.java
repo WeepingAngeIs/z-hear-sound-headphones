@@ -1,0 +1,251 @@
+package dev.mobsear.smoke;
+
+import com.mojang.blaze3d.platform.InputConstants;
+import dev.mobsear.client.VoicePreferences;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import javax.imageio.ImageIO;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.components.AbstractSelectionList;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.events.ContainerEventHandler;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.common.NeoForge;
+import org.lwjgl.glfw.GLFW;
+
+/** Runs after the four network phases. Closing the menu allows the final near frame to be sent. */
+final class MenuSmoke {
+    private enum Step { FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, CLOSE, REOPEN, DONE }
+    private static final String[] THEMES = {"UwU", "Dark / Emo", "Vanilla", "Amethyst"};
+    private static final String[] FILES = {"menu-uwu.png", "menu-dark.png", "menu-vanilla.png", "menu-amethyst.png"};
+    private static final UUID SPEAKER_ID = UUID.nameUUIDFromBytes(
+            ("OfflinePlayer:" + SmokeControl.SPEAKER).getBytes(StandardCharsets.UTF_8));
+    private final Minecraft mc = Minecraft.getInstance();
+    private final ClientPacketListener connection = mc.getConnection();
+    private final Runnable acknowledge;
+    private final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
+    private final Path screenshots = mc.gameDirectory.toPath().resolve("screenshots");
+    private Step step = Step.FOCUS;
+    private int theme;
+    private int renderedFrames;
+    private boolean displayed;
+    private int fixedX, fixedY;
+
+    MenuSmoke(Runnable acknowledge) {
+        this.acknowledge = acknowledge;
+        NeoForge.EVENT_BUS.addListener(this::render);
+        GLFW.glfwFocusWindow(mc.getWindow().getWindow());
+    }
+
+    void tick() {
+        if (step == Step.DONE) return;
+        if (System.nanoTime() - deadline > 0) {
+            throw SmokeControl.failure("menu timed out in " + step + ", active=" + mc.isWindowActive()
+                    + ", screen=" + (mc.screen == null ? "none" : mc.screen.getClass().getSimpleName()));
+        }
+        switch (step) {
+            case FOCUS -> {
+                if (mc.screen instanceof PauseScreen pause) pause.onClose();
+                if (mc.screen == null && mc.isWindowActive()) {
+                    pressG();
+                    step = Step.OPEN;
+                }
+            }
+            case OPEN -> {
+                if (!inSettings() || !displayed) return;
+                slider("Voice volume", 0.25);
+                check(value("Voice volume", 50), "master slider did not update");
+                slider(SmokeControl.SPEAKER, 0.75);
+                check(value(SmokeControl.SPEAKER, 150), "player slider did not update");
+                var master = widget("Voice volume", true);
+                fixedX = master.getX();
+                fixedY = master.getY();
+                var list = roster();
+                check(list.getScrollAmount() == 0 && visibleRow(list, SmokeControl.SPEAKER)
+                                && !visibleRow(list, SmokeControl.guestName(SmokeControl.LISTED_GUESTS)),
+                        "roster must start with the real peer and overflow the viewport");
+                wheel(list, -100);
+                step = Step.SCROLL_DOWN;
+            }
+            case SCROLL_DOWN -> {
+                var list = roster();
+                if (!visibleRow(list, SmokeControl.guestName(SmokeControl.LISTED_GUESTS))) return;
+                check(list.getScrollAmount() > 0 && !visibleRow(list, SmokeControl.SPEAKER), "roster did not scroll");
+                var master = widget("Voice volume", true);
+                check(master.getX() == fixedX && master.getY() == fixedY && value("Voice volume", 50),
+                        "left pane moved or changed");
+                wheel(list, 100);
+                step = Step.SCROLL_UP;
+            }
+            case SCROLL_UP -> {
+                var list = roster();
+                if (list.getScrollAmount() != 0) return;
+                check(visibleRow(list, SmokeControl.SPEAKER), "roster did not return to the real peer");
+                step = Step.SELECT_THEME;
+            }
+            case SELECT_THEME -> {
+                var choice = widget(THEMES[theme], false);
+                if (theme == 1) keyboardSelect(choice);
+                else if (choice.active) pointer(choice, 0.5);
+                check(mc.getConnection() == connection && value("Voice volume", 50) && value(SmokeControl.SPEAKER, 150),
+                        "connection or gain changed after applying " + THEMES[theme]);
+                step = Step.CAPTURE;
+            }
+            case CLOSE -> {
+                mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
+                check(mc.screen == null, "Escape did not return to the game");
+                pressG();
+                step = Step.REOPEN;
+            }
+            case REOPEN -> {
+                if (!inSettings()) return;
+                check(value("Voice volume", 50), "reopened master value changed");
+                check(value(SmokeControl.SPEAKER, 150), "reopened player value changed");
+                var saved = new VoicePreferences(FMLPaths.CONFIGDIR.get().resolve("mobsear-client.properties"));
+                check(saved.volume() == 50 && saved.gain(SPEAKER_ID) == 150
+                        && saved.theme().equals("amethyst"), "saved preferences did not reload");
+                compareThemes();
+                mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
+                check(mc.screen == null && mc.getConnection() == connection, "voice session did not survive settings");
+                step = Step.DONE;
+                System.out.println("MOBSEAR_MENU_PASS hotkey keyboard sliders four-themes persistence screenshots");
+                acknowledge.run();
+            }
+            default -> { /* Screenshot states advance after a rendered frame. */ }
+        }
+    }
+
+    private void render(ScreenEvent.Render.Post event) {
+        if (!inSettings() || event.getScreen() != mc.screen) return;
+        displayed = true;
+        if (step != Step.CAPTURE || ++renderedFrames < 3) return;
+        renderedFrames = 0;
+        String filename = FILES[theme];
+        event.getGuiGraphics().flush();
+        try (var picture = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+            check(picture.getWidth() == 854 && picture.getHeight() == 480, "unexpected framebuffer dimensions");
+            Files.createDirectories(screenshots);
+            picture.writeToFile(screenshots.resolve(filename));
+        } catch (IOException e) {
+            throw SmokeControl.failure("could not capture " + filename + ": " + e.getMessage());
+        }
+        step = ++theme < THEMES.length ? Step.SELECT_THEME : Step.CLOSE;
+    }
+
+    private boolean inSettings() {
+        return mc.screen != null && mc.screen.getClass().getName().equals("dev.mobsear.client.VoiceSettingsScreen");
+    }
+
+    private static void pressG() {
+        KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_G));
+    }
+
+    private AbstractWidget widget(String name, boolean prefix) {
+        var found = find(mc.screen, name, prefix);
+        if (found == null) throw SmokeControl.failure("missing control " + name);
+        return found;
+    }
+
+    private static AbstractWidget find(ContainerEventHandler container, String name, boolean prefix) {
+        for (var child : container.children()) {
+            if (child instanceof AbstractWidget item && item.visible) {
+                String label = item.getMessage().getString();
+                if (prefix ? label.startsWith(name + " · ") : label.equals(name)) return item;
+            }
+            if (child instanceof ContainerEventHandler nested) {
+                var found = find(nested, name, prefix);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private void slider(String name, double fraction) { pointer(widget(name, true), fraction); }
+    private boolean value(String name, int percent) {
+        return widget(name, true).getMessage().getString().contains(" · " + percent + "%");
+    }
+
+    private AbstractSelectionList<?> roster() {
+        return mc.screen.children().stream().filter(AbstractSelectionList.class::isInstance)
+                .map(item -> (AbstractSelectionList<?>) item).findFirst()
+                .orElseThrow(() -> SmokeControl.failure("missing native roster"));
+    }
+
+    private void wheel(AbstractSelectionList<?> list, double dy) {
+        double x = list.getX() + list.getWidth() / 2.0;
+        double y = list.getY() + list.getHeight() / 2.0;
+        check(mc.screen.mouseScrolled(x, y, 0, dy), "player list did not handle wheel input");
+    }
+
+    private boolean visibleRow(AbstractSelectionList<?> list, String name) {
+        double x = list.getX() + list.getWidth() / 2.0;
+        for (int y = list.getY() + 1; y < list.getY() + list.getHeight() - 1; y += 2) {
+            if (list.getChildAt(x, y).orElse(null) instanceof ContainerEventHandler row && find(row, name, true) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void pointer(AbstractWidget widget, double fraction) {
+        Screen screen = mc.screen;
+        double x = widget.getX() + 4 + (widget.getWidth() - 8) * fraction;
+        double y = widget.getY() + widget.getHeight() / 2.0;
+        check(screen.mouseClicked(x, y, 0), "control ignored click: " + widget.getMessage().getString());
+        screen.mouseReleased(x, y, 0);
+    }
+
+    private void keyboardSelect(AbstractWidget choice) {
+        Screen screen = mc.screen;
+        for (int i = 0; i <= screen.children().size() + 1 && screen.getFocused() != choice; i++) {
+            screen.keyPressed(GLFW.GLFW_KEY_TAB, 0, 0);
+        }
+        check(screen.getFocused() == choice, "theme is unreachable by keyboard");
+        screen.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0);
+    }
+
+    private void compareThemes() {
+        try {
+            BufferedImage first = ImageIO.read(screenshots.resolve(FILES[0]).toFile());
+            for (int i = 1; i < FILES.length; i++) {
+                BufferedImage alternate = ImageIO.read(screenshots.resolve(FILES[i]).toFile());
+                for (int band = 0; band < 3; band++) verifyPalette(first, alternate, band, THEMES[i]);
+            }
+        } catch (IOException e) {
+            throw SmokeControl.failure("cannot compare theme captures");
+        }
+    }
+
+    private static void verifyPalette(BufferedImage a, BufferedImage b, int band, String theme) {
+        int changed = 0;
+        int total = 0;
+        for (int y = 55 + band * 110; y < 155 + band * 110; y += 5) {
+            for (int x = 180; x < 675; x += 5) {
+                int left = a.getRGB(x, y);
+                int right = b.getRGB(x, y);
+                int distance = 0;
+                for (int shift = 0; shift <= 16; shift += 8) {
+                    distance += Math.abs(((left >> shift) & 255) - ((right >> shift) & 255));
+                }
+                if (distance > 50) changed++;
+                total++;
+            }
+        }
+        check(changed * 4 >= total, theme + " did not change palette across menu band " + band);
+    }
+
+    private static void check(boolean success, String message) {
+        if (!success) throw SmokeControl.failure(message);
+    }
+}

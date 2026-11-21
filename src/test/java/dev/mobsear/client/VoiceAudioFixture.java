@@ -25,6 +25,15 @@ public final class VoiceAudioFixture {
         near[0] = 0; // Mutating a received packet cannot change a queued frame.
         assertFrame(mixer.mixNext(), 1_501);
         check(mixer.isEmpty(), "queues released");
+        mixer.offer(FIRST, constant(2_000), 4.0);
+        assertFrame(mixer.mixNext(), 8_000);
+        var activity = new SpeakingActivity();
+        activity.heard(FIRST, constant(0), 1, 1);
+        activity.heard(SECOND, constant(1000), 0, 1);
+        check(!activity.speaking(FIRST, 1) && !activity.speaking(SECOND, 1), "silent or muted frame");
+        activity.heard(FIRST, constant(-1000), 0.5, 2);
+        check(activity.speaking(FIRST, 120_000_002) && !activity.speaking(FIRST, 400_000_002),
+                "audible player indicator follows real activity and clears");
 
         for (int sign : new int[] {-1, 1}) {
             mixer.offer(FIRST, constant(sign * 31_000), 1);
