@@ -33,3 +33,18 @@ neoForge {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
+
+// These fixtures run as ordinary Java programs with synthetic devices and no test framework.
+tasks.named('test') { failOnNoDiscoveredTests = false }
+[
+    audioFixture: 'dev.mobsear.client.VoiceAudioFixture',
+    segmentationFixture: 'dev.mobsear.client.SpeechCuesFixture',
+    talkWindowFixture: 'dev.mobsear.server.TalkWindowFixture'
+].each { taskName, fixture ->
+    def verification = tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = fixture
+    }
+    tasks.named('check') { dependsOn verification }
+}

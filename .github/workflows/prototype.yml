@@ -22,14 +22,13 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - name: Build the production jar and fixture classes
-        run: bash gradlew --no-daemon build
-      - name: Check audio, speech segmentation and rate limits without devices
+      - name: Build and check synthetic audio, segmentation and rate limits
         run: |
-          cp=build/classes/java/test:build/classes/java/main:build/resources/main
-          java -cp "$cp" dev.mobsear.client.VoiceAudioFixture
-          java -cp "$cp" dev.mobsear.client.SpeechCuesFixture
-          java -cp "$cp" dev.mobsear.server.TalkWindowFixture
+          bash gradlew --no-daemon build
+          mkdir -p dist
+          cp build/libs/mobsear-0.1.0-prototype.jar dist/
+          jar tf dist/mobsear-0.1.0-prototype.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
+          if jar tf dist/mobsear-0.1.0-prototype.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
         run: |
@@ -40,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mobsear-prototype
-          path: build/libs/mobsear-0.1.0-prototype.jar
+          path: dist/mobsear-0.1.0-prototype.jar
           if-no-files-found: error
   windows-speech:
     name: Offline Windows speech from synthetic PCM
