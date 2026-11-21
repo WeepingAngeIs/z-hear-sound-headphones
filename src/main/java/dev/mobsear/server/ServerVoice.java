@@ -1,5 +1,6 @@
 package dev.mobsear.server;
 
+import dev.mobsear.MobsEar;
 import dev.mobsear.net.Cue;
 import dev.mobsear.net.Packets;
 import java.util.Map;
@@ -19,12 +20,16 @@ public final class ServerVoice {
 
     public static void relay(ServerPlayer speaker, Packets.Up frame, Iterable<ServerPlayer> candidates,
                              double radius, BiConsumer<ServerPlayer, Packets.Down> emit) {
-        if (!eligible(speaker) || frame.pcm().length != Packets.FRAME_BYTES || !(radius > 0)) return;
+        if (!eligible(speaker) || NearbyMics.inputBlocked(speaker) || frame.pcm().length != Packets.FRAME_BYTES || !(radius > 0)) return;
         long now = System.nanoTime();
         if (!sessions.computeIfAbsent(speaker, key -> new TalkWindow(now)).acceptFrame(now)) return;
+        NearbyMics.heard(speaker, frame.pcm());
         var level = speaker.serverLevel();
+        if (HordeMode.LIVE.optedIn(speaker)) {
+            HordeMode.LIVE.heard(speaker, frame.pcm(), radius, MobsEar.hordeRules(), level.getServer().getTickCount());
+        }
         for (ServerPlayer listener : candidates) {
-            if (listener == speaker || listener.level() != level || !eligible(listener)) continue;
+            if (listener == speaker || listener.level() != level || !eligible(listener) || NearbyMics.deafened(listener)) continue;
             double distance = speaker.distanceToSqr(listener);
             if (distance >= radius * radius) continue;
             float gain = (float) (1.0 - Math.sqrt(distance) / radius);
@@ -34,11 +39,15 @@ public final class ServerVoice {
 
     public static void cue(ServerPlayer speaker, Cue cue, double radius) {
         TalkWindow window = sessions.get(speaker);
-        if (eligible(speaker) && !speaker.isCreative() && window != null && window.acceptCue(System.nanoTime())) {
+        if (eligible(speaker) && !NearbyMics.inputBlocked(speaker) && !speaker.isCreative() && window != null && window.acceptCue(System.nanoTime())) {
             MobReactions.handle(speaker, cue, radius);
         }
     }
 
-    public static void forget(ServerPlayer player) { sessions.remove(player); }
-    public static void clear() { sessions.clear(); }
+    public static void forget(ServerPlayer player) {
+        sessions.remove(player);
+        NearbyMics.forget(player);
+        HordeMode.LIVE.forget(player);
+    }
+    public static void clear() { sessions.clear(); NearbyMics.clear(); }
 }

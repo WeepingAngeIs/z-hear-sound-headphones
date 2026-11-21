@@ -4,14 +4,14 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="mobsear"
-version="0.1.0-prototype"
+version="0.2.0"
 displayName="Mobs Hear U"
 description="Proximity voice with optional local speech cues for nearby hostile mobs."
 
 [[dependencies.mobsear]]
 modId="neoforge"
 type="required"
-versionRange="[21.1.255,21.2)"
+versionRange="[21.1.249,21.2)"
 ordering="NONE"
 side="BOTH"
 

@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'dev.mobsear'
-version = '0.1.0-prototype'
+version = '0.2.0'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 if (providers.gradleProperty('voiceGameTests').isPresent()) {
@@ -13,7 +13,7 @@ if (providers.gradleProperty('voiceGameTests').isPresent()) {
 }
 
 neoForge {
-    version = '21.1.255'
+    version = providers.gradleProperty('neoForgeVersion').getOrElse('21.1.249')
     runs {
         client { client() }
         server {

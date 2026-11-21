@@ -54,6 +54,34 @@ public final class MobReactionGameTests {
     }
 
     @GameTest(template = "hearing_floor")
+    public static void namedFamiliesAndExactMobIsolation(GameTestHelper helper) {
+        var speaker = speaker(helper.getLevel(), helper.absoluteVec(new Vec3(6.5, 2, 5.5)));
+        var skeletons = List.of(helper.spawn(EntityType.SKELETON, 4, 2, 5),
+                helper.spawn(EntityType.STRAY, 5, 2, 5), helper.spawn(EntityType.BOGGED, 6, 2, 4),
+                helper.spawn(EntityType.WITHER_SKELETON, 7, 2, 5));
+        var creeper = helper.spawn(EntityType.CREEPER, 5, 2, 6);
+        var spider = helper.spawn(EntityType.CAVE_SPIDER, 7, 2, 6);
+        var cow = helper.spawn(EntityType.COW, 6, 2, 6);
+        for (Mob mob : List.of(creeper, spider, cow)) mob.getLookControl().setLookAt(mob.position());
+        MobReactions.handle(speaker, Cue.SKELETON, 4);
+        for (var skeleton : skeletons) {
+            helper.assertTrue(lookingAt(skeleton, speaker.getEyePosition()), "Skeleton family member missed its call");
+            skeleton.getLookControl().setLookAt(skeleton.position());
+        }
+        helper.assertTrue(lookingAt(creeper, creeper.position()) && lookingAt(spider, spider.position()),
+                "A non-skeleton reacted to the skeleton family call");
+        MobReactions.handle(speaker, Cue.CREEPER, 4);
+        helper.assertTrue(lookingAt(creeper, speaker.getEyePosition()) && creeper.getTarget() == null,
+                "An exact creeper call failed to look or forced an attack");
+        for (var skeleton : skeletons) helper.assertTrue(lookingAt(skeleton, skeleton.position()), "Wrong named family");
+        helper.assertTrue(lookingAt(spider, spider.position()), "A cave spider reacted to a creeper call");
+        MobReactions.handle(speaker, Cue.SPIDER, 4);
+        helper.assertTrue(lookingAt(spider, speaker.getEyePosition()) && lookingAt(cow, cow.position()),
+                "Spider family match or passive isolation failed");
+        helper.succeed();
+    }
+
+    @GameTest(template = "hearing_floor")
     public static void broadCueAndEnderman(GameTestHelper helper) {
         var speaker = speaker(helper.getLevel(), helper.absoluteVec(new Vec3(5.5, 2, 5.5)));
         var enderman = helper.spawn(EntityType.ENDERMAN, 7, 2, 5);

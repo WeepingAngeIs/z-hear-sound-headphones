@@ -23,12 +23,18 @@ public final class SpeechCues implements AutoCloseable {
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeouts();
     private static final long MAX_AGE_NANOS = TimeUnit.SECONDS.toNanos(4);
     private final Consumer<Cue> listener;
+    private final Path aliasFile;
     private Session session;
     private Status status = Status.OFF;
     private boolean closed;
 
     public SpeechCues(Consumer<Cue> listener) {
+        this(listener, null);
+    }
+
+    public SpeechCues(Consumer<Cue> listener, Path aliasFile) {
         this.listener = Objects.requireNonNull(listener);
+        this.aliasFile = aliasFile;
     }
 
     public synchronized Status status() {
@@ -78,6 +84,10 @@ public final class SpeechCues implements AutoCloseable {
     }
 
     static Process launch() throws IOException {
+        return launch(null);
+    }
+
+    static Process launch(Path aliases) throws IOException {
         String windows = System.getenv("SystemRoot");
         if (windows == null) throw new IOException("Missing Windows system directory");
         Path shell = Path.of(windows, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -85,9 +95,11 @@ public final class SpeechCues implements AutoCloseable {
             if (source == null) throw new IOException("Missing speech helper");
             // The command contains only the bundled helper. All PCM travels in a binary pipe.
             String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
-            return new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
+            var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
                     "-WindowStyle", "Hidden", "-Command", helper)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD);
+            process.environment().put("MOBSEAR_GRAMMAR", MobLexicon.grammar(aliases));
+            return process.start();
         }
     }
 
@@ -129,7 +141,7 @@ public final class SpeechCues implements AutoCloseable {
         private void run() {
             Process child = null;
             try {
-                child = launch();
+                child = launch(aliasFile);
                 synchronized (SpeechCues.this) {
                     if (session != this) return;
                     helper = child;
@@ -146,13 +158,8 @@ public final class SpeechCues implements AutoCloseable {
                         try {
                             if (!clip.fresh()) continue;
                             int decision = exchange(child, input, output, clip);
-                            Cue cue = switch (decision) {
-                                case 0 -> null;
-                                case 1 -> Cue.ZOMBIE;
-                                case 2 -> Cue.MOBS;
-                                case 3 -> Cue.ENDERMAN;
-                                default -> throw new IOException("Invalid speech helper reply");
-                            };
+                            if (decision > Cue.values().length) throw new IOException("Invalid speech helper reply");
+                            Cue cue = decision == 0 ? null : Cue.values()[decision - 1];
                             synchronized (SpeechCues.this) {
                                 if (session == this && cue != null && clip.fresh()) listener.accept(cue);
                             }

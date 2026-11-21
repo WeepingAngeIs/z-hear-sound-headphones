@@ -14,10 +14,11 @@ try {
     # Disable acoustic adaptation on this in-process engine only.
     $engine.UpdateRecognizerSetting('AdaptationOn', [int]0)
 
-    $aliases = @{
-        'zombie' = 1; 'zombies' = 1; 'zombified piglin' = 1; 'zombified piglins' = 1
-        'mobs' = 2
-        'enderman' = 3; 'endermen' = 3; 'ender man' = 3; 'ender men' = 3
+    $aliases = @{}
+    foreach ($entry in $env:MOBSEAR_GRAMMAR.Split('|')) {
+        $parts = $entry.Split(':')
+        if ($parts.Count -ne 2) { exit 3 }
+        $aliases.Add($parts[1], [byte]$parts[0])
     }
     $phrases = [System.Speech.Recognition.Choices]::new()
     foreach ($alias in $aliases.Keys) {

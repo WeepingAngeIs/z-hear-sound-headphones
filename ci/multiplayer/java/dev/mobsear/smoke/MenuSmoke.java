@@ -1,6 +1,9 @@
 package dev.mobsear.smoke;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.mobsear.client.FixtureSound;
+import dev.mobsear.client.MenuTheme;
+import dev.mobsear.client.VoiceClient;
 import dev.mobsear.client.VoicePreferences;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -13,6 +16,7 @@ import javax.imageio.ImageIO;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.Util;
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.ContainerEventHandler;
@@ -26,21 +30,23 @@ import org.lwjgl.glfw.GLFW;
 
 /** Runs after the four network phases. Closing the menu allows the final near frame to be sent. */
 final class MenuSmoke {
-    private enum Step { FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, CLOSE, REOPEN, DONE }
+    private enum Step { FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, ANIMATION, REDUCED, CLOSE, REOPEN, DONE }
     private static final String[] THEMES = {"UwU", "Dark / Emo", "Vanilla", "Amethyst"};
-    private static final String[] FILES = {"menu-uwu.png", "menu-dark.png", "menu-vanilla.png", "menu-amethyst.png"};
+    private static final MenuTheme[] BACKDROPS = MenuTheme.values();
     private static final UUID SPEAKER_ID = UUID.nameUUIDFromBytes(
             ("OfflinePlayer:" + SmokeControl.SPEAKER).getBytes(StandardCharsets.UTF_8));
     private final Minecraft mc = Minecraft.getInstance();
     private final ClientPacketListener connection = mc.getConnection();
     private final Runnable acknowledge;
-    private final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
+    private final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(100);
     private final Path screenshots = mc.gameDirectory.toPath().resolve("screenshots");
     private Step step = Step.FOCUS;
     private int theme;
     private int renderedFrames;
     private boolean displayed;
     private int fixedX, fixedY;
+    private int framesSeen;
+    private long reducedAt;
 
     MenuSmoke(Runnable acknowledge) {
         this.acknowledge = acknowledge;
@@ -95,11 +101,13 @@ final class MenuSmoke {
                 step = Step.SELECT_THEME;
             }
             case SELECT_THEME -> {
-                var choice = widget(THEMES[theme], false);
-                if (theme == 1) keyboardSelect(choice);
+                MenuTheme selected = BACKDROPS[theme];
+                var choice = selected.hasScene() ? widget("Backdrop", true) : widget(THEMES[theme / 5], false);
+                if (theme == 5) keyboardSelect(choice);
                 else if (choice.active) pointer(choice, 0.5);
                 check(mc.getConnection() == connection && value("Voice volume", 50) && value(SmokeControl.SPEAKER, 150),
-                        "connection or gain changed after applying " + THEMES[theme]);
+                        "connection or gain changed after applying " + selected.id());
+                check(VoiceClient.options().theme().equals(selected.id()), "wrong backdrop selected: " + selected.id());
                 step = Step.CAPTURE;
             }
             case CLOSE -> {
@@ -114,12 +122,12 @@ final class MenuSmoke {
                 check(value(SmokeControl.SPEAKER, 150), "reopened player value changed");
                 var saved = new VoicePreferences(FMLPaths.CONFIGDIR.get().resolve("mobsear-client.properties"));
                 check(saved.volume() == 50 && saved.gain(SPEAKER_ID) == 150
-                        && saved.theme().equals("amethyst"), "saved preferences did not reload");
+                        && saved.theme().equals("amethyst_stars"), "saved preferences did not reload");
                 compareThemes();
                 mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 check(mc.screen == null && mc.getConnection() == connection, "voice session did not survive settings");
                 step = Step.DONE;
-                System.out.println("MOBSEAR_MENU_PASS hotkey keyboard sliders four-themes persistence screenshots");
+                System.out.println("MOBSEAR_MENU_PASS hotkey keyboard sliders 20-backdrops persistence screenshots");
                 acknowledge.run();
             }
             default -> { /* Screenshot states advance after a rendered frame. */ }
@@ -129,9 +137,45 @@ final class MenuSmoke {
     private void render(ScreenEvent.Render.Post event) {
         if (!inSettings() || event.getScreen() != mc.screen) return;
         displayed = true;
+        if (step == Step.ANIMATION || step == Step.REDUCED) {
+            long now = Util.getMillis();
+            if (step == Step.ANIMATION) {
+                // Sample well inside the production time slot so a frame boundary cannot relabel a capture.
+                if (now % 400 < 65 || now % 400 > 315) return;
+                int frame = FixtureSound.sceneFrame();
+                if ((framesSeen & (1 << frame)) == 0) {
+                    save(event, "menu-uwu_lotus-frame-" + frame + ".png");
+                    framesSeen |= 1 << frame;
+                }
+                if (framesSeen == 255) {
+                    VoiceClient.options().setEffects("reduced");
+                    reducedAt = now;
+                    step = Step.REDUCED;
+                }
+            } else {
+                check(FixtureSound.sceneFrame() == 0, "reduced motion did not freeze scene");
+                if (framesSeen == 255 && now - reducedAt > 200) {
+                    save(event, "menu-uwu_lotus-reduced.png");
+                    framesSeen++;
+                } else if (framesSeen == 256 && now - reducedAt > 1900) {
+                    save(event, "menu-uwu_lotus-reduced-check.png");
+                    checkScenePixels();
+                    VoiceClient.options().setEffects("full");
+                    nextTheme();
+                }
+            }
+            return;
+        }
         if (step != Step.CAPTURE || ++renderedFrames < 3) return;
         renderedFrames = 0;
-        String filename = FILES[theme];
+        save(event, "menu-" + BACKDROPS[theme].id() + ".png");
+        if (BACKDROPS[theme] == MenuTheme.LOTUS) step = Step.ANIMATION;
+        else nextTheme();
+    }
+
+    private void nextTheme() { step = ++theme < BACKDROPS.length ? Step.SELECT_THEME : Step.CLOSE; }
+
+    private void save(ScreenEvent.Render.Post event, String filename) {
         event.getGuiGraphics().flush();
         try (var picture = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
             check(picture.getWidth() == 854 && picture.getHeight() == 480, "unexpected framebuffer dimensions");
@@ -140,14 +184,33 @@ final class MenuSmoke {
         } catch (IOException e) {
             throw SmokeControl.failure("could not capture " + filename + ": " + e.getMessage());
         }
-        step = ++theme < THEMES.length ? Step.SELECT_THEME : Step.CLOSE;
+    }
+
+    private void checkScenePixels() {
+        try {
+            var sections = new java.util.ArrayList<int[]>();
+            for (int i = 0; i < 8; i++) {
+                int[] stamp = headerStamp("frame-" + i);
+                check(sections.stream().noneMatch(previous -> java.util.Arrays.equals(previous, stamp)),
+                        "two scenic phases rendered the same header stamp");
+                sections.add(stamp);
+            }
+            check(java.util.Arrays.equals(headerStamp("reduced"), headerStamp("reduced-check")),
+                    "reduced motion changed the scene header pixels");
+        } catch (IOException ex) { throw SmokeControl.failure("could not compare actual scene frames"); }
+    }
+
+    private int[] headerStamp(String suffix) throws IOException {
+        var image = ImageIO.read(screenshots.resolve("menu-uwu_lotus-" + suffix + ".png").toFile());
+        // 854x480, GUI scale 2, fixed 4-unit panel margin. Crop inside the native header ornament.
+        return image.getRGB(738, 16, 96, 48, null, 0, 96);
     }
 
     private boolean inSettings() {
         return mc.screen != null && mc.screen.getClass().getName().equals("dev.mobsear.client.VoiceSettingsScreen");
     }
 
-    private static void pressG() {
+    static void pressG() {
         KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_G));
     }
 
@@ -157,7 +220,7 @@ final class MenuSmoke {
         return found;
     }
 
-    private static AbstractWidget find(ContainerEventHandler container, String name, boolean prefix) {
+    static AbstractWidget find(ContainerEventHandler container, String name, boolean prefix) {
         for (var child : container.children()) {
             if (child instanceof AbstractWidget item && item.visible) {
                 String label = item.getMessage().getString();
@@ -177,7 +240,7 @@ final class MenuSmoke {
     }
 
     private AbstractSelectionList<?> roster() {
-        return mc.screen.children().stream().filter(AbstractSelectionList.class::isInstance)
+        return mc.screen.children().stream().filter(item -> item.getClass().getSimpleName().equals("OnlineVoiceList"))
                 .map(item -> (AbstractSelectionList<?>) item).findFirst()
                 .orElseThrow(() -> SmokeControl.failure("missing native roster"));
     }
@@ -208,7 +271,7 @@ final class MenuSmoke {
 
     private void keyboardSelect(AbstractWidget choice) {
         Screen screen = mc.screen;
-        for (int i = 0; i <= screen.children().size() + 1 && screen.getFocused() != choice; i++) {
+        for (int i = 0; i < 100 && screen.getFocused() != choice; i++) {
             screen.keyPressed(GLFW.GLFW_KEY_TAB, 0, 0);
         }
         check(screen.getFocused() == choice, "theme is unreachable by keyboard");
@@ -217,10 +280,11 @@ final class MenuSmoke {
 
     private void compareThemes() {
         try {
-            BufferedImage first = ImageIO.read(screenshots.resolve(FILES[0]).toFile());
-            for (int i = 1; i < FILES.length; i++) {
-                BufferedImage alternate = ImageIO.read(screenshots.resolve(FILES[i]).toFile());
-                for (int band = 0; band < 3; band++) verifyPalette(first, alternate, band, THEMES[i]);
+            BufferedImage first = ImageIO.read(screenshots.resolve("menu-uwu.png").toFile());
+            for (var theme : BACKDROPS) {
+                if (theme == MenuTheme.UWU || theme.hasScene()) continue;
+                BufferedImage alternate = ImageIO.read(screenshots.resolve("menu-" + theme.id() + ".png").toFile());
+                for (int band = 0; band < 3; band++) verifyPalette(first, alternate, band, theme.id());
             }
         } catch (IOException e) {
             throw SmokeControl.failure("cannot compare theme captures");

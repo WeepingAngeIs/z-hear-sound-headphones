@@ -29,7 +29,7 @@ final class VoiceWidgets {
                 0xff9b81ba, 0xff504277, 0xff685189, 0xff74518f, 0xffd8adff, 0xffffe4ff, 0xfffbf4ff, 0xffecd6fb);
 
         static Palette forTheme(String id) {
-            return switch (id) {
+            return switch (MenuTheme.fromId(id).family()) {
                 case "emo" -> EMO;
                 case "vanilla" -> VANILLA;
                 case "amethyst" -> AMETHYST;
@@ -95,17 +95,24 @@ final class VoiceWidgets {
         private final Palette colors;
         private final IntFunction<Component> message;
         private final IntConsumer change;
+        private final int maximum;
 
         Slider(int x, int y, int width, int height, Component label, int initial,
                Palette colors, IntFunction<Component> message, IntConsumer change) {
-            super(x, y, width, height, message.apply(initial), initial / 200.0);
+            this(x, y, width, height, label, initial, 200, colors, message, change);
+        }
+
+        Slider(int x, int y, int width, int height, Component label, int initial, int maximum,
+               Palette colors, IntFunction<Component> message, IntConsumer change) {
+            super(x, y, width, height, message.apply(initial), initial / (double) maximum);
+            this.maximum = maximum;
             this.label = label;
             this.colors = colors;
             this.message = message;
             this.change = change;
         }
 
-        private int percent() { return (int) Math.round(value * 200); }
+        private int percent() { return (int) Math.round(value * maximum); }
         @Override protected void updateMessage() { setMessage(message.apply(percent())); }
         @Override protected void applyValue() { change.accept(percent()); }
 

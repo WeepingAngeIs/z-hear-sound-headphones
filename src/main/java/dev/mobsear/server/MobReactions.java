@@ -2,6 +2,7 @@ package dev.mobsear.server;
 
 import dev.mobsear.net.Cue;
 import java.util.EnumSet;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
@@ -43,7 +44,15 @@ public final class MobReactions {
         return switch (cue) {
             case ZOMBIE -> mob instanceof Zombie; // Includes husks, drowned, villagers and zombified piglins.
             case ENDERMAN -> mob instanceof EnderMan;
+            case SKELETON -> mob instanceof net.minecraft.world.entity.monster.AbstractSkeleton;
+            case SPIDER -> mob instanceof net.minecraft.world.entity.monster.Spider;
+            case GUARDIAN -> mob instanceof net.minecraft.world.entity.monster.Guardian;
+            case SLIME -> mob instanceof net.minecraft.world.entity.monster.Slime;
             case MOBS -> true;
+            default -> {
+                var type = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+                yield type.getNamespace().equals("minecraft") && type.getPath().equals(cue.entityPath);
+            }
         };
     }
 

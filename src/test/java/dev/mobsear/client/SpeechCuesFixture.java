@@ -5,10 +5,12 @@ import dev.mobsear.net.Cue;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -19,19 +21,50 @@ public final class SpeechCuesFixture {
     public static void main(String[] args) throws Exception {
         checkSegmentation();
         var received = new ArrayBlockingQueue<Cue>(8);
-        try (var speech = new SpeechCues(received::add)) {
+        var aliasFile = Files.createTempFile("mobsear-alias-fixture-", ".properties");
+        try (var speech = new SpeechCues(received::add, aliasFile)) {
+            checkLexicon(aliasFile);
+            Files.writeString(aliasFile, "skeleton=bone walker\n");
             require(speech.status() == SpeechCues.Status.OFF, "Recognition default");
             speech.acceptFrame(toneFrame());
             speech.endUtterance();
             require(received.isEmpty(), "Off state emitted a cue");
             if (args.length == 1 && args[0].equals("--windows-speech")) {
-                checkWindows(speech, received);
+                checkWindows(speech, received, aliasFile);
             } else if (!System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows")) {
                 speech.setEnabled(true);
                 require(speech.status() == SpeechCues.Status.UNAVAILABLE, "Unsupported host status");
             }
-        }
+        } finally { Files.deleteIfExists(aliasFile); }
         System.out.println("Speech fixture passed.");
+    }
+
+    private static void checkLexicon(Path file) throws IOException {
+        Files.writeString(file, """
+                zombie=walker,creeper,hey,hey there
+                skeleton=walker,bone walker,a|b,javascript:foo,extra
+                spider=BATMAN,has four full words,longlonglonglonglong,one two three
+                unknown_type=bogus
+                """);
+        var actual = new LinkedHashMap<String, Integer>();
+        for (String pair : MobLexicon.grammar(file).split("\\|")) {
+            String[] parts = pair.split(":");
+            require(parts.length == 2, "Grammar entry delimiter");
+            require(actual.put(parts[1], Integer.parseInt(parts[0])) == null, "Duplicate grammar phrase");
+        }
+        for (Cue cue : Cue.values()) {
+            require(actual.get(cue.entityPath.replace('_', ' ')) == cue.ordinal() + 1, "Built-in cue collision");
+        }
+        require(actual.get("walker") == Cue.ZOMBIE.ordinal() + 1 && actual.get("bone walker") == Cue.SKELETON.ordinal() + 1,
+                "Duplicate custom name or two-word alias precedence");
+        require(actual.get("batman") == Cue.SPIDER.ordinal() + 1 && actual.get("one two three") == Cue.SPIDER.ordinal() + 1,
+                "Case normalization or three-word alias");
+        for (String blocked : new String[]{"hey", "hey there", "a", "b", "javascript", "foo", "extra", "bogus",
+                "has four full words", "longlonglonglonglong"}) require(!actual.containsKey(blocked), "Reserved or malformed alias");
+        Files.writeString(file, "skeleton=" + "a".repeat(16_385));
+        require(MobLexicon.grammar(file).equals(MobLexicon.grammar(null)), "Oversize alias file");
+        Files.writeString(file, "skeleton=bad" + (char) 92 + "uXYZ1");
+        require(MobLexicon.grammar(file).equals(MobLexicon.grammar(null)), "Malformed properties fallback");
     }
 
     private static void checkSegmentation() {
@@ -66,7 +99,7 @@ public final class SpeechCuesFixture {
         return signal;
     }
 
-    private static void checkWindows(SpeechCues speech, ArrayBlockingQueue<Cue> received) throws Exception {
+    private static void checkWindows(SpeechCues speech, ArrayBlockingQueue<Cue> received, Path aliasFile) throws Exception {
         byte[] zombie = synthesize("zombie");
         byte[] greetingZombie = synthesize("hey zombie");
         byte[] zombies = synthesize("zombies");
@@ -76,12 +109,15 @@ public final class SpeechCuesFixture {
         byte[] unrelated = synthesize("the garden is beautiful");
         byte[] conversation = synthesize("let me see");
         byte[] greetingOnly = synthesize("hey there");
+        byte[] skeleton = synthesize("skeleton");
+        byte[] creeper = synthesize("creeper");
+        byte[] custom = synthesize("bone walker");
         byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000], greetingZombie,
-                zombies, conversation, greetingOnly, zombie};
-        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1};
-        int[] decisions = decisions(SpeechCues.launch(), cases);
+                zombies, conversation, greetingOnly, zombie, skeleton, creeper, custom};
+        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1, 4, 5, 4};
+        int[] decisions = decisions(SpeechCues.launch(aliasFile), cases);
         if (!Arrays.equals(decisions, expected)) {
-            diagnoseSyntheticDecisions(cases);
+            diagnoseSyntheticDecisions(cases, aliasFile);
             throw new AssertionError("Synthetic SAPI decisions " + Arrays.toString(decisions)
                     + " expected " + Arrays.toString(expected));
         }
@@ -103,7 +139,7 @@ public final class SpeechCuesFixture {
         if (actual != Cue.ZOMBIE) {
             System.err.println("End-to-end status=" + speech.status() + " clip bytes="
                     + acousticClips.stream().map(a -> a.length).toList() + " source bytes=" + zombie.length);
-            diagnoseSyntheticDecisions(acousticClips.toArray(byte[][]::new));
+            diagnoseSyntheticDecisions(acousticClips.toArray(byte[][]::new), aliasFile);
             throw new AssertionError("End-to-end cue was " + actual);
         }
         speech.setEnabled(false);
@@ -131,7 +167,7 @@ public final class SpeechCuesFixture {
 
     // This instrumentation exists only in the fixture source set. It prints fixed grammar labels,
     // scores and exception locations for synthetic cases, without displaying words or PCM.
-    private static void diagnoseSyntheticDecisions(byte[][] cases) throws Exception {
+    private static void diagnoseSyntheticDecisions(byte[][] cases, Path aliasFile) throws Exception {
         try (var source = SpeechCues.class.getResourceAsStream("recognize.ps1")) {
             require(source != null, "Missing speech helper resource");
             String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
@@ -150,7 +186,9 @@ public final class SpeechCuesFixture {
                         [Console]::Error.WriteLine(('SAPI helper error line={0} type={1} hresult={2}' -f
                             $_.InvocationInfo.ScriptLineNumber, $_.Exception.GetType().Name, $_.Exception.HResult))
                         exit 1""");
-            decisions(powershell(helper, ProcessBuilder.Redirect.INHERIT), cases);
+            var diagnostic = powershell(helper, ProcessBuilder.Redirect.INHERIT);
+            diagnostic.environment().put("MOBSEAR_GRAMMAR", MobLexicon.grammar(aliasFile));
+            decisions(diagnostic.start(), cases);
         }
     }
 
@@ -176,7 +214,7 @@ public final class SpeechCuesFixture {
                 $stream.CopyTo([Console]::OpenStandardOutput())
                 $tts.Dispose()
                 """.formatted(phrase);
-        Process synth = powershell(script, ProcessBuilder.Redirect.DISCARD);
+        Process synth = powershell(script, ProcessBuilder.Redirect.DISCARD).start();
         killAfter(synth, 15);
         try (var input = synth.getInputStream()) {
             byte[] pcm = input.readNBytes(96001);
@@ -194,11 +232,11 @@ public final class SpeechCuesFixture {
         }
     }
 
-    private static Process powershell(String script, ProcessBuilder.Redirect errors) throws IOException {
+    private static ProcessBuilder powershell(String script, ProcessBuilder.Redirect errors) {
         Path shell = Path.of(System.getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0",
                 "powershell.exe");
         return new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
-                "-WindowStyle", "Hidden", "-Command", script).redirectError(errors).start();
+                "-WindowStyle", "Hidden", "-Command", script).redirectError(errors);
     }
 
     private static void killAfter(Process process, int seconds) {

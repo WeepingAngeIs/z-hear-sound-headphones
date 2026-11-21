@@ -1,5 +1,9 @@
 package dev.mobsear.net;
 
 public enum Cue {
-    ZOMBIE, MOBS, ENDERMAN
+    ZOMBIE, MOBS, ENDERMAN, SKELETON, CREEPER, SPIDER, WITCH, PILLAGER, SLIME,
+    BLAZE, GHAST, PHANTOM, BREEZE, SILVERFISH, ENDERMITE, GUARDIAN, SHULKER,
+    VINDICATOR, EVOKER, VEX, RAVAGER, HOGLIN, ZOGLIN, PIGLIN_BRUTE, WARDEN, WITHER;
+
+    public final String entityPath = name().toLowerCase(java.util.Locale.ROOT);
 }

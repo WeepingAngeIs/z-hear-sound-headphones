@@ -1,0 +1,71 @@
+package dev.mobsear.client;
+
+import dev.mobsear.net.VoiceSignal;
+import java.util.ArrayDeque;
+import java.util.function.Consumer;
+
+/** Processes the existing 20 ms input frames. All audio retained here is volatile pre-roll. */
+final class CaptureGate {
+    private final ArrayDeque<byte[]> preRoll = new ArrayDeque<>(6);
+    private int tail;
+    private double previousSample;
+    private double previousHighPass;
+    private double envelope;
+    private boolean filtering;
+    private double level;
+
+    double level() { return level; }
+
+    void accept(byte[] pcm, boolean automatic, int sensitivity, boolean suppress,
+                Consumer<byte[]> transmit, Runnable endUtterance) {
+        if (pcm.length != VoiceAudio.FRAME_BYTES) return;
+        if (suppress) suppress(pcm);
+        else if (filtering) resetFilter();
+        filtering = suppress;
+        double rms = VoiceSignal.rms(pcm);
+        level = VoiceSignal.meter(rms);
+        if (!automatic) {
+            transmit.accept(pcm);
+            return;
+        }
+
+        // Sensitivity spans -20 dBFS at 0 to -52 dBFS at 100. Hangover protects word endings.
+        double threshold = Math.pow(10, (-20 - Math.clamp(sensitivity, 0, 100) * 0.32) / 20.0);
+        if (rms >= threshold) {
+            while (!preRoll.isEmpty()) transmit.accept(preRoll.removeFirst());
+            tail = 12;
+            transmit.accept(pcm);
+        } else if (tail > 0) {
+            transmit.accept(pcm);
+            if (--tail == 0) endUtterance.run();
+        } else {
+            if (preRoll.size() == 6) preRoll.removeFirst();
+            preRoll.addLast(pcm);
+        }
+    }
+
+    private void suppress(byte[] pcm) {
+        // One-pole ~80 Hz high-pass removes DC/rumble. A softly closing low-level gate
+        // attenuates the steady noise floor between words while allowing speech transients.
+        for (int i = 0; i < pcm.length; i += 2) {
+            int input = (pcm[i] & 255) | pcm[i + 1] << 8;
+            double high = 0.9691 * (previousHighPass + input - previousSample);
+            previousHighPass = high;
+            previousSample = input;
+            envelope = Math.max(Math.abs(high), envelope * 0.998);
+            double gain = Math.clamp((envelope - 55) / 125.0, 0, 1);
+            int sample = Math.clamp((int) Math.round(high * gain), -32768, 32767);
+            pcm[i] = (byte) sample;
+            pcm[i + 1] = (byte) (sample >> 8);
+        }
+    }
+
+    private void resetFilter() { previousSample = previousHighPass = envelope = 0; }
+    void reset() {
+        preRoll.clear();
+        tail = 0;
+        level = 0;
+        filtering = false;
+        resetFilter();
+    }
+}

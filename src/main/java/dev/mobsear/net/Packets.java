@@ -23,6 +23,27 @@ public final class Packets {
         return frame;
     }
 
+    private static boolean readFlag(FriendlyByteBuf buf) {
+        if (buf.readableBytes() != 1) throw new DecoderException("Invalid horde option length");
+        int flag = buf.readUnsignedByte();
+        if (flag > 1) throw new DecoderException("Invalid horde option");
+        return flag == 1;
+    }
+
+    public record HordeOpt(boolean optedIn) implements CustomPacketPayload {
+        public static final Type<HordeOpt> TYPE = id("horde_opt");
+        public static final StreamCodec<FriendlyByteBuf, HordeOpt> CODEC =
+                StreamCodec.of((buf, packet) -> buf.writeBoolean(packet.optedIn), buf -> new HordeOpt(readFlag(buf)));
+        @Override public Type<HordeOpt> type() { return TYPE; }
+    }
+
+    public record HordeState(boolean optedIn) implements CustomPacketPayload {
+        public static final Type<HordeState> TYPE = id("horde_state");
+        public static final StreamCodec<FriendlyByteBuf, HordeState> CODEC =
+                StreamCodec.of((buf, packet) -> buf.writeBoolean(packet.optedIn), buf -> new HordeState(readFlag(buf)));
+        @Override public Type<HordeState> type() { return TYPE; }
+    }
+
     public record Up(byte[] pcm) implements CustomPacketPayload {
         public static final Type<Up> TYPE = id("voice_up");
         public static final StreamCodec<FriendlyByteBuf, Up> CODEC =

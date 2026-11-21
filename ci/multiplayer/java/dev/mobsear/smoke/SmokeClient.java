@@ -1,6 +1,7 @@
 package dev.mobsear.smoke;
 
 import dev.mobsear.MobsEar;
+import dev.mobsear.client.FixtureSound;
 import dev.mobsear.net.Packets;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -20,13 +21,20 @@ public final class SmokeClient {
     private Packets.Down received;
     private int nextPhase;
     private MenuSmoke menu;
+    private VisualStates visuals;
+    private boolean installedSound;
 
     public SmokeClient() {
         NeoForge.EVENT_BUS.addListener(this::tick);
     }
 
     private void tick(ClientTickEvent.Post event) {
+        if (!installedSound) {
+            FixtureSound.install();
+            installedSound = true;
+        }
         if (menu != null) menu.tick();
+        if (visuals != null) visuals.tick();
         var mc = Minecraft.getInstance();
         var connection = mc.getConnection();
         if (ready || mc.player == null || mc.level == null || connection == null) return;
@@ -37,8 +45,12 @@ public final class SmokeClient {
         if (!sender && !SmokeControl.LISTENER.equals(mc.getUser().getName())) {
             throw SmokeControl.failure("unexpected offline username");
         }
-        // Replace the Java Sound output boundary before either client is permitted to send.
+        var production = MobsEar.playback;
         MobsEar.playback = frame -> {
+            if (visuals != null) {
+                production.accept(frame);
+                return;
+            }
             if (sender || received != null) throw SmokeControl.failure("unexpected or duplicate downlink");
             received = frame;
         };
@@ -48,6 +60,14 @@ public final class SmokeClient {
     }
 
     private void barrier(int phase) {
+        if (phase == SmokeControl.VISUAL) {
+            visuals = new VisualStates(sender);
+            return;
+        }
+        if (phase == SmokeControl.FAR) {
+            visuals.far();
+            return;
+        }
         if (phase != nextPhase++ || phase >= SmokeControl.PHASES.length) {
             throw SmokeControl.failure("out-of-order phase");
         }

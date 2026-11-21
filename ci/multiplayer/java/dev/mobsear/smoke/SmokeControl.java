@@ -32,6 +32,7 @@ public final class SmokeControl {
     static final String SPEAKER = "MicFixtureA";
     static final String LISTENER = "MicFixtureB";
     static final int READY = -1;
+    static final int VISUAL = -2, FAR = -3;
     static final int LISTED_GUESTS = 12;
     static final String[] PHASES = {"near", "far", "nether", "near-again", "after-settings"};
     static IntConsumer client = phase -> { throw failure("client fixture unavailable"); };
@@ -47,6 +48,7 @@ public final class SmokeControl {
     private final List<UUID> listedGuests = new ArrayList<>();
     private int phase = READY;
     private boolean speakerAck;
+    private final Set<UUID> visualReady = new HashSet<>();
 
     public SmokeControl(IEventBus bus) {
         bus.addListener((RegisterPayloadHandlersEvent event) ->
@@ -73,6 +75,17 @@ public final class SmokeControl {
             return;
         }
         if (value != phase || speaker == null || listener == null) throw failure("invalid phase acknowledgment");
+        if (phase == VISUAL || phase == FAR) {
+            if ((player != speaker && player != listener) || !visualReady.add(player.getUUID())) {
+                throw failure("unexpected visual acknowledgment");
+            }
+            if (visualReady.size() == 2) {
+                visualReady.clear();
+                if (phase == VISUAL) beginVisual(speaker, listener, FAR);
+                else System.out.println("MOBSEAR_MULTIPLAYER_PASS");
+            }
+            return;
+        }
         if (player == speaker && !speakerAck) {
             // The preceding Up packet and this acknowledgment traveled on one ordered connection.
             // The server has queued any eligible Down before queuing this listener-side barrier.
@@ -80,7 +93,7 @@ public final class SmokeControl {
             PacketDistributor.sendToPlayer(listener, new Barrier(phase));
         } else if (player == listener && speakerAck) {
             System.out.println("MOBSEAR_SMOKE_PHASE " + PHASES[phase] + " passed");
-            if (phase + 1 == PHASES.length) System.out.println("MOBSEAR_MULTIPLAYER_PASS");
+            if (phase + 1 == PHASES.length) beginVisual(speaker, listener, VISUAL);
             else next(speaker, listener);
         } else throw failure("unexpected acknowledgment owner or order");
     }
@@ -110,6 +123,17 @@ public final class SmokeControl {
     }
 
     static String guestName(int number) { return String.format(Locale.ROOT, "VoiceGuest%02d", number); }
+
+    private void beginVisual(ServerPlayer speaker, ServerPlayer listener, int next) {
+        phase = next;
+        var world = speaker.serverLevel();
+        world.setDayTime(1000);
+        int y = world.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, 0, 80);
+        speaker.teleportTo(world, 0.5, y, 80.5, -90, -3);
+        listener.teleportTo(world, next == FAR ? 40.5 : 4.5, y, 80.5, 90, next == FAR ? 0 : -3);
+        PacketDistributor.sendToPlayer(speaker, new Barrier(next));
+        PacketDistributor.sendToPlayer(listener, new Barrier(next));
+    }
 
     private static void place(ServerPlayer player, ServerLevel level, int x) {
         var feet = new BlockPos(x, 96, 0);

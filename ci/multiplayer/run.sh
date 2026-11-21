@@ -35,9 +35,11 @@ enableVsync:false
 maxFps:20
 graphicsMode:0
 soundCategory_master:0.0
+guiScale:2
+tutorialStep:none
+pauseOnLostFocus:false
 OPTIONS
 done
-echo 'guiScale:2' >> "$MOBSEAR_SMOKE_DIR/smokeListener/options.txt"
 
 bash gradlew --no-daemon --max-workers=2 -PvoiceMultiplayer \
   classes prepareSmokeServerRun prepareSmokeSpeakerRun prepareSmokeListenerRun \
@@ -45,15 +47,18 @@ bash gradlew --no-daemon --max-workers=2 -PvoiceMultiplayer \
 
 pids=()
 roles=()
+collect_images() {
+  local image
+  mkdir -p build/state-previews
+  for image in "$MOBSEAR_SMOKE_DIR/smokeListener/screenshots/"menu-*.png "$MOBSEAR_SMOKE_DIR/visuals/"*.png; do
+    if [[ -f $image ]]; then cp "$image" build/state-previews/; fi
+  done
+}
 cleanup() {
   local status=$?
   trap - EXIT
   if ((status != 0)); then
-    local image
-    mkdir -p build/menu-previews
-    for image in "$MOBSEAR_SMOKE_DIR/smokeListener/screenshots/"menu-{uwu,dark,vanilla,amethyst}.png; do
-      if [[ -f $image ]]; then cp "$image" build/menu-previews/; fi
-    done
+    collect_images
     for role in "${roles[@]}"; do
       echo "--- $role ---"
       grep -E 'MOBSEAR_SMOKE_FAIL|Caused by:|/FATAL\]|Exception in thread' "$MOBSEAR_SMOKE_DIR/$role.console" \
@@ -77,7 +82,12 @@ launch() {
   local role=$1 script
   script=$(find build -type f -name "run${role^}.sh" -print -quit)
   [[ -n $script ]] || { echo "Missing launch script for $role" >&2; exit 1; }
-  setsid bash "$script" > "$MOBSEAR_SMOKE_DIR/$role.console" 2>&1 &
+  if [[ $role == smokeServer ]]; then
+    setsid bash "$script" > "$MOBSEAR_SMOKE_DIR/$role.console" 2>&1 &
+  else
+    # Each fullscreen GLFW surface has independent focus. Neither can suspend the other's real capture path.
+    setsid xvfb-run -a -s '-screen 0 1024x768x24' bash "$script" > "$MOBSEAR_SMOKE_DIR/$role.console" 2>&1 &
+  fi
   pids+=("$!")
   roles+=("$role")
 }
@@ -96,10 +106,22 @@ launch smokeServer
 wait_for smokeServer 'Done (' 240
 launch smokeSpeaker
 launch smokeListener
-wait_for smokeServer 'MOBSEAR_MULTIPLAYER_PASS' 420
+wait_for smokeServer 'MOBSEAR_MULTIPLAYER_PASS' 600
 grep -F 'MOBSEAR_' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
-mkdir -p build/menu-previews
-for theme in uwu dark vanilla amethyst; do
-  cp "$MOBSEAR_SMOKE_DIR/smokeListener/screenshots/menu-$theme.png" build/menu-previews/
+collect_images
+snapshots=()
+for theme in uwu{,_lotus,_blossom,_petals,_hearts} emo{,_skulls,_thorns,_shards,_eclipse} \
+             vanilla{,_ferns,_grove,_jungle,_beach} amethyst{,_nebula,_rings,_void,_stars}; do
+  snapshots+=("menu-$theme")
 done
+for role in hud nameplate; do
+  for family in uwu emo vanilla amethyst; do
+    for state in idle muted deafened speaking speaking-next; do snapshots+=("$role-$family-$state"); done
+  done
+  snapshots+=("$role-effects-reduced" "$role-effects-off" "$role-hidden")
+done
+snapshots+=(nameplate-out-of-range status-speaking status-quiet gain-zero device-meter)
+snapshots+=(menu-uwu_lotus-frame-{0,1,2,3,4,5,6,7} menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
+for name in "${snapshots[@]}"; do test -s "build/state-previews/$name.png" || { echo "Missing $name"; exit 1; }; done
+printf 'MOBSEAR_CAPTURE %s.png\n' "${snapshots[@]}"

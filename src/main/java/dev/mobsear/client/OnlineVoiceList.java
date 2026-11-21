@@ -110,7 +110,12 @@ final class OnlineVoiceList extends ContainerObjectSelectionList<OnlineVoiceList
                     n -> VoiceSettingsScreen.t("gain", name, n), n -> prefs.setGain(id, n));
         }
 
-        Component status() { return VoiceSettingsScreen.t(speaking.test(id) ? "speaking" : "quiet"); }
+        Component status() {
+            var state = VoiceClient.remoteState(id);
+            if (state == dev.mobsear.net.MicState.MUTED) return VoiceSettingsScreen.t("muted");
+            if (state == dev.mobsear.net.MicState.DEAFENED) return VoiceSettingsScreen.t("deafened");
+            return VoiceSettingsScreen.t(speaking.test(id) ? "speaking" : "quiet");
+        }
         @Override public List<? extends GuiEventListener> children() { return List.of(gain); }
         @Override public List<? extends NarratableEntry> narratables() { return List.of(gain); }
 

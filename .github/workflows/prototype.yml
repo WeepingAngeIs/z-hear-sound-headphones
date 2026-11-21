@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   game:
-    name: Build, synthetic audio and dedicated GameTests
+    name: Build and dedicated GameTests on NeoForge 21.1.249
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -26,21 +26,44 @@ jobs:
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
-          cp build/libs/mobsear-0.1.0-prototype.jar dist/
-          jar tf dist/mobsear-0.1.0-prototype.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
-          if jar tf dist/mobsear-0.1.0-prototype.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
+          cp build/libs/mobsear-0.2.0.jar dist/
+          jar tf dist/mobsear-0.2.0.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
+          if jar tf dist/mobsear-0.2.0.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
         run: |
           set -o pipefail
           bash gradlew --no-daemon -PvoiceGameTests runGameTestServer 2>&1 | tee "$RUNNER_TEMP/gametest.log"
           grep -Ei 'all [1-9][0-9]* required tests passed' "$RUNNER_TEMP/gametest.log"
-      - name: Keep the verified prototype jar
+      - name: Keep the verified mod jar
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: mobsear-prototype
-          path: dist/mobsear-0.1.0-prototype.jar
+          name: mobs-hear-u
+          path: dist/mobsear-0.2.0.jar
           if-no-files-found: error
+  packaged-server:
+    name: Packaged jar on NeoForge ${{ matrix.loader }}
+    needs: game
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        loader: ['21.1.249', '21.1.255']
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mobs-hear-u
+          path: dist
+      - name: Boot and stop the exact production jar in an isolated server
+        run: python3 ci/packaged_server.py ${{ matrix.loader }} dist/*.jar
   windows-speech:
     name: Offline Windows speech from synthetic PCM
     runs-on: windows-2022
@@ -59,11 +82,11 @@ jobs:
           Add-Type -AssemblyName System.Speech
           [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object Id,Culture
           New-Item -ItemType Directory ci-classes | Out-Null
-          javac --release 21 -d ci-classes src/main/java/dev/mobsear/net/Cue.java src/main/java/dev/mobsear/client/SpeechCues.java src/test/java/dev/mobsear/client/SpeechCuesFixture.java
+          javac --release 21 --source-path src/main/java -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           java -cp 'ci-classes;src/main/resources' dev.mobsear.client.SpeechCuesFixture --windows-speech
   multiplayer:
-    name: Two NeoForge clients on a disposable server
+    name: Two NeoForge 21.1.249 clients on a disposable server
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -76,11 +99,13 @@ jobs:
           java-version: '21'
           cache: gradle
       - name: Send generated audio across real game connections
+        env:
+          MOBSEAR_STATE_CAPTURE: '1'
         run: xvfb-run -a -s '-screen 0 1024x768x24' bash ci/multiplayer/run.sh
-      - name: Keep in-game menu previews
-        if: ${{ !cancelled() && hashFiles('build/menu-previews/*.png') != '' }}
+      - name: Keep in-game microphone state captures
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: menu-previews
-          path: build/menu-previews/*.png
+          name: state-previews
+          path: build/state-previews/*.png
           if-no-files-found: error

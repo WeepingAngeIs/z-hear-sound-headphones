@@ -1,6 +1,8 @@
 package dev.mobsear.server;
 
 import com.mojang.authlib.GameProfile;
+import dev.mobsear.net.MicPresence;
+import dev.mobsear.net.MicState;
 import dev.mobsear.net.Packets;
 import io.netty.buffer.Unpooled;
 import java.util.ArrayList;
@@ -60,6 +62,38 @@ public final class VoiceRoutingGameTest {
             helper.assertTrue(payload.gain() == 1f, "Co-located listener should hear full gain");
         });
         helper.assertTrue(recipients.equals(List.of(far)), "Routing did not follow the actual speaker");
+        speaker.setPos(origin);
+        List<MicPresence.Nearby> snapshots = new ArrayList<>();
+        var selected = new MicPresence.Controls(MicPresence.styleId("emo"), false, false);
+        NearbyMics.controls(speaker, roundTrip(MicPresence.Controls.CODEC, selected));
+        // The client can advertise its style but cannot declare itself speaking.
+        NearbyMics.distribute(speaker, candidates, (int) radius, (viewer, status) -> {
+            helper.assertTrue(viewer == nearby, "Presence leaked out of range or into another dimension");
+            snapshots.add(roundTrip(MicPresence.Nearby.CODEC, status));
+        });
+        helper.assertTrue(snapshots.size() == 1 && snapshots.getFirst().state() == MicState.IDLE,
+                "Advertising a microphone must not create speaking activity");
+        ServerVoice.relay(speaker, ingress, candidates, radius, (viewer, audio) -> {});
+        snapshots.clear();
+        NearbyMics.distribute(speaker, candidates, (int) radius, (viewer, status) -> snapshots.add(status));
+        var active = snapshots.getFirst();
+        helper.assertTrue(active.state() == MicState.SPEAKING && active.level() > 0 && active.style() == selected.style()
+                && active.speaker().equals(speaker.getUUID()) && active.radius() == (int) radius,
+                "Presence must come from accepted audio and authoritative speaker data");
+        NearbyMics.controls(nearby, new MicPresence.Controls(0, false, true));
+        ServerVoice.relay(speaker, ingress, candidates, radius,
+                (viewer, audio) -> helper.fail("A deafened receiver heard a frame"));
+        ServerVoice.relay(nearby, ingress, candidates, radius,
+                (viewer, audio) -> helper.fail("A deafened speaker transmitted a frame"));
+        NearbyMics.forget(nearby);
+        NearbyMics.controls(nearby, new MicPresence.Controls(0, true, false));
+        ServerVoice.relay(nearby, ingress, candidates, radius,
+                (viewer, audio) -> helper.fail("A muted speaker transmitted a frame"));
+        recipients.clear();
+        ServerVoice.relay(speaker, ingress, candidates, radius, (viewer, audio) -> recipients.add(viewer));
+        helper.assertTrue(recipients.equals(List.of(nearby)), "A mic-muted player should still hear proximity audio");
+        ServerVoice.forget(speaker);
+        ServerVoice.forget(nearby);
         helper.succeed();
     }
 

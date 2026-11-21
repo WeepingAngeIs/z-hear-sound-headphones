@@ -46,11 +46,27 @@ public final class VoicePreferencesFixture {
         });
         var prefs = new VoicePreferences(file, sound);
         require(prefs.theme().equals("uwu") && prefs.volume() == 100 && prefs.gain(PLAYER) == 100, "Defaults");
+        require(!prefs.muted() && !prefs.deafened() && !prefs.noiseSuppression() && prefs.sensitivity() == 50,
+                "Default audio controls");
+        require(prefs.hudVisible() && prefs.nameplates() && prefs.effects().equals("full")
+                && prefs.accent().equals("auto") && prefs.micStyle().equals("auto"), "Default appearance controls");
         require(enumerations.get() == 0 && !Files.exists(file), "Construction had side effects");
-        for (String theme : List.of("emo", "vanilla", "amethyst", "uwu")) {
-            prefs.setTheme(theme);
-            require(prefs.save() && new VoicePreferences(file, sound).theme().equals(theme), "Persist " + theme);
+        for (var theme : MenuTheme.values()) {
+            prefs.setTheme(theme.id());
+            require(prefs.save(), "Save " + theme.id());
+            var reloaded = new VoicePreferences(file, sound);
+            require(reloaded.theme().equals(theme.id()) && reloaded.resolvedMicStyle().equals(theme.family()),
+                    "Persist theme and resolve automatic style " + theme.id());
         }
+        prefs.setMuted(true);
+        prefs.setDeafened(true);
+        prefs.setNoiseSuppression(true);
+        prefs.setSensitivity(140);
+        prefs.setHudVisible(false);
+        prefs.setNameplates(false);
+        prefs.setEffects("reduced");
+        prefs.setAccent("mint");
+        prefs.setMicStyle("emo");
         prefs.setTheme("AMETHYST");
         prefs.setVolume(133);
         prefs.setGain(PLAYER, 999);
@@ -79,6 +95,10 @@ public final class VoicePreferencesFixture {
         prefs = new VoicePreferences(file, sound);
         require(prefs.theme().equals("amethyst") && prefs.volume() == 133 && prefs.gain(PLAYER) == 200,
                 "Settings round trip");
+        require(prefs.muted() && prefs.deafened() && prefs.noiseSuppression() && prefs.sensitivity() == 100,
+                "Persist audio and clamp sensitivity");
+        require(!prefs.hudVisible() && !prefs.nameplates() && prefs.effects().equals("reduced")
+                && prefs.accent().equals("mint") && prefs.resolvedMicStyle().equals("emo"), "Independent style and local appearance");
         require(prefs.device(true).equals(micId) && prefs.device(false).equals(speakerId), "Device ID round trip");
 
         var decoyRequests = new AtomicInteger();
@@ -103,10 +123,14 @@ public final class VoicePreferencesFixture {
         String previous = Files.readString(file);
         require(!new VoicePreferences(file.resolve("nested"), sound).save(), "Report failed save");
         require(Files.readString(file).equals(previous), "Failed save damaged previous settings");
-        Files.writeString(file, "theme=wrong\nvolume=oops\ngain." + PLAYER + "=400\nfuture=value\n");
+        Files.writeString(file, "theme=wrong\nvolume=oops\ngain." + PLAYER + "=400\nfuture=value\n"
+                + "micStyle=oops\neffects=oops\naccent=oops\nsensitivity=oops\nhudVisible=oops\n");
         prefs = new VoicePreferences(file, sound);
         require(prefs.theme().equals("uwu") && prefs.volume() == 100 && prefs.gain(PLAYER) == 200,
                 "Invalid individual preferences");
+        require(prefs.micStyle().equals("auto") && prefs.resolvedMicStyle().equals("uwu")
+                && prefs.effects().equals("full") && prefs.accent().equals("auto") && prefs.sensitivity() == 50
+                && prefs.hudVisible(), "Invalid options recover independently");
         require(prefs.save() && Files.readString(file).contains("future=value"), "Preserve unknown keys");
     }
 

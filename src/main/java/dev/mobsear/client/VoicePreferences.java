@@ -47,13 +47,59 @@ public final class VoicePreferences {
     }
 
     private static String normalizeTheme(String value) {
-        if (value == null) return "uwu";
-        return switch (value.toLowerCase(Locale.ROOT)) {
-            case "emo" -> "emo";
-            case "vanilla" -> "vanilla";
-            case "amethyst" -> "amethyst";
-            default -> "uwu";
-        };
+        return MenuTheme.fromId(value == null ? "uwu" : value.toLowerCase(Locale.ROOT)).id();
+    }
+
+    public synchronized boolean muted() { return flag("micMuted", false); }
+    public synchronized void setMuted(boolean value) { setFlag("micMuted", value); }
+    public synchronized boolean deafened() { return flag("deafened", false); }
+    public synchronized void setDeafened(boolean value) { setFlag("deafened", value); }
+    public synchronized boolean noiseSuppression() { return flag("noiseSuppression", false); }
+    public synchronized void setNoiseSuppression(boolean value) { setFlag("noiseSuppression", value); }
+    public synchronized boolean hudVisible() { return flag("hudVisible", true); }
+    public synchronized void setHudVisible(boolean value) { setFlag("hudVisible", value); }
+    public synchronized boolean nameplates() { return flag("nameplates", true); }
+    public synchronized void setNameplates(boolean value) { setFlag("nameplates", value); }
+
+    private boolean flag(String key, boolean fallback) {
+        String raw = values.getProperty(key);
+        if ("true".equalsIgnoreCase(raw)) return true;
+        if ("false".equalsIgnoreCase(raw)) return false;
+        return fallback;
+    }
+
+    private void setFlag(String key, boolean value) { values.setProperty(key, Boolean.toString(value)); }
+
+    public synchronized int sensitivity() {
+        try { return Math.clamp(Integer.parseInt(values.getProperty("sensitivity", "50")), 0, 100); }
+        catch (NumberFormatException e) { return 50; }
+    }
+
+    public synchronized void setSensitivity(int value) {
+        values.setProperty("sensitivity", Integer.toString(Math.clamp(value, 0, 100)));
+    }
+
+    public synchronized String micStyle() { return styleValue(values.getProperty("micStyle")); }
+    public synchronized void setMicStyle(String id) { values.setProperty("micStyle", styleValue(id)); }
+    public synchronized String resolvedMicStyle() {
+        String id = micStyle();
+        return id.equals("auto") ? MenuTheme.fromId(theme()).family() : id;
+    }
+
+    private static String styleValue(String id) {
+        return List.of("uwu", "emo", "vanilla", "amethyst").contains(Objects.toString(id, "")) ? id : "auto";
+    }
+    public synchronized String effects() { return effectValue(values.getProperty("effects", "full")); }
+    public synchronized void setEffects(String id) { values.setProperty("effects", effectValue(id)); }
+    public synchronized String accent() { return accentValue(values.getProperty("accent", "auto")); }
+    public synchronized void setAccent(String id) { values.setProperty("accent", accentValue(id)); }
+
+    private static String effectValue(String id) {
+        return "off".equals(id) || "reduced".equals(id) ? id : "full";
+    }
+
+    private static String accentValue(String id) {
+        return List.of("rose", "gold", "mint", "aqua", "violet").contains(Objects.toString(id, "")) ? id : "auto";
     }
 
     public synchronized int volume() {

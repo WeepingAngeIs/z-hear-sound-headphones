@@ -1,6 +1,6 @@
 # Mobs Hear U
 
-A standalone proximity voice prototype for Minecraft Java 1.21.1, NeoForge 21.1.255 and Java 21. Nearby players can hear your voice. If you enable local mob calls, nearby hostiles can also react to short spoken names.
+A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge 21.1.249 or later in the 21.1 series. Nearby players can hear your voice. If you enable local mob calls, nearby hostiles can also react to short spoken names.
 
 ## Controls
 
@@ -20,6 +20,12 @@ A standalone proximity voice prototype for Minecraft Java 1.21.1, NeoForge 21.1.
 Passive mobs ignore calls. Creative players can talk to other players. Mob calls require an eligible survival or adventure speaker. A zombie can pause for ten game ticks at most once per forty ticks.
 
 ## Server and privacy
+
+Quiet horror is a separate server option. Set `hordeEnabled = true` in the server configuration to offer it. Each player then opts in from the voice menu for that connection. Death, a dimension change, disconnecting, Peaceful difficulty, or switching to creative or spectator ends participation.
+
+About 1.2 seconds of sustained audible input can start an encounter, regardless of words or recognition settings. The server measures the level of accepted microphone frames. Nearby idle zombies, husks, drowned and zombie villagers can pursue the speaker using their normal attack AI. Existing fights, Endermen and zombified piglins keep their usual behavior.
+
+Encounters last up to 20 seconds. The default `hordeCooldownSeconds` is 45 and `hordeGroupCap` is 4. Difficulty also caps each group at two zombies on Easy, three on Normal and four on Hard. At most 24 zombies participate across the server. When an encounter has open spots and mob spawning is enabled, temporary zombies can appear in a loaded, dark, unobstructed place at least five blocks from the speaker, within the voice radius. Each temporary zombie can target only that participant and drops no loot or experience. Leaving range, opting out or ending the encounter removes temporary zombies and releases the living world mobs recruited by the encounter.
 
 Use the same mod on the server and participating clients. Set `voiceRadius` in the server’s `config/mobsear-server.toml` or its world-specific `serverconfig/mobsear-server.toml` override to a distance from 1 to 96 blocks. The server takes the speaker, dimension and position from the game connection. It rate-limits incoming voice and accepts a mob cue only shortly after accepted voice frames. A cue is a claim from the client. The server cannot authenticate the words that produced it.
 
