@@ -51,6 +51,13 @@ cleanup() {
   if ((status != 0)); then
     for role in "${roles[@]}"; do
       echo "--- $role ---"
+      grep -E 'MOBSEAR_SMOKE_FAIL|Caused by:|/FATAL\]|Exception in thread' "$MOBSEAR_SMOKE_DIR/$role.console" \
+        | cut -c1-650 | tail -n 14 || true
+      local directory=$role crash
+      [[ $role != smokeServer ]] || directory=server
+      for crash in "$MOBSEAR_SMOKE_DIR/$directory/crash-reports/"*.txt; do
+        if [[ -f $crash ]]; then head -n 90 "$crash" | cut -c1-650; fi
+      done
       tail -n 70 "$MOBSEAR_SMOKE_DIR/$role.console" || true
     done
   fi
