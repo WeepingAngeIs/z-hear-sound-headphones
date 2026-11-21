@@ -15,13 +15,28 @@ import org.lwjgl.glfw.GLFW;
 final class PitchRestartSmoke {
     private static final UUID SPEAKER = UUID.nameUUIDFromBytes(("OfflinePlayer:" + SmokeControl.SPEAKER).getBytes(StandardCharsets.UTF_8));
     private static int step;
+    private static int ticks;
+    private static boolean focused;
     static void tick() {
         var mc = Minecraft.getInstance();
-        if (step == 4 || !VoiceClient.connected()) return;
-        GLFW.glfwFocusWindow(mc.getWindow().getWindow());
+        if (step == 4) return;
+        if (!focused && mc.getWindow() != null) {
+            GLFW.glfwFocusWindow(mc.getWindow().getWindow());
+            focused = true;
+        }
+        ticks++;
+        if (ticks % 100 == 0) {
+            System.out.println("MOBSEAR_RESTART_STATUS step=" + step + " connected=" + VoiceClient.connected()
+                    + " focused=" + mc.isWindowActive() + " screen=" + (mc.screen == null ? "game" : mc.screen.getClass().getSimpleName()));
+        }
+        if (ticks > 1600) throw SmokeControl.failure("restart did not reach step " + step);
+        if (!VoiceClient.connected()) return;
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
         var p = VoiceClient.options();
         if (step == 0) {
+            // The voice session can be connected while Minecraft is still drawing the level-loading screen.
+            // G is a gameplay binding and is consumed without opening settings during the loading transition.
+            if (mc.screen != null || !mc.isWindowActive()) return;
             check(!p.pitchEnabled() && p.pitchPreset().equals("squeaky") && p.pitchCents() == VoicePreferences.SQUEAKY_CENTS
                     && p.customPitchCents() == 300, "restored Squeaky, Custom and bypass");
             verifyUnrelated(p);
@@ -30,6 +45,8 @@ final class PitchRestartSmoke {
         } else if (step == 1 && mc.screen instanceof VoiceSettingsScreen) {
             click("Voice Changer");
             step++;
+        } else if (step == 1 && mc.screen == null && mc.isWindowActive() && ticks % 20 == 0) {
+            MenuSmoke.pressG();
         } else if (step == 2 && mc.screen instanceof PitchSettingsScreen) {
             click("Voice effect · Off (natural voice)");
             check(p.pitchEnabled() && p.pitchCents() == VoicePreferences.SQUEAKY_CENTS, "restored active preset");

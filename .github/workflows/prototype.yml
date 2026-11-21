@@ -78,6 +78,8 @@ jobs:
           java-version: '21'
       - name: Exercise the desktop recognizer in memory
         shell: powershell
+        env:
+          MOBSEAR_SYNTH_PROOF_DIR: build/synthetic-speech
         run: |
           Add-Type -AssemblyName System.Speech
           [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object Id,Culture
@@ -85,6 +87,12 @@ jobs:
           javac --release 21 --source-path src/main/java -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           java -cp 'ci-classes;src/main/resources' dev.mobsear.client.SpeechCuesFixture --windows-speech
+      - name: Keep the stock synthetic speech pitch demo
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: spoken-pitch-proof
+          path: build/synthetic-speech/*.wav
+          if-no-files-found: error
   multiplayer:
     name: Two NeoForge 21.1.249 clients on a disposable server
     runs-on: ubuntu-latest

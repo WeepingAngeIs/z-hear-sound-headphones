@@ -4,6 +4,8 @@ import dev.mobsear.net.Cue;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +15,10 @@ import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
 
 /** Standalone Java 21 checks. All inputs are generated in memory; no audio device is opened. */
 public final class SpeechCuesFixture {
@@ -31,12 +37,43 @@ public final class SpeechCuesFixture {
             require(received.isEmpty(), "Off state emitted a cue");
             if (args.length == 1 && args[0].equals("--windows-speech")) {
                 checkWindows(speech, received, aliasFile);
+                writeSyntheticPitchPreview();
             } else if (!System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows")) {
                 speech.setEnabled(true);
                 require(speech.status() == SpeechCues.Status.UNAVAILABLE, "Unsupported host status");
             }
         } finally { Files.deleteIfExists(aliasFile); }
         System.out.println("Speech fixture passed.");
+    }
+
+    /** Only the hosted synthetic spelling fixture can write these three demonstrations. */
+    private static void writeSyntheticPitchPreview() throws Exception {
+        String destination = System.getenv("MOBSEAR_SYNTH_PROOF_DIR");
+        if (destination == null || destination.isBlank()) return;
+        Path folder = Files.createDirectories(Path.of(destination));
+        byte[] source = synthesize("Mobs hear my voice");
+        var format = new AudioFormat(VoiceAudio.SAMPLE_RATE, 16, 1, true, false);
+        for (String preset : new String[]{"natural", "squeaky", "deep"}) {
+            int cents = switch (preset) {
+                case "squeaky" -> VoicePreferences.SQUEAKY_CENTS;
+                case "deep" -> VoicePreferences.DEEP_CENTS;
+                default -> 0;
+            };
+            var outgoing = new OutgoingPitch();
+            var rendered = new ByteArrayOutputStream(source.length + FRAME);
+            for (int offset = 0; offset < source.length; offset += FRAME) {
+                byte[] dry = Arrays.copyOfRange(source, offset, offset + FRAME);
+                outgoing.route(dry, cents, wire -> { rendered.writeBytes(wire); return true; }, raw -> {});
+            }
+            byte[] pcm = Arrays.copyOf(rendered.toByteArray(), source.length);
+            if (cents == 0) require(Arrays.equals(source, pcm), "Natural synthetic demonstration changed the input");
+            else require(!Arrays.equals(source, pcm), "Synthetic demonstration was not shifted");
+            Path path = folder.resolve("synthetic-spoken-" + preset + ".wav");
+            try (var audio = new AudioInputStream(new ByteArrayInputStream(pcm), format, pcm.length / 2L)) {
+                AudioSystem.write(audio, AudioFileFormat.Type.WAVE, path.toFile());
+            }
+        }
+        System.out.println("SYNTHETIC_PITCH_SPEECH_PASS three software-generated clips, each " + source.length / 2 + " samples");
     }
 
     private static void checkLexicon(Path file) throws IOException {
