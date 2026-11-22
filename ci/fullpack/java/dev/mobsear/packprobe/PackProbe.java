@@ -25,6 +25,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -32,6 +33,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -45,6 +47,7 @@ public final class PackProbe {
         boolean spokenName() { return !Set.of("hold-on", "fan", "silence").contains(recording); }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
+    private final boolean measuredDecisions = "1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"));
     private final Trial[] tests = trials();
 
     private Trial[] trials() {
@@ -101,6 +104,7 @@ public final class PackProbe {
         if (!"true".equals(System.getenv("GITHUB_ACTIONS"))) throw new IllegalStateException("Hosted fixture only");
         NeoForge.EVENT_BUS.addListener(this::clientTick);
         NeoForge.EVENT_BUS.addListener(this::serverTick);
+        NeoForge.EVENT_BUS.addListener(this::render);
     }
 
     private void fail(Exception e) {
@@ -148,6 +152,9 @@ public final class PackProbe {
                     level.setWeatherParameters(60000, 0, false, false);
                     for (int x=-6; x<=46; x++) for (int z=-5; z<=5; z++)
                         level.setBlockAndUpdate(new BlockPos(x,159,z), Blocks.SEA_LANTERN.defaultBlockState());
+                    // The lit wall behind the subject makes a distant Enderman visible against the night sky.
+                    for (int y=160; y<=166; y++) for (int z=-5; z<=5; z++)
+                        level.setBlockAndUpdate(new BlockPos(-5,y,z), Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
                 }
                 var t = tests[index];
                 p.setGameMode(t.creative ? GameType.CREATIVE : GameType.SURVIVAL);
@@ -209,6 +216,7 @@ public final class PackProbe {
             if (mc.screen instanceof PauseScreen pause) pause.onClose();
             if (!VoiceClient.connected()) return;
             if (!hooked) {
+                mc.options.chatVisibility().set(ChatVisiblity.HIDDEN);
                 if (mc.getSingleplayerServer()==null || !mc.getConnection().getConnection().isMemoryConnection())
                     throw new IllegalStateException("Expected integrated connection");
                 if (earlier) {
@@ -312,23 +320,17 @@ public final class PackProbe {
                 o.recognized |= text!=null && text.getString().equals(originalNotice.getString());
                 o.dispatched |= o.acceptedCue;
             } else {
-                o.recognized |= Boundary.notice("localMatch").contains(o.test.name);
-                o.notice |= Boundary.notice("current").equals(o.test.name + " heard you");
+                boolean newMatch=!measuredDecisions || o.decision!=null && o.decision.matched() && o.decision.timely();
+                o.recognized |= newMatch && Boundary.notice("localMatch").contains(o.test.name);
+                o.notice |= o.confirmed && Boundary.notice("current").equals(o.test.name + " heard you");
                 o.dispatched |= (long)Boundary.get(Boundary.client(),"lastRequestId") > o.initialRequest;
             }
             if (o.recognized && o.matchedAt==0) o.matchedAt=System.nanoTime();
             if (o.dispatched && o.dispatchedAt==0) o.dispatchedAt=System.nanoTime();
-            if (o.notice && o.aligned>=2 && !o.screenshot) {
-                try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-                    var evidence=home.resolve("evidence");
-                    Files.createDirectories(evidence);
-                    pic.writeToFile(evidence.resolve(o.number+"-"+o.test.name+".png"));
-                }
-                o.screenshot=true;
-            }
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
-            if (elapsed<6_000_000_000L && !(o.test.hears && (earlier ? o.recognized : o.notice) && o.aligned>=2 && o.reaction)) return;
+            long observationLimit=o.test.hears ? 12_000_000_000L : 6_000_000_000L;
+            if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction)) return;
             boolean silent=o.test.recording.equals("silence");
             boolean capture=Boundary.consumed() && (silent ? Boundary.nonzeroFrames==0 : Boundary.nonzeroFrames>=2);
             int segments=0;
@@ -347,7 +349,7 @@ public final class PackProbe {
             boolean success=capture && o.wireAudio!=silent && o.recognized==o.test.spokenName() && correctDecision
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
-                    && (!o.test.hears || (o.facedAway && o.aligned>=2));
+                    && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot)));
             System.out.println("ACOUSTIC_LATENCY "+o.test.recording+" lastVoicedToMatchMs="+milliseconds(Boundary.lastSignalAt,o.matchedAt)
                     +" inputToDispatchMs="+milliseconds(o.startedAt,o.dispatchedAt)+" inputToServerMs="+milliseconds(o.startedAt,o.acceptedAt)
                     +" inputToTurnMs="+milliseconds(o.startedAt,o.turnedAt));
@@ -362,6 +364,27 @@ public final class PackProbe {
                 System.out.println("ACOUSTIC_COMPLETE trials="+tests.length+" failed="+failures);
                 complete=true;
             } else next=true;
+        } catch (Exception ex) { fail(ex); }
+    }
+
+    private void render(RenderFrameEvent.Post event) {
+        var o=current;
+        var mc=Minecraft.getInstance();
+        if (fatal || complete || next || o==null || o.screenshot || !o.confirmed || !o.notice || o.aligned<2
+                || mc.screen!=null || mc.getOverlay()!=null) return;
+        try {
+            if (!Boundary.notice("current").equals(o.test.name+" heard you")) return;
+            try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+                int pink=0;
+                for (int y=pic.getHeight()/2; y<pic.getHeight()*9/10; y+=2)
+                    for (int x=pic.getWidth()/5; x<pic.getWidth()*3/4; x+=2)
+                        if ((pic.getPixelRGBA(x,y)&0xffffff)==0xa177d7) pink++;
+                if (pink<12) return;
+                var folder=Files.createDirectories(home.resolve("evidence"));
+                pic.writeToFile(folder.resolve(o.number+"-"+o.test.name+".png"));
+                o.screenshot=true;
+                System.out.println("ACOUSTIC_RENDERED_NOTICE sample="+o.test.recording+" borderPixels="+pink);
+            }
         } catch (Exception ex) { fail(ex); }
     }
 
