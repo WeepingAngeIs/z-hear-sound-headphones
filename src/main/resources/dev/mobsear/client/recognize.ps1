@@ -1,5 +1,5 @@
 # The local binary pipe carries a bounded grammar followed by short PCM clips.
-# Startup progress and decisions use fixed bytes. No transcribed words leave this worker.
+# Standard output carries one readiness byte and one unsigned 16-bit decision per clip.
 $ErrorActionPreference = 'Stop'
 $engine = $null
 $pronouncer = $null
@@ -7,8 +7,9 @@ try {
     $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
     $output = [Console]::OpenStandardOutput()
     $tracked = $env:MOBSEAR_STARTUP_STEPS -eq '1'
+    if ($tracked) { $startup = [Console]::OpenStandardError() }
     function Send-StartupStep([byte]$step) {
-        if ($tracked) { $output.WriteByte($step); $output.Flush() }
+        if ($tracked) { $startup.WriteByte($step); $startup.Flush() }
     }
     Send-StartupStep 81
     $size = $reader.ReadInt32()

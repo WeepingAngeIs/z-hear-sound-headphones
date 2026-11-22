@@ -455,7 +455,7 @@ public final class VoiceClient {
                 MobCallNotice.show(Component.translatable("mobsear.problem." + key));
             } else if (state != previous && !suspended) {
                 previous = state;
-                String key = state.name().toLowerCase(java.util.Locale.ROOT);
+                String key = speech.startupTimedOut() ? "startup_timeout" : state.name().toLowerCase(java.util.Locale.ROOT);
                 Component status = Component.translatable("mobsear.speech." + key);
                 if (state == SpeechCues.Status.READY) MobCallNotice.ready(status);
                 else MobCallNotice.show(status);

@@ -83,6 +83,10 @@ public final class SpeechCues implements AutoCloseable {
         return status;
     }
 
+    public synchronized boolean startupTimedOut() {
+        return status == Status.UNAVAILABLE && session != null && session.startupExpired;
+    }
+
     public synchronized void setEnabled(boolean enabled) {
         if (!enabled) {
             Session previous = session;
@@ -150,7 +154,7 @@ public final class SpeechCues implements AutoCloseable {
             String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
             var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
                     "-WindowStyle", "Hidden", "-Command", helper)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD);
+                    .redirectError(trackedStartup ? ProcessBuilder.Redirect.PIPE : ProcessBuilder.Redirect.DISCARD);
             process.environment().put("MOBSEAR_STARTUP_STEPS", trackedStartup ? "1" : "0");
             return process.start();
         }
@@ -175,6 +179,7 @@ public final class SpeechCues implements AutoCloseable {
         private Process helper;
         private long inputRevision;
         private volatile int startupStep;
+        private volatile boolean startupExpired;
 
         // Called by the capture thread under the owner's monitor. It never waits for SAPI.
         private void submit(byte[] pcm) {
@@ -204,8 +209,9 @@ public final class SpeechCues implements AutoCloseable {
                     helper = child;
                 }
                 try (var input = new DataInputStream(child.getInputStream());
+                     var progress = new DataInputStream(child.getErrorStream());
                      var output = new DataOutputStream(child.getOutputStream())) {
-                    prepare(child, input, output, grammar);
+                    prepare(child, progress, input, output, grammar);
                     synchronized (SpeechCues.this) {
                         if (session != this) return;
                         status = Status.READY;
@@ -242,17 +248,22 @@ public final class SpeechCues implements AutoCloseable {
             }
         }
 
-        private void prepare(Process child, DataInputStream input, DataOutputStream output, SpeechGrammar grammar)
+        private void prepare(Process child, DataInputStream progress, DataInputStream input,
+                             DataOutputStream output, SpeechGrammar grammar)
                 throws IOException {
             long limit = System.nanoTime() + TimeUnit.MINUTES.toNanos(3);
             // Wait for the reader, catalog, desktop engine, loaded grammar and warmed decoder in order.
             for (int next : new int[]{81, 71, 69, 76, 82}) {
                 long remaining = Math.min(TimeUnit.SECONDS.toNanos(90), limit - System.nanoTime());
                 if (remaining <= 0) throw new IOException("Speech startup expired");
-                var timeout = TIMEOUTS.schedule(() -> child.toHandle().destroyForcibly(), remaining, TimeUnit.NANOSECONDS);
+                var timeout = TIMEOUTS.schedule(() -> {
+                    startupExpired = true;
+                    child.toHandle().destroyForcibly();
+                }, remaining, TimeUnit.NANOSECONDS);
                 try {
                     if (startupStep == 81) grammar.writeTo(output);
-                    if (input.readUnsignedByte() != next) throw new IOException("Unexpected speech startup stage");
+                    var channel = next == 82 ? input : progress;
+                    if (channel.readUnsignedByte() != next) throw new IOException("Unexpected speech startup stage");
                     startupStep = next;
                 } finally {
                     timeout.cancel(false);

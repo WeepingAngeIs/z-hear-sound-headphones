@@ -103,6 +103,7 @@
   "mobsear.speech.starting": "Starting local mob calls…",
   "mobsear.speech.ready": "Mob calls ready • Say a name while transmitting",
   "mobsear.speech.unavailable": "Mob calls need an installed English Windows speech recognizer",
+  "mobsear.speech.startup_timeout": "Local mob calls took too long to start",
   "mobsear.problem.mic": "Couldn’t open the selected microphone • Release and press your talk key to retry",
   "mobsear.problem.output": "Couldn’t open the selected audio output"
 }
