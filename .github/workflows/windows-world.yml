@@ -6,17 +6,24 @@ on:
       - '.github/workflows/windows-world.yml'
       - 'ci/windows-world/**'
       - 'ci/multiplayer/**'
+      - 'ci/cobblemon/**'
+      - 'build.gradle'
       - 'src/main/**'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   acoustic:
-    name: Windows SAPI, synthetic microphone and single-player world
+    name: Windows SAPI and in-game synthetic speech / ${{ matrix.profile }}
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [without-Cobblemon, with-Cobblemon]
     env:
       MOBSEAR_INTEGRATED: '1'
+      MOBSEAR_POKEMON_ACOUSTIC: ${{ matrix.profile == 'with-Cobblemon' && '1' || '0' }}
       GALLIUM_DRIVER: llvmpipe
       LP_NUM_THREADS: '2'
       PYTHONUTF8: '1'

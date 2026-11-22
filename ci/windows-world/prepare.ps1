@@ -10,7 +10,8 @@ $english = $voice.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.Voice
 $voice.SelectVoice($english.VoiceInfo.Name)
 $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 $index = 0
-foreach ($word in @('Enderman', 'spider', 'mob', 'mobs')) {
+$words = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { @('Pikachu', 'Eevee') } else { @('Enderman', 'spider', 'mob', 'mobs') }
+foreach ($word in $words) {
     $stream = New-Object System.IO.MemoryStream
     $voice.SetOutputToAudioStream($stream, $format)
     $voice.Speak($word)
@@ -18,7 +19,8 @@ foreach ($word in @('Enderman', 'spider', 'mob', 'mobs')) {
     $pcm = $stream.ToArray()
     $data = [byte[]]::new(640 * 3 + $pcm.Length + 640 * 28)
     [Array]::Copy($pcm, 0, $data, 640 * 3, $pcm.Length)
-    [IO.File]::WriteAllBytes((Join-Path $audioDir "$index.pcm"), $data)
+    $stem = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { $word.ToLowerInvariant() } else { [string]$index }
+    [IO.File]::WriteAllBytes((Join-Path $audioDir "$stem.pcm"), $data)
     $index++
     $stream.Dispose()
 }
@@ -34,4 +36,6 @@ if (-not $driver) { throw 'Missing x64 software renderer' }
 # GLFW loads opengl32 relative to its process executable. This job's temporary JDK is discarded.
 Copy-Item -Path (Join-Path $driver.Directory.FullName '*.dll') -Destination (Join-Path $env:JAVA_HOME 'bin')
 "MOBSEAR_SMOKE_DIR=$testRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+"MOBSEAR_POKEMON_ROOT=$testRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+"MOBSEAR_POKEMON_PCM=$audioDir" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 "MOBSEAR_SYNTH_DEVICE=$audioDir" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append

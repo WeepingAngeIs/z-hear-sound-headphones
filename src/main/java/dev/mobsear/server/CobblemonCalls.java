@@ -18,6 +18,7 @@ import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -86,7 +87,7 @@ final class CobblemonCalls {
 
     private static Path startWalk(PokemonEntity mob, Vec3 sound) {
         var nav = mob.getNavigation();
-        if (!mob.canWalk() || !mob.onGround() || mob.isInWaterOrBubble() || mob.isInLava()
+        if (!mob.canWalk() || mob.isFlying() || !mob.onGround() || mob.isInWaterOrBubble() || mob.isInLava()
                 || !nav.isDone() || mob.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)) return null;
         var from = mob.position();
         var toward = new Vec3(sound.x - from.x, 0, sound.z - from.z);
@@ -102,7 +103,8 @@ final class CobblemonCalls {
         // Keep only a short ground route. The Pokémon's own navigator handles obstacles and collision.
         for (int n = 0; n < path.getNodeCount(); n++) {
             BlockPos node = path.getNodePos(n);
-            if (Math.abs(node.getY() - from.y) > 1.25 || from.distanceToSqr(Vec3.atBottomCenterOf(node)) > 25
+            if ((path.getNode(n).type == PathType.OPEN && mob.canFly()) || Math.abs(node.getY() - from.y) > 1.25
+                    || from.distanceToSqr(Vec3.atBottomCenterOf(node)) > 25
                     || !mob.level().hasChunkAt(node) || !mob.level().getWorldBorder().isWithinBounds(node)
                     || !mob.isWithinRestriction(node) || !mob.level().getFluidState(node).isEmpty()
                     || !mob.level().getBlockState(node.below()).isFaceSturdy(mob.level(), node.below(), Direction.UP)) {
