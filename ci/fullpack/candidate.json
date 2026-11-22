@@ -7,5 +7,5 @@
   "testFeedback": true,
   "testVisit": true,
   "testSentences": true,
-  "compareFocused": true
+  "compareFocused": false
 }

@@ -211,6 +211,12 @@ def run():
                     print(line.strip()[:330], flush=True)
                 elif any(x in line for x in ("Caused by:", "Exception in thread", "Error occurred during", "Error: Could not", "LoadingFailedException")):
                     recent.append(line.strip()[:400])
+            exit_code = process.wait(timeout=10)
+            print(f"ACOUSTIC_PROCESS_EXIT code=0x{(exit_code & 0xffffffff):08x} completedTrials={len(observations)}",flush=True)
+            for crash in game.glob("hs_err_pid*.log"):
+                for line in crash.read_text(encoding="utf8",errors="replace").splitlines()[:30]:
+                    if "EXCEPTION_" in line or re.match(r"^# [CV]\s+\[",line):
+                        print("ACOUSTIC_NATIVE_EXIT",line[:220],flush=True)
             raise RuntimeError("Hosted game exited before the final evidence marker: "+" | ".join(recent))
         finally:
             stop.set()
