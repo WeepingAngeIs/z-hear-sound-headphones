@@ -282,7 +282,7 @@ try {
             if ($decision -ne 0 -or -not $guess) {
                 $output.WriteByte(0)
             } else {
-                $guess = (($guess -replace "[^\p{L}\p{M}\p{Nd}' -]",' ') -replace ' +',' ').Trim()
+                $guess = (($guess -replace '[^\p{L}\p{M}\p{Nd}'' -]',' ') -replace ' +',' ').Trim()
                 if ($guess.Length -gt 32) { $guess = $guess.Substring(0,31).TrimEnd() + [char]0x2026 }
                 $hint = [Text.Encoding]::UTF8.GetBytes($guess)
                 $output.WriteByte([byte]$hint.Length)

@@ -25,7 +25,7 @@ while ($true) {
     $null=$inputPipe.ReadBytes($length)
     if ($tests) {
         $number++
-        [IO.File]::WriteAllText((Join-Path $folder "request-$number"),$detail.ToString())
+        [IO.File]::WriteAllText((Join-Path $folder ('request-' + $number)),$detail.ToString())
         Start-Sleep -Milliseconds 600
         $code=if ($number -eq 1) {3} elseif ($number -eq 2) {5} else {0}
         $outPipe.WriteByte(0)
