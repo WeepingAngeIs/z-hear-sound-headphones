@@ -44,6 +44,8 @@ public final class PokemonCaseClient {
     private int sourceTick, lastDeerTick, deerFrames;
     private double lastDeerX;
     private net.minecraft.world.phys.Vec3 trackedCaller;
+    private boolean visitTurn, visitBeside;
+    private int visitNearTicks;
 
     public PokemonCaseClient() {
         PokemonProbe.client=this::stage;
@@ -70,6 +72,8 @@ public final class PokemonCaseClient {
         acknowledged=sent=uttered=recognized=aligned=saved=guardVerified=scopedGuardian=false;
         ticks=alignedTicks=0; capture=null;
         sourceKnown=false; trackedCaller=null;
+        visitTurn=visitBeside=false;
+        visitNearTicks=0;
         deerFrames=0; lastDeerTick=-1; lastDeerX=Double.NaN;
         if (request.stage()==PokemonProbe.FIRE) {
             var speaker=caller ? mc.player : mc.level.players().stream().filter(p->p.getGameProfile().getName().equals("PokemonCaller")).findFirst().orElse(null);
@@ -228,7 +232,18 @@ public final class PokemonCaseClient {
                         " sourceReceived="+sourceKnown+" heardRequest="+(confirmation==null ? 0 : confirmation.requestId())+
                         " head="+Math.round(entity.getYHeadRot())+" headError="+(sourceKnown ? Math.round(error) : "unknown"));
             if (c!=PokemonCase.WALKING_DEER && sourceKnown && error<=30 && ++alignedTicks>=2) aligned=true;
+            if (c.walking() && sourceKnown) {
+                var player=caller ? mc.player : mc.level.players().stream()
+                        .filter(p->p.getGameProfile().getName().equals("PokemonCaller")).findFirst().orElse(null);
+                if (player!=null) {
+                    double distance=entity.distanceTo(player);
+                    if (aligned && distance>6 && !visitTurn && capture==null) capture="turn";
+                    visitNearTicks=distance<=2.8 ? visitNearTicks+1 : 0;
+                    if (visitNearTicks>=15 && !visitBeside && capture==null) capture="beside";
+                }
+            }
         }
+        if (c.walking() && !(visitTurn && visitBeside)) return;
         if ((caller && !sent) || (c.accepts() && !aligned) || ticks<5) return;
         if (c==PokemonCase.WALKING_DEER && !saved) return;
         if (caller && expectedListener()!=null && confirmation==null) return;
@@ -335,7 +350,9 @@ public final class PokemonCaseClient {
     private void render(RenderFrameEvent.Post ignored) {
         if (capture==null) return;
         Path output=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT"),"evidence");
-        String name=(solo?"solo":"multi")+"-"+c.name().toLowerCase(java.util.Locale.ROOT)+"-"+capture+".png";
+        boolean visitFrame="turn".equals(capture) || "beside".equals(capture);
+        String view=visitFrame && !solo ? capture+"-"+(caller?"caller":"viewer") : capture;
+        String name=(solo?"solo":"multi")+"-"+c.name().toLowerCase(java.util.Locale.ROOT)+"-"+view+".png";
         try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
             if ("before".equals(capture)) {
                 // Entity tracking can precede the first actual terrain draw after teleport.
@@ -349,6 +366,9 @@ public final class PokemonCaseClient {
             }
             Files.createDirectories(output); pic.writeToFile(output.resolve(name));
         } catch (Exception ex) { throw PokemonProbe.fail("Cannot save rendered Pokémon "+name+": "+ex); }
-        capture=null; saved=true;
+        if (capture.equals("turn")) visitTurn=true;
+        else if (capture.equals("beside")) visitBeside=true;
+        else saved=true;
+        capture=null;
     }
 }

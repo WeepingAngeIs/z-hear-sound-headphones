@@ -1,7 +1,5 @@
 package dev.mobsear.server;
 
-import dev.mobsear.MobsEar;
-import java.util.function.ToIntFunction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
@@ -20,13 +18,9 @@ public final class PokemonReactions {
     }
 
     static boolean tryCall(ServerPlayer speaker, ResourceLocation species, double radius) {
-        return hear(speaker, species, radius, mob -> mob.getRandom().nextDouble() < MobsEar.wildPokemonApproachChance() ? 0 : 1);
-    }
-
-    static boolean hear(ServerPlayer speaker, ResourceLocation species, double radius, ToIntFunction<Mob> roll) {
         if (ModList.get().isLoaded("cobblemon") && species != null && Double.isFinite(radius) && radius > 0
                 && speaker.isAlive() && !speaker.isRemoved() && !speaker.isSpectator() && !speaker.isCreative()) {
-            return CobblemonCalls.hear(speaker, species, radius, roll);
+            return CobblemonCalls.hear(speaker, species, radius);
         }
         return false;
     }

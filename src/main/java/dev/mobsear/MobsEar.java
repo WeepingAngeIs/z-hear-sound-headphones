@@ -28,14 +28,11 @@ public final class MobsEar {
     private static final ModConfigSpec SERVER_CONFIG;
     private static final ModConfigSpec.IntValue radius, hordeCooldown, hordeCap;
     private static final ModConfigSpec.BooleanValue hordeEnabled;
-    private static final ModConfigSpec.DoubleValue pokemonApproachChance;
     private static final WeakHashMap<ServerPlayer, Integer> lastHordeRequest = new WeakHashMap<>();
     static {
         var config = new ModConfigSpec.Builder();
         radius = config.comment("Hearing distance in blocks for players and mob calls.")
                 .defineInRange("voiceRadius", 32, 1, 96);
-        pokemonApproachChance = config.comment("Chance that an eligible wild Cobblemon approaches after a species call. Zero keeps the glance only.")
-                .defineInRange("wildPokemonApproachChance", 0.20, 0.0, 1.0);
         hordeEnabled = config.comment("Offer voluntary stay-quiet encounters to players on this server.")
                 .define("hordeEnabled", false);
         hordeCooldown = config.comment("Minimum seconds between encounters for the same player.")
@@ -52,7 +49,8 @@ public final class MobsEar {
     public static Consumer<Packets.MobPose> mobPose = pose -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
-    public static double wildPokemonApproachChance() { return pokemonApproachChance.getAsDouble(); }
+    /** Kept for existing integrations. Every eligible species call now requests an approach. */
+    @Deprecated public static double wildPokemonApproachChance() { return 1.0; }
 
     public static HordeMode.Rules hordeRules() {
         return new HordeMode.Rules(hordeAvailable(), hordeCooldown.getAsInt() * 20, hordeCap.getAsInt());

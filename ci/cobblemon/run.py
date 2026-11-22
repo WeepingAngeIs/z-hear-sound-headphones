@@ -91,7 +91,11 @@ def run(mode):
         landed = (root/"evidence")
         expected = ["pikachu-before", "pikachu-after", "eevee-after", "lopunny-before", "lopunny-after", "look-after", "approach-after", "addon-after",
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
-        expected.extend(["walking_pikachu-after", "walking_eevee-after", "interrupted-after"])
+        expected.extend(["walking_pikachu-after", "walking_eevee-after", "walking_lopunny-after", "interrupted-after"])
+        for species in ("pikachu","eevee","lopunny"):
+            for state in ("turn","beside"):
+                for suffix in ([""] if mode=="solo" else ["-caller","-viewer"]):
+                    expected.append(f"walking_{species}-{state}{suffix}")
         if env.get("MOBSEAR_POKEMON_PACK") == "1":
             views = {"solo": "caller"} if mode == "solo" else {"speaker": "caller", "listener": "viewer"}
             for role, observer in views.items():
@@ -131,7 +135,7 @@ def run(mode):
             shutil.copytree(root/"catalogs",Path("build/pokemon-catalogs"),dirs_exist_ok=True)
         for log in root.glob("*.console"):
             for line in log.read_text(errors="replace").splitlines():
-                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_BOXTAIL_","ENTITY_NAME_CASE_PASS","ENTITY_DEER_ROUTE","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
+                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_VISIT_PASS","POKEMON_BOXTAIL_","ENTITY_NAME_CASE_PASS","ENTITY_DEER_ROUTE","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
 
 
 if __name__ == "__main__":

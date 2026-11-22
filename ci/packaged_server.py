@@ -80,7 +80,7 @@ def main():
         configs = [*folder.glob("config/mobsear-server.toml"), *folder.glob("world/serverconfig/mobsear-server.toml")]
         settings = [tomllib.loads(path.read_text()) for path in configs]
         assert any(config["voiceRadius"] == 32 and config["hordeEnabled"] is False
-                   and config["wildPokemonApproachChance"] == 0.20 for config in settings)
+                   and "wildPokemonApproachChance" not in config for config in settings)
         print(f"PACKAGED_SERVER_PASS Minecraft 1.21.1  NeoForge {version}  mobsear SHA-256 {digest}")
         if version == "21.1.249":
             stage = Path(__file__).parent / "cobblemon" / "stage.py"
