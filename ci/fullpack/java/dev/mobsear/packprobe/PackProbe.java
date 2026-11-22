@@ -8,6 +8,8 @@ import dev.mobsear.server.NearbyMics;
 import dev.mobsear.server.ServerVoice;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -35,18 +37,29 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Observes an unmodified production JAR in one genuine, disposable integrated server. */
 @Mod(value="acoustic_pack_probe", dist=Dist.CLIENT)
 public final class PackProbe {
-    record Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {}
+    record Trial(String name, int range, boolean creative, boolean hears, boolean openMic, String recording) {
+        Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {
+            this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
+        }
+    }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
-    private final Trial[] tests = earlier ? new Trial[]{
-        new Trial("Enderman",24,false,true,true), new Trial("Enderman",24,false,true,false)
-    } : new Trial[]{
+    private final Trial[] tests = trials();
+
+    private Trial[] trials() {
+        if (earlier) return new Trial[]{new Trial("Enderman",24,false,true,true), new Trial("Enderman",24,false,true,false)};
+        var cases=new ArrayList<>(List.of(
         new Trial("Enderman", 24, false, true, true),
         new Trial("Pikachu", 12, false, true, true),
         new Trial("Lopunny", 16, false, true, true),
         new Trial("Pikachu", 40, false, false, true),
         new Trial("Enderman", 24, true, false, true),
-        new Trial("Enderman", 24, false, true, false)
-    };
+        new Trial("Enderman", 24, false, true, false)));
+        if ("1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"))) {
+            cases.add(new Trial("Enderman",24,false,true,true,"enderman-alternate"));
+            cases.add(new Trial("Lopunny",16,false,true,false,"lopunny-alternate"));
+        }
+        return cases.toArray(Trial[]::new);
+    }
     static final class Observation {
         final Trial test;
         final int number, entity;
@@ -210,7 +223,17 @@ public final class PackProbe {
             if (!earlier && "1".equals(System.getenv("MOBSEAR_TRACK_STARTUP"))) {
                 int step=Boundary.startupProgress();
                 if (step!=startupStep) {
-                    System.out.println("ACOUSTIC_STARTUP_STEP "+step+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L);
+                    String phase=switch(step) {
+                        case -1 -> "inactive";
+                        case 0 -> "launching";
+                        case 81 -> "reading-catalog";
+                        case 71 -> "starting-engine";
+                        case 69 -> "loading-grammar";
+                        case 76 -> "warming-up";
+                        case 82 -> "ready";
+                        default -> throw new IllegalStateException("Unexpected startup step");
+                    };
+                    System.out.println("ACOUSTIC_STARTUP_STEP "+phase+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L);
                     startupStep=step;
                 }
             }
@@ -222,6 +245,7 @@ public final class PackProbe {
             if (active!=null && active!=desktop && active.isAlive()) {
                 desktop=active;
                 processAt=System.nanoTime();
+                System.out.println("ACOUSTIC_CHILD "+desktop.pid());
             }
             if (!state.equals(lastDecoderState)) {
                 System.out.println("ACOUSTIC_RECOGNIZER "+state+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L+" optIn="+Boundary.get(Boundary.client(),"recognition"));
@@ -251,7 +275,8 @@ public final class PackProbe {
                     else o.initialRequest=(long)Boundary.get(Boundary.client(),"lastRequestId");
                     o.startedAt=System.nanoTime();
                     o.started=true;
-                    Boundary.say(Files.readAllBytes(home.resolve("synth").resolve(o.test.name.toLowerCase(Locale.ROOT)+".pcm")));
+                    System.out.println("ACOUSTIC_PLAY sample="+o.test.recording);
+                    Boundary.say(Files.readAllBytes(home.resolve("synth").resolve(o.test.recording+".pcm")));
                     return;
                 }
                 if (earlier ? o.acceptedCue : o.confirmed) {

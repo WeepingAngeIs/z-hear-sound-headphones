@@ -86,6 +86,7 @@ def progress_snapshot(pid):
 
 
 def run():
+    from host_load import measure
     expected = "850e97492f40e7dc206dcc56decaab81c0c4bf129f063dffd90a638b2d414174"
     installed=game/"mods/mobsear-0.3.1.jar"
     assert hashlib.sha256(installed.read_bytes()).hexdigest() == expected
@@ -108,8 +109,9 @@ def run():
         installed.rename(root/installed.name)
         shutil.copy2(checked,game/"mods"/checked.name)
         print(f"ACOUSTIC_CANDIDATE canonicalBuild={build} sha256={digest}",flush=True)
-    for subject in ("enderman","pikachu","lopunny"):
-        print("ACOUSTIC_SAMPLE",subject,hashlib.sha256((root/"synth"/(subject+".pcm")).read_bytes()).hexdigest(),flush=True)
+    for file in sorted((root/"synth").glob("*.pcm")):
+        if file.stem in {"enderman","pikachu","lopunny","enderman-alternate","lopunny-alternate"}:
+            print("ACOUSTIC_SAMPLE",file.stem,hashlib.sha256(file.read_bytes()).hexdigest(),flush=True)
     probe = Path("build/pack-probe/ci-acoustic-observer.jar").resolve()
     with ZipFile(probe) as jar:
         assert all(not n.endswith(".class") or n.startswith("dev/mobsear/packprobe/") for n in jar.namelist())
@@ -118,8 +120,11 @@ def run():
     native=os.getenv("MOBSEAR_NATIVE_WORLD")=="1"
     if not native:
         seed_world()
+    light=os.getenv("MOBSEAR_LIGHT_GRAPHICS")=="1"
+    fps=10 if light else 30
+    print(f"ACOUSTIC_RENDER hostedSoftware=true fpsLimit={fps}",flush=True)
     (game/"options.txt").write_text("version:3955\nonboardAccessibility:false\npauseOnLostFocus:false\n"
-        "tutorialStep:none\nnarrator:0\nrenderDistance:5\nsimulationDistance:5\nenableVsync:false\nmaxFps:30\n"
+        f"tutorialStep:none\nnarrator:0\nrenderDistance:5\nsimulationDistance:5\nenableVsync:false\nmaxFps:{fps}\n"
         "graphicsMode:0\nsoundCategory_master:0.0\nguiScale:2\n", encoding="utf-8")
     launcher.mkdir(exist_ok=True)
     loader=mod_loader.get_mod_loader("neoforge")
@@ -129,7 +134,7 @@ def run():
     options=utils.generate_test_options()
     options.update(username="AcousticFixture",executablePath=java,gameDirectory=str(game),
                    jvmArguments=["-Xms1G","-Xmx8G","-XX:+UseG1GC","-XX:ActiveProcessorCount=4"],
-                   customResolution=True,resolutionWidth="854",resolutionHeight="480")
+                   customResolution=True,resolutionWidth="640" if light else "854",resolutionHeight="360" if light else "480")
     if not native: options["quickPlaySingleplayer"]=world
     args=command.get_minecraft_command(version,str(launcher),options)
     if not native and "--quickPlaySingleplayer" not in args:
@@ -163,15 +168,21 @@ def run():
         watcher=threading.Thread(target=monitor,daemon=True)
         watcher.start()
         observations=[]
+        helper_pid=0
         try:
             for line in process.stdout:
                 if "ACOUSTIC_" in line:
                     message=line[line.index("ACOUSTIC_"):].strip()
                     print(message[:900],flush=True)
+                    if message.startswith("ACOUSTIC_CHILD "):
+                        helper_pid=int(message.split()[1])
+                        measure(process.pid,helper_pid,"created",os.getenv("MOBSEAR_PRIORITY_CONTROL")=="1")
+                    elif helper_pid and message.startswith(("ACOUSTIC_STARTUP_STEP","ACOUSTIC_PLAY","ACOUSTIC_RESULT","ACOUSTIC_DESKTOP_EXIT")):
+                        measure(process.pid,helper_pid,message.split()[0:2][-1])
                     if message.startswith("ACOUSTIC_RESULT "):
                         observations.append(message)
                     if message.startswith("ACOUSTIC_COMPLETE "):
-                        count=2 if earlier else 6
+                        count=2 if earlier else 8 if os.environ.get("MOBSEAR_EXTRA_NAMES")=="1" else 6
                         assert len(observations)==count
                         if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
                             assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)
@@ -197,9 +208,10 @@ if __name__=="__main__":
         run()
     except BaseException:
         try:
-            if (root/"public-registry.bin").is_file() and not os.environ.get("MOBSEAR_CANDIDATE_RUN"):
+            if (root/"public-registry.bin").is_file():
                 from decoder import diagnose
-                diagnose(root,game/"mods/mobsear-0.3.1.jar")
+                mod=root/"candidate/mobsear-0.3.2.jar" if os.environ.get("MOBSEAR_CANDIDATE_RUN") else game/"mods/mobsear-0.3.1.jar"
+                diagnose(root,mod)
         finally:
             (root/"result.txt").write_text("failure",encoding="ascii")
         raise
