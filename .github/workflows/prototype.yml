@@ -29,6 +29,7 @@ jobs:
           mkdir -p dist
           cp build/libs/mobsear-0.3.6.jar dist/
           jar tf dist/mobsear-0.3.6.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
+          jar tf dist/mobsear-0.3.6.jar | grep -qx 'dev/mobsear/client/words-win-x64.zip'
           if jar tf dist/mobsear-0.3.6.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
@@ -80,6 +81,8 @@ jobs:
       - name: Prepare the pinned public English species vocabulary
         shell: powershell
         run: |
+          python ci/prepare_word_model.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/stage.py build/speech-mods
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
@@ -98,7 +101,7 @@ jobs:
           New-Item -ItemType Directory ci-classes | Out-Null
           javac --release 21 --source-path src/main/java -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          java -cp 'ci-classes;src/main/resources' dev.mobsear.client.SpeechCuesFixture --windows-speech
+          java -cp 'ci-classes;src/main/resources;build/generated/offline-speech' dev.mobsear.client.SpeechCuesFixture --windows-speech
       - name: Check late decisions and bounded worker recovery with a synthetic worker
         shell: powershell
         run: |
@@ -134,22 +137,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Compare on-device alternatives using only the generated corpus
-        if: contains(github.event.head_commit.message, '[speech comparison]')
-        shell: powershell
-        env:
-          PYTHONUTF8: '1'
-        run: |
-          $fixtures = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'public-synth-only')
-          ./ci/speech-focus/make.ps1 $fixtures.FullName
-          py -3.11 -m pip install --quiet sherpa-onnx==1.12.31 sentencepiece==0.2.1 numpy==2.2.6
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          py -3.11 ci/speech-focus/compare_engines.py $fixtures.FullName
       - name: Feed generated sentences through capture, segmentation and the Windows recognizer
         shell: powershell
         env:
           MOBSEAR_SPEECH_CATALOG: build/speech-species.tsv
         run: |
+          python ci/prepare_word_model.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/stage.py build/speech-mods
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
@@ -162,7 +156,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           javac --release 21 --source-path src/main/java -d ci-classes ci/speech-focus/FocusFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          java -cp 'ci-classes;src/main/resources' dev.mobsear.client.FocusFixture $fixture.FullName mentions
+          java -cp 'ci-classes;src/main/resources;build/generated/offline-speech' dev.mobsear.client.FocusFixture $fixture.FullName mentions
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/speech-focus/mentions.py $fixture.FullName
   focused-speech:
@@ -193,6 +187,8 @@ jobs:
         env:
           MOBSEAR_SPEECH_CATALOG: comparison-inputs/build/speech-species.tsv
         run: |
+          python ci/prepare_word_model.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $fixtureRoot = Join-Path $env:RUNNER_TEMP 'focused-speech'
           New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
           ./ci/speech-focus/make.ps1 $fixtureRoot
@@ -204,7 +200,7 @@ jobs:
             New-Item -ItemType Directory -Path $classes | Out-Null
             javac --release 21 --source-path "$sources/java" -d $classes ci/speech-focus/FocusFixture.java
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
-            java -cp "$classes;$sources/resources" dev.mobsear.client.FocusFixture $fixtureRoot $variant
+            java -cp "$classes;$sources/resources;build/generated/offline-speech" dev.mobsear.client.FocusFixture $fixtureRoot $variant
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
           python ci/speech-focus/compare.py $fixtureRoot

@@ -1,6 +1,8 @@
 package dev.mobsear.client;
 
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
+import net.minecraft.world.entity.Mob;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,5 +47,9 @@ final class CobblemonNames {
         var species = PokemonSpecies.getByIdentifier(id);
         if (species == null) return null;
         return Language.getInstance().has(species.getTranslationKey()) ? species.getTranslatedName() : Component.literal(species.getName());
+    }
+
+    static String nearbyName(Mob mob) {
+        return mob instanceof PokemonEntity entity ? entity.getPokemon().getSpecies().getName() : null;
     }
 }

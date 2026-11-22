@@ -32,6 +32,7 @@ public final class SpeechCues implements AutoCloseable {
     private final Consumer<String> entityListener;
     private final Consumer<Process> configureWorker;
     private final Path aliasFile;
+    private volatile List<String> nearbyNames = List.of();
     private SpeechGrammar.Registries catalogs;
     private Map<String, List<String>> entitySource = Map.of();
     private Session session;
@@ -101,6 +102,8 @@ public final class SpeechCues implements AutoCloseable {
 
     /** Transient local timing only. No phrase, audio or identifier is retained here. */
     public synchronized Decision lastDecision() { return lastDecision; }
+
+    void setNearbyNames(List<String> names) { nearbyNames = List.copyOf(names); }
 
     synchronized void setTesting(boolean enabled) {
         if (testing == enabled) return;
@@ -217,6 +220,9 @@ public final class SpeechCues implements AutoCloseable {
                     "-WindowStyle", "Hidden", "-Command", helper)
                     .redirectError(trackedStartup ? ProcessBuilder.Redirect.PIPE : ProcessBuilder.Redirect.DISCARD);
             process.environment().put("MOBSEAR_STARTUP_STEPS", trackedStartup ? "1" : "0");
+            process.environment().remove("MOBSEAR_LOCAL_WORD_MODEL");
+            Path localModel = OfflineWordModel.prepare();
+            if (localModel != null) process.environment().put("MOBSEAR_LOCAL_WORD_MODEL", localModel.toString());
             return process.start();
         }
     }
@@ -247,6 +253,7 @@ public final class SpeechCues implements AutoCloseable {
         private volatile boolean startupExpired;
         private volatile boolean decodeExpired;
         private final boolean recovering;
+        private List<String> sentNames = List.of();
 
         Session(boolean recovering) {
             this.recovering = recovering;
@@ -378,6 +385,14 @@ public final class SpeechCues implements AutoCloseable {
                 child.toHandle().destroyForcibly();
             }, 24, TimeUnit.SECONDS);
             try {
+                var hints = nearbyNames;
+                if (!sentNames.equals(hints)) {
+                    byte[] names = String.join("\n", hints).getBytes(StandardCharsets.US_ASCII);
+                    output.writeInt(0);
+                    output.writeInt(Integer.reverseBytes(names.length));
+                    output.write(names);
+                    sentNames = hints;
+                }
                 // A negative length requests a one-shot hint on the device-local pipe.
                 output.writeInt(Integer.reverseBytes(detail ? -clip.pcm.length : clip.pcm.length));
                 output.write(clip.pcm);

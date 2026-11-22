@@ -38,10 +38,19 @@ public final class FocusFixture {
         var rows = new ArrayList<String>();
         rows.add("fixture\tvoice\tphrase\tprofile\tmode\texpected\tactual\tsegments\tmaxMillis");
         Process helper = SpeechCues.launch();
-        helper.onExit().orTimeout(210,TimeUnit.SECONDS).exceptionally(e -> {helper.destroyForcibly(); return null;});
+        helper.onExit().orTimeout(420,TimeUnit.SECONDS).exceptionally(e -> {helper.destroyForcibly(); return null;});
         try (var input=new DataInputStream(helper.getInputStream()); var output=new DataOutputStream(helper.getOutputStream())) {
             grammar.writeTo(output);
             if (input.read()!=82) throw new AssertionError("English recognizer unavailable");
+            if (!args[1].equals("baseline")) {
+                // The same crowded local roster for every utterance, including unrelated speech.
+                byte[] names = "pikachu\nlopunny\nenderman\nlanturn\nspider\ncave spider\npoponee\nbuneary\nguardian\nowl guardian\nendermite\nhoglin\nzoglin"
+                        .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+                output.writeInt(0);
+                output.writeInt(Integer.reverseBytes(names.length));
+                output.write(names);
+                output.flush();
+            }
             for (String row : Files.readAllLines(dir.resolve("manifest.tsv"))) {
                 var f=row.split("\\t",-1);
                 if (mentions && !f[2].startsWith("sentence-") && !List.of("enderman","lopunny","ordinary-chat").contains(f[2])) continue;

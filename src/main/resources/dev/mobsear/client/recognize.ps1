@@ -64,7 +64,6 @@ try {
     $engine.LoadGrammar($background)
     Send-StartupStep 76
 
-    $lexicon = [ordered]@{}
     if ($english.Culture.Name -eq 'en-US') {
         # Verify alternate pronunciations in a separate engine so they cannot displace
         # thousands of existing registry commands or change the original engine's confidence.
@@ -112,207 +111,90 @@ try {
         }
     }
 
-    # A second grammar has one registered name between optional passages of real dictation.
-    # It is disabled during the original short-command pass and shares the same local engine.
-    $nameItems = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
-    $sentencePhones = @{}
-    foreach ($key in $lexicon.Keys) { $sentencePhones[$key] = $lexicon[$key] }
-    if ($english.Culture.Name -eq 'en-US') {
-        $sentencePhones['pikachu'] = @('p iy k ax ch uw','p ih k ax ch uw','p iy k aa ch uw','p iy k ah ch uw')
-    }
-    $overlapping = @{}
-    foreach ($full in $aliases.Keys) {
-        $parts = $full.Split(' ')
-        for ($n=1; $n -lt $parts.Count; $n++) {
-            foreach ($short in @(($parts[0..($n-1)] -join ' '), ($parts[$n..($parts.Count-1)] -join ' '))) {
-                if ($aliases.ContainsKey($short) -and $aliases[$short] -ne $aliases[$full]) { $overlapping[$short]=$true }
-            }
-        }
-    }
+    $modelDir = $env:MOBSEAR_LOCAL_WORD_MODEL
+    $nearNames = @()
+    $compounds = @{}
     foreach ($label in $aliases.Keys) {
-        if ($aliases[$label] -eq 0 -or $wordBreaks.ContainsKey($label)) { continue }
-        $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($label)
-        $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsNameValueTag]::new('mob', $label))
-        $nameItems.Add($item)
-        if ($sentencePhones.ContainsKey($label)) {
-            foreach ($phones in $sentencePhones[$label]) {
-                $token = [System.Speech.Recognition.SrgsGrammar.SrgsToken]::new($label)
-                $token.Pronunciation = $phones
-                $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new()
-                $item.Add($token)
-                $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsNameValueTag]::new('mob', $label))
-                $nameItems.Add($item)
+        $tokens = $label.Split(' ')
+        for ($i=1; $i -lt $tokens.Count; $i++) {
+            foreach ($part in @(($tokens[0..($i-1)] -join ' '), ($tokens[$i..($tokens.Count-1)] -join ' '))) {
+                if ($aliases.ContainsKey($part) -and $aliases[$part] -ne $aliases[$label]) { $compounds[$part]=$true }
             }
         }
     }
-    $contextRule = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('Mention')
-    $prefixWords = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new(0,1)
-    $prefixWords.Add([System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::Dictation)
-    $suffixWords = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new(0,1)
-    $suffixWords.Add([System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::Dictation)
-    $contextRule.Add($prefixWords)
-    $contextRule.Add($nameItems)
-    $contextRule.Add($suffixWords)
-    $contextDocument = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($contextRule)
-    $contextDocument.Culture = $english.Culture
-    $contextDocument.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
-    $sentence = [System.Speech.Recognition.Grammar]::new($contextDocument)
-    $sentence.Name = 'name in speech'
-    $sentence.Enabled = $false
-    $engine.LoadGrammar($sentence)
 
-    $spotRule = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('WordSpot')
-    $free = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new(0,1)
-    $free.Add([System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::Garbage)
-    $spotRule.Add($free)
-    $spotRule.Add($nameItems)
-    $spotRule.Add($free)
-    $spotDoc = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($spotRule)
-    $spotDoc.Culture = $english.Culture
-    $spotDoc.PhoneticAlphabet = $contextDocument.PhoneticAlphabet
-    $spot = [System.Speech.Recognition.Grammar]::new($spotDoc)
-    $spot.Name = 'word spot'
-    $spot.Enabled = $false
-    $engine.LoadGrammar($spot)
-    try { $proposalThreshold = [int]$engine.QueryRecognizerSetting('CFGConfidenceRejectionThreshold') }
-    catch { $proposalThreshold = $null }
-
-    function Test-CompoundFragment($label, $words, $length) {
-        return $overlapping.ContainsKey($label) -and $words.Count -le $length+2 -and
-            $words[0].LexicalForm -notin @('a','an','the','that','this','my','your','one','look','there','there''s','where','hey','call','see')
-    }
-
-    function Read-WholeName($plain) {
-        $w = $plain.Words
-        for ($i=0; $i -lt $w.Count; $i++) {
-            $joined = ''
-            $best = 0
-            for ($j=$i; $j -lt [Math]::Min($w.Count, $i+8); $j++) {
-                if ($w[$j].Confidence -lt 0.68) { break }
-                $joined = ($joined+' '+$w[$j].LexicalForm.ToLowerInvariant()).TrimStart()
-                if (-not $aliases.ContainsKey($joined)) { continue }
-                if ($wordBreaks.ContainsKey($joined) -or $confirm.ContainsKey($joined)) { continue }
-                if ($i -eq 0 -and $j -eq $w.Count-1) { continue }
-                if (Test-CompoundFragment $joined $w ($j-$i+1)) { continue }
-                $best = $aliases[$joined]
+    function Find-WholeName([string]$text, $plainWords) {
+        $tokens = @([regex]::Matches($text.ToLowerInvariant(), "[a-z]+(?:'[a-z]+)?") | ForEach-Object { $_.Value })
+        if ($tokens.Count -lt 2 -or $tokens.Count -gt 80) { return 0 }
+        for ($i=0; $i -lt $tokens.Count; $i++) {
+            for ($size=[Math]::Min(8,$tokens.Count-$i); $size -gt 0; $size--) {
+                $label = $tokens[$i..($i+$size-1)] -join ' '
+                if (-not $aliases.ContainsKey($label) -or $aliases[$label] -eq 0 -or
+                        $wordBreaks.ContainsKey($label) -or $confirm.ContainsKey($label)) { continue }
+                # Leave bare labels and incomplete longer names to the established command recognizer.
+                if ($tokens.Count -eq $size -or ($compounds.ContainsKey($label) -and $tokens.Count -le $size+3 -and
+                        -not ($tokens -match '^(is|was|were|see|saw|here|there|near|over|ran|went|came|found|watch|beside)$'))) { continue }
+                if ($size -eq 1) {
+                    $close = $false
+                    foreach ($original in $plainWords) {
+                        if ($original -eq $label -or $original.Length -lt 3) { continue }
+                        if ($original.StartsWith($label) -and $original.Length -gt $label.Length) { $close=$true; break }
+                        if ($original.Length -ne $label.Length) { continue }
+                        $changes=0
+                        for ($j=0; $j -lt $label.Length; $j++) { if ($original[$j] -ne $label[$j]) { $changes++ } }
+                        # An independently recognized ordinary word such as lantern beats a prompted homophone.
+                        if ($changes -le 1 -and -not $aliases.ContainsKey($original)) { $close=$true; break }
+                    }
+                    if ($close) { continue }
+                }
+                return $aliases[$label]
             }
-            if ($best -gt 0) { return $best }
         }
         return 0
     }
 
-    function Find-Mention($plain, [byte[]]$samples, $activeGrammar) {
+    function Read-ConnectedSpeech([byte[]]$samples, $plain) {
         if ($null -eq $plain -or $plain.Words.Count -lt 2) { return 0 }
-        $audio = [IO.MemoryStream]::new($samples, $false)
-        $engine.SetInputToNull()
+        $original = @($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() })
+        if ($null -eq $modelDir -or -not $modelDir) { return 0 }
+        # Hints come from registered local creatures and an existing pronunciation lexicon. Dictation remains open.
+        $hints = @(($nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
+            $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
+        } | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })
+        $prompt = (@('Minecraft','Cobblemon') + $hints) -join ', '
+        $start = [Diagnostics.ProcessStartInfo]::new()
+        $start.FileName = [IO.Path]::Combine($modelDir,'whisper-cli.exe')
+        $start.WorkingDirectory = $modelDir
+        $start.Arguments = '-m tiny.en.bin -f - -t 3 -nt -np -l en -bs 1 -bo 1 -nf -ac 512 --prompt "'+$prompt+'."'
+        $start.UseShellExecute = $false
+        $start.CreateNoWindow = $true
+        $start.RedirectStandardInput = $start.RedirectStandardOutput = $start.RedirectStandardError = $true
+        $child = [Diagnostics.Process]::new()
+        $child.StartInfo = $start
         try {
-            $activeGrammar.Enabled = $true
-            $calls.Enabled = $false
-            $background.Enabled = $false
-            if ($null -ne $proposalThreshold) { $engine.UpdateRecognizerSetting('CFGConfidenceRejectionThreshold',0) }
-            $engine.SetInputToAudioStream($audio,$format)
-            $mention = $engine.Recognize()
-            if ($null -ne $proposalThreshold) { $engine.UpdateRecognizerSetting('CFGConfidenceRejectionThreshold',$proposalThreshold) }
-            if ($null -eq $mention -or $mention.Grammar -ne $activeGrammar -or
-                    -not $mention.Semantics.ContainsKey('mob')) { return 0 }
-            $label = [string]$mention.Semantics['mob'].Value
-            if (-not $aliases.ContainsKey($label)) { return 0 }
-            $units = $label.Split(' ')
-            $mw = $mention.Words
-            if ($mw.Count -lt $units.Length) { return 0 }
-            # A short possible compound such as Owl Guardian cannot fall through to the base Guardian.
-            if (Test-CompoundFragment $label $plain.Words $units.Length) { return 0 }
-            for ($i=0; $i -le $mw.Count-$units.Length; $i++) {
-                $last = $i+$units.Length-1
-                $valid = $true
-                for ($j=0; $j -lt $units.Length; $j++) {
-                    if ($mw[$i+$j].LexicalForm -ne $units[$j] -or $mw[$i+$j].Confidence -lt 0.60) { $valid=$false; break }
-                }
-                if (-not $valid) { continue }
-                # Check the name's edges against an unconstrained interpretation of the same sound.
-                # This prevents taking 'mob' from inside 'mobility' or 'spider' from 'spidery'.
-                $span = $mention.GetAudioForWordRange($mw[$i],$mw[$last])
-                $left = ($mention.Audio.AudioPosition+$span.AudioPosition).TotalMilliseconds
-                $right = $left + $span.Duration.TotalMilliseconds
-                $plainWords = $plain.Words
-                $startEdge = $endEdge = $false
-                $sameWords = [Collections.Generic.List[string]]::new()
-                $outside = 0
-                for ($k=0; $k -lt $plainWords.Count; $k++) {
-                    $word = $plain.GetAudioForWordRange($plainWords[$k],$plainWords[$k])
-                    $absolute = ($plain.Audio.AudioPosition+$word.AudioPosition).TotalMilliseconds
-                    if ([Math]::Abs($absolute-$left) -le 75) { $startEdge=$true }
-                    if ([Math]::Abs($absolute+$word.Duration.TotalMilliseconds-$right) -le 75) { $endEdge=$true }
-                    $middle = $absolute + $word.Duration.TotalMilliseconds / 2
-                    if ($middle -ge $left -and $middle -le $right) { $sameWords.Add($plainWords[$k].LexicalForm.ToLowerInvariant()) }
-                    elseif ($plainWords[$k].LexicalForm -notin @('call','hey')) { $outside++ }
-                }
-                if (-not ($startEdge -and $endEdge) -or $outside -eq 0) { continue }
-                $heard = $sameWords -join ' '
-                $target = $aliases[$label]
-                if ($aliases.ContainsKey($heard)) {
-                    if ($aliases[$heard] -eq $target) { return $target }
-                    continue
-                }
-                if ($sameWords.Count -eq 1 -and $units.Length -eq 1) {
-                    # Prefer a complete ordinary word over a prefix or near-identical homophone
-                    # (for example, mobility/mob and lantern/Lanturn).
-                    if ($heard.Contains($label) -or $label.Contains($heard)) { continue }
-                    if ($heard.Length -eq $label.Length) {
-                        $different = 0
-                        for ($n=0; $n -lt $heard.Length; $n++) { if ($heard[$n] -ne $label[$n]) { $different++ } }
-                        if ($different -le 1) { continue }
-                    }
-                }
-                # A made-up name may be absent from dictation. Re-recognize its whole-word audio
-                # with the short command (or pronunciation) grammar competing against ordinary speech.
-                if ($confirm.ContainsKey($label)) { continue }
-                $wordAudio = [IO.MemoryStream]::new()
-                try {
-                    $silence = [byte[]]::new(6400)
-                    $wordAudio.Write($silence,0,$silence.Length)
-                    $from = [Math]::Max(0, [int][Math]::Floor(($left-35)*16)*2)
-                    $to = [Math]::Min($samples.Length, [int][Math]::Ceiling(($right+35)*16)*2)
-                    if ($to -le $from) { continue }
-                    $wordAudio.Write($samples,$from,$to-$from)
-                    for ($n=0; $n -lt 3; $n++) { $wordAudio.Write($silence,0,$silence.Length) }
-                    $wordAudio.Position=0
-                    $engine.SetInputToNull()
-                    $activeGrammar.Enabled=$false
-                    $calls.Enabled=$true
-                    $background.Enabled=$true
-                    $shortName = if ($label -in @('endermen','ender man','ender men')) { 'enderman' } else { $label }
-                    $verifyEngine = if ($null -ne $pronouncer -and $lexicon.Contains($shortName)) { $pronouncer } else { $engine }
-                    try {
-                        $verifyEngine.SetInputToAudioStream($wordAudio,$format)
-                        $isolated = $verifyEngine.Recognize()
-                        if ($null -ne $isolated -and $aliases.ContainsKey($isolated.Text) -and
-                                $aliases[$isolated.Text] -eq $target -and $isolated.Confidence -ge 0.58) {
-                            return $target
-                        }
-                        $verifyEngine.SetInputToNull()
-                        if ($verifyEngine -eq $pronouncer) { $pronunciationBackground.Enabled=$false }
-                        else { $background.Enabled=$false }
-                        $wordAudio.Position=0
-                        $verifyEngine.SetInputToAudioStream($wordAudio,$format)
-                        $closed = $verifyEngine.Recognize()
-                        if ($null -ne $closed -and $aliases.ContainsKey($closed.Text) -and
-                                $aliases[$closed.Text] -eq $target -and $closed.Confidence -ge 0.90) {
-                            return $target
-                        }
-                    } finally {
-                        $verifyEngine.SetInputToNull()
-                        if ($null -ne $pronouncer) { $pronunciationBackground.Enabled=$true }
-                    }
-                } finally { $wordAudio.Dispose() }
-            }
+            if (-not $child.Start()) { return 0 }
+            $stdout = $child.StandardOutput.ReadToEndAsync()
+            $stderr = $child.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+            # Only the WAV header and memory-resident capture are piped to the decoder.
+            $pipe = [IO.BinaryWriter]::new($child.StandardInput.BaseStream)
+            try {
+                $pipe.Write([Text.Encoding]::ASCII.GetBytes('RIFF'))
+                $pipe.Write([int](36+$samples.Length))
+                $pipe.Write([Text.Encoding]::ASCII.GetBytes('WAVEfmt '))
+                $pipe.Write([int]16); $pipe.Write([int16]1); $pipe.Write([int16]1)
+                $pipe.Write([int]16000); $pipe.Write([int]32000); $pipe.Write([int16]2); $pipe.Write([int16]16)
+                $pipe.Write([Text.Encoding]::ASCII.GetBytes('data'))
+                $pipe.Write([int]$samples.Length); $pipe.Write($samples)
+            } finally { $pipe.Dispose() }
+            if (-not $child.WaitForExit(3200)) { $child.Kill(); return 0 }
+            if ($child.ExitCode -ne 0) { return 0 }
+            $text = $stdout.GetAwaiter().GetResult()
+            if ($text.Length -le 500) { return Find-WholeName $text $original }
+            return 0
+        } catch {
             return 0
         } finally {
-            $engine.SetInputToNull()
-            $activeGrammar.Enabled=$false
-            $calls.Enabled=$true
-            $background.Enabled=$true
-            $audio.Dispose()
+            $child.Dispose()
         }
     }
 
@@ -330,6 +212,14 @@ try {
     while ($true) {
         try { $length = $reader.ReadInt32() } catch [System.IO.EndOfStreamException] { break }
         if ($length -lt -256000) { exit 3 }
+        if ($length -eq 0) {
+            $count = $reader.ReadInt32()
+            if ($count -lt 0 -or $count -gt 2048) { exit 3 }
+            $data = $reader.ReadBytes($count)
+            if ($data.Length -ne $count) { exit 3 }
+            $nearNames = @([Text.Encoding]::ASCII.GetString($data).Split([char]10) | Where-Object { $aliases.ContainsKey($_) } | Select-Object -First 24)
+            continue
+        }
         $detail = $length -lt 0
         if ($detail) { $length = -$length }
         if ($length -le 0 -or $length -gt 256000 -or $length % 2 -ne 0) { exit 3 }
@@ -475,21 +365,13 @@ try {
                     $match = $null
                 }
             }
-            if ($decision -eq 0 -and $null -ne $plain) {
-                $decision = Read-WholeName $plain
-                if ($decision -eq 0) {
-                    foreach ($contextGrammar in @($sentence,$spot)) {
-                        $decision = Find-Mention $plain $pcm $contextGrammar
-                        if ($decision -ne 0) { break }
-                    }
-                }
-            }
+            if ($decision -eq 0) { $decision = Read-ConnectedSpeech $pcm $plain }
         } finally {
             $engine.SetInputToNull()
             $stream.Dispose()
+            $plain = $null
             [Array]::Clear($pcm, 0, $length)
             $result = $null
-            $plain = $null
         }
         $output.WriteByte([byte]($decision -shr 8))
         $output.WriteByte([byte]($decision -band 255))

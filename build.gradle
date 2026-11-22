@@ -7,6 +7,16 @@ group = 'dev.mobsear'
 version = '0.3.6'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+def speechResources = layout.buildDirectory.dir('generated/offline-speech')
+def wordModel = tasks.register('prepareOfflineWordModel', Exec) {
+    inputs.file('ci/prepare_word_model.py')
+    outputs.file(speechResources.map { it.file('dev/mobsear/client/words-win-x64.zip') })
+    commandLine(System.getProperty('os.name').startsWith('Windows') ? 'python' : 'python3',
+            'ci/prepare_word_model.py', speechResources.get().asFile)
+}
+sourceSets.main.resources.srcDir(speechResources)
+tasks.named('processResources') { dependsOn wordModel }
+
 repositories {
     mavenCentral()
     exclusiveContent {

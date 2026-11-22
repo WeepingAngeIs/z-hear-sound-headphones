@@ -327,6 +327,7 @@ public final class VoiceClient {
         CobblemonNames names;
         final EntityCallNames mobNames = new EntityCallNames();
         Map<String, List<String>> knownSpecies = Map.of(), knownEntities = Map.of();
+        private long nextHints;
         final VoiceAudio audio;
         volatile boolean held;
         boolean automatic;
@@ -415,6 +416,23 @@ public final class VoiceClient {
         }
 
         void refreshCatalog(ClientPacketListener link) {
+            var mc = Minecraft.getInstance();
+            long now = System.nanoTime();
+            if (now >= nextHints && mc.player != null && mc.level != null) {
+                nextHints = now + 500_000_000L;
+                var labels = new java.util.LinkedHashSet<String>();
+                var mobs = mc.level.getEntitiesOfClass(net.minecraft.world.entity.Mob.class,
+                        mc.player.getBoundingBox().inflate(64), mob -> mob.distanceToSqr(mc.player) <= 64 * 64);
+                mobs.sort(java.util.Comparator.comparingDouble(mob -> mob.distanceToSqr(mc.player)));
+                for (var mob : mobs) {
+                    String name = names == null ? null : CobblemonNames.nearbyName(mob);
+                    if (name == null) name = mob.getType().getDescription().getString();
+                    name = SpeechGrammar.spokenName(name, true);
+                    if (!name.isEmpty()) labels.add(name);
+                    if (labels.size() >= 20) break;
+                }
+                speech.setNearbyNames(List.copyOf(labels));
+            }
             Map<String, List<String>> species = Map.of();
             if (link.hasChannel(Packets.SpeciesCall.TYPE) && ModList.get().isLoaded("cobblemon")) {
                 if (names == null) names = new CobblemonNames();

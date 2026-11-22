@@ -118,7 +118,7 @@ final class SpeechGrammar {
         }
     }
 
-    private static String spokenName(String label, boolean entity) {
+    static String spokenName(String label, boolean entity) {
         if (label == null || label.length() > (entity ? 80 : 64)) return "";
         String plain = MARKS.matcher(Normalizer.normalize(label, Normalizer.Form.NFD)).replaceAll("")
                 .toLowerCase(Locale.ROOT).replace("♀", " female ").replace("♂", " male ")
