@@ -87,7 +87,9 @@ public final class PackProbe {
         final long frameBefore, cueBefore;
         final boolean visitTrial;
         CalledPokemonVisit visit; // Server-thread observer, after native navigation becomes available.
-        int arrangeTicks, lastWanderTick;
+        int arrangeTicks, lastWanderTick, activeSamples;
+        volatile double serverBestAngle=180;
+        volatile String lastNativeState="";
         volatile boolean primed, beside, finished;
         boolean besideScreenshot;
         volatile boolean wireAudio, acceptedCue, reaction, targeted;
@@ -179,9 +181,10 @@ public final class PackProbe {
                         level.setBlockAndUpdate(new BlockPos(-5,y,z), Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
                 }
                 var t = tests[index];
+                // Keep ordinary Pokémon calls in their waking daytime and Endermen in the same night fixture.
+                level.setDayTime(t.name.equals("Enderman") ? 18000 : 1000);
                 boolean visitTrial=testVisit && index==tests.length-1;
                 if (visitTrial) {
-                    level.setDayTime(1000);
                     for (int x=-3; x<=19; x++) for (int z=-2; z<=25; z++) {
                         level.setBlockAndUpdate(new BlockPos(x,159,z),Blocks.SEA_LANTERN.defaultBlockState());
                         for (int y=160; y<=164; y++) {
@@ -213,16 +216,26 @@ public final class PackProbe {
             int tick = e.getServer().getTickCount();
             boolean active = responding(o.subject);
             if (o.visitTrial && !o.finished) {
+                var pokemon=(PokemonEntity)o.subject;
+                if (!o.started && !o.primed) {
+                    o.arrangeTicks++;
+                    if (o.arrangeTicks%40==0) {
+                        // A wild Pokémon may replace the initially arranged idle route before moving.
+                        // Arrange a new walk only before sending any audio. Leave all post-call AI alone.
+                        System.out.println("ACOUSTIC_PRE_CALL_WALK tick="+o.arrangeTicks+" "+nativeState(pokemon));
+                        o.visit=null;
+                    }
+                    if (o.arrangeTicks>360) throw new IllegalStateException("No physical pre-call wander: "+nativeState(pokemon));
+                }
                 // A freshly spawned entity has not taken its first ground/navigation tick.
                 if (o.visit==null) {
-                    var pokemon=(PokemonEntity)o.subject;
-                    if (++o.arrangeTicks>200) throw new IllegalStateException("No walkable pre-call route on the trial floor");
-                    if (o.arrangeTicks>=12 && o.arrangeTicks%4==0 && pokemon.onGround()) {
+                    if (o.arrangeTicks>=12 && o.arrangeTicks%4==0 && pokemon.onGround() && !pokemon.isSleeping() && !pokemon.isBusy()) {
                         for (int length : new int[]{16,12,8}) {
-                            var path=pokemon.getNavigation().createPath(pokemon.blockPosition().offset(0,0,length),0);
+                            int direction=pokemon.getZ()>8 ? -length : length;
+                            var path=pokemon.getNavigation().createPath(pokemon.blockPosition().offset(0,0,direction),0);
                             if (path!=null && path.canReach()) {
-                                o.visit=new CalledPokemonVisit(pokemon,p,length);
-                                System.out.println("ACOUSTIC_WANDER_START route="+length+" grounded=true");
+                                o.visit=new CalledPokemonVisit(pokemon,p,direction);
+                                System.out.println("ACOUSTIC_WANDER_START route="+direction+" grounded=true");
                                 break;
                             }
                         }
@@ -234,8 +247,6 @@ public final class PackProbe {
                         o.lastWanderTick=tick;
                         o.primed=true;
                     }
-                    if (!o.primed && ++o.arrangeTicks>200)
-                        throw new IllegalStateException("Lopunny never began the pre-call wander");
                 } else {
                     if (!o.reaction && tick-o.lastWanderTick>2)
                         throw new IllegalStateException("Lopunny was not still wandering when it heard its name");
@@ -254,8 +265,26 @@ public final class PackProbe {
                 }
                 o.reaction |= active;
                 o.targeted |= o.subject.getTarget()!=null;
+                if (active) {
+                    o.activeSamples++;
+                    double yaw=Math.toDegrees(Math.atan2(p.getZ()-o.subject.getZ(),p.getX()-o.subject.getX()))-90;
+                    o.serverBestAngle=Math.min(o.serverBestAngle,Math.abs(Mth.wrapDegrees(o.subject.getYHeadRot()-yaw)));
+                }
+                if (o.subject instanceof PokemonEntity pokemon && (active && o.activeSamples==1 || tick%10==0))
+                    o.lastNativeState=nativeState(pokemon);
             }
         } catch (Exception ex) { fail(ex); }
+    }
+
+    private static String nativeState(PokemonEntity pokemon) {
+        var brain=pokemon.getBrain();
+        var nav=pokemon.getNavigation();
+        return "position="+pokemon.blockPosition()+" tick="+pokemon.tickCount+" onGround="+pokemon.onGround()+
+                " sleeping="+pokemon.isSleeping()+" busy="+pokemon.isBusy()+" noAI="+pokemon.isNoAi()+
+                " activity="+brain.getActiveNonCoreActivity().map(Object::toString).orElse("none")+
+                " hurt="+(pokemon.getLastHurtByMob()!=null)+" aggressive="+pokemon.isAggressive()+
+                " navDone="+nav.isDone()+" route="+(nav.getPath()==null ? "none" : nav.getPath().getTarget())+
+                " walkMemory="+brain.hasMemoryValue(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
     }
 
     private void clientTick(ClientTickEvent.Post e) {
@@ -439,6 +468,8 @@ public final class PackProbe {
                     && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot))) && completedVisit;
             if (o.visitTrial) System.out.println("ACOUSTIC_POKEMON_VISIT audio="+o.wireAudio+" recognized="+o.recognized+
                     " dispatched="+o.dispatched+" wandering="+o.primed+" fullVisit="+o.finished+" besideFrame="+o.besideScreenshot);
+            if (!success && !o.lastNativeState.isEmpty()) System.out.println("ACOUSTIC_NATIVE_OBSERVATION trial="+o.number+
+                    " activeSamples="+o.activeSamples+" bestServerAngle="+Math.round(o.serverBestAngle)+" "+o.lastNativeState);
             if (testFeedback) {
                 boolean detailOk=!o.test.detail ? !o.privateText : switch(o.test.recording) {
                     case "hold-on" -> o.guess;
