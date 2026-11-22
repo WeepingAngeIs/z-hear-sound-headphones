@@ -344,11 +344,11 @@ final class PokemonCaseServer {
         if (c!=PokemonCase.COOLDOWN_PRIME && c!=PokemonCase.COOLDOWN_HELD) subject.discard();
         if (ownedStore!=null) { ownedStore.remove(owned); ownedStore=null; owned=null; }
         boolean acoustic="1".equals(System.getenv("MOBSEAR_POKEMON_ACOUSTIC"));
-        if (acoustic && c==PokemonCase.EEVEE && "1".equals(System.getenv("MOBSEAR_OWL_ACOUSTIC"))) {
+        if (acoustic && c==PokemonCase.LOPUNNY && "1".equals(System.getenv("MOBSEAR_OWL_ACOUSTIC"))) {
             index=PokemonCase.OWL_GUARDIAN.ordinal();
             prepare(); return;
         }
-        int limit=acoustic ? 2
+        int limit=acoustic ? PokemonCase.LOPUNNY.ordinal()+1
                 : "1".equals(System.getenv("MOBSEAR_POKEMON_PACK")) ? PokemonCase.values().length : PokemonCase.PACK_FORM.ordinal();
         if (++index<limit) prepare();
         else {

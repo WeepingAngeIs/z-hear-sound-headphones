@@ -83,7 +83,7 @@ def run(mode):
             start("listener")
             wait("server", "MOBSEAR_POKEMON_MULTI_PASS", 660)
         landed = (root/"evidence")
-        expected = ["pikachu-before", "pikachu-after", "eevee-after", "look-after", "approach-after", "addon-after",
+        expected = ["pikachu-before", "pikachu-after", "eevee-after", "lopunny-before", "lopunny-after", "look-after", "approach-after", "addon-after",
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
         expected.extend(["walking_pikachu-after", "walking_eevee-after", "interrupted-after"])
         if env.get("MOBSEAR_POKEMON_PACK") == "1":

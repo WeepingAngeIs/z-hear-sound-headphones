@@ -10,7 +10,7 @@ $english = $voice.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.Voice
 $voice.SelectVoice($english.VoiceInfo.Name)
 $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 $index = 0
-$words = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { @('Pikachu', 'Eevee') } else { @('Enderman', 'spider', 'mob', 'mobs') }
+$words = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { @('Pikachu', 'Eevee', 'Lopunny') } else { @('Enderman', 'spider', 'mob', 'mobs') }
 if ($env:MOBSEAR_OWL_ACOUSTIC -eq '1') { $words += @('oo woo guardian', 'call oo woo guardian') }
 foreach ($word in $words) {
     $stream = New-Object System.IO.MemoryStream

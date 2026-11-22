@@ -3,7 +3,7 @@ package dev.mobsear.server;
 import net.minecraft.resources.ResourceLocation;
 
 enum PokemonCase {
-    PIKACHU("pikachu", 12), EEVEE("eevee", 24), LOOK("pikachu", 14), APPROACH("eevee", 10),
+    PIKACHU("pikachu", 12), EEVEE("eevee", 24), LOPUNNY("lopunny", 16), LOOK("pikachu", 14), APPROACH("eevee", 10),
     ADDON("acideon", 18), NAMESPACE("hearfixture:chimekin", 18), NEAR_EDGE("pikachu", 31),
     FAR("eevee", 36), WRONG("eevee", 15), OWNER("pikachu", 12), OFFLINE_OWNER("eevee", 12),
     BATTLE("pikachu", 12), CAPTURE("eevee", 12), PASSIVE("pikachu", 12),
@@ -25,7 +25,7 @@ enum PokemonCase {
     }
     boolean accepts() {
         return switch (this) {
-            case PIKACHU, EEVEE, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
+            case PIKACHU, EEVEE, LOPUNNY, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
                     WALKING_PIKACHU, WALKING_EEVEE, INTERRUPTED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK,
                     NAMED_COW, NAMED_HOSTILE, FOREST_DEER, OWL_GUARDIAN, VELVET_IDLE, DUNGEON_MIMIC -> true;
             case FAR, WRONG, OWNER, OFFLINE_OWNER, BATTLE, CAPTURE, PASSIVE, COOLDOWN_HELD, OTHER_NAME, NAMED_FAR,
@@ -36,14 +36,14 @@ enum PokemonCase {
     boolean ordinaryEntity() { return ordinal()>=NAMED_COW.ordinal(); }
     boolean mimicCase() { return this==DUNGEON_MIMIC || this==ORDINARY_ZOMBIE || this==NAMED_ONLY_ZOMBIE; }
     boolean guardPicture() { return this==BOSS_CHARGING || this==NAGA_COMBAT || this==OWL_OFFENDER || this==VELVET_GUARD; }
-    boolean beforePicture() { return this==PIKACHU || this==NAMED_COW || this==FOREST_DEER || this==OWL_GUARDIAN || this==VELVET_IDLE || this==DUNGEON_MIMIC; }
+    boolean beforePicture() { return this==PIKACHU || this==LOPUNNY || this==NAMED_COW || this==FOREST_DEER || this==OWL_GUARDIAN || this==VELVET_IDLE || this==DUNGEON_MIMIC; }
     boolean walking() { return this==WALKING_PIKACHU || this==WALKING_EEVEE; }
     boolean controlled() { return this == LOOK || this == APPROACH || this == BLOCKED; }
     boolean reusesSubject() { return this == COOLDOWN_HELD || this == COOLDOWN_EXPIRED; }
     static PokemonCase[] requiredRegistryEntries() {
         return "1".equals(System.getenv("MOBSEAR_POKEMON_PACK"))
-                ? new PokemonCase[]{PIKACHU,ADDON,NAMESPACE,PACK_FORM,PACK_CUSTOM,GLOBAL_PACK}
-                : new PokemonCase[]{PIKACHU,ADDON,NAMESPACE};
+                ? new PokemonCase[]{PIKACHU,LOPUNNY,ADDON,NAMESPACE,PACK_FORM,PACK_CUSTOM,GLOBAL_PACK}
+                : new PokemonCase[]{PIKACHU,LOPUNNY,ADDON,NAMESPACE};
     }
     void checkTrackedForm(com.cobblemon.mod.common.entity.pokemon.PokemonEntity entity, String observer) {
         if (this!=PACK_FORM) return;

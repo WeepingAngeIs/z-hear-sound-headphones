@@ -85,6 +85,32 @@ jobs:
           python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/public_species.py --vocabulary build/speech-species.tsv
+      - name: Fetch the verified 0.3.0 speech implementation for an identical-input comparison
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: c1e3a51d3c41f4e0d9a7c82cfc71ad5bb7c9fe10
+          path: speech-baseline
+          persist-credentials: false
+      - name: Compare spoken Enderman and Lopunny on the same generated voices
+        shell: powershell
+        env:
+          MOBSEAR_SPEECH_CATALOG: build/speech-species.tsv
+        run: |
+          $fixtureRoot = Join-Path $env:RUNNER_TEMP 'focused-speech'
+          New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+          ./ci/speech-focus/make.ps1 $fixtureRoot
+          python ci/speech-focus/corpus.py $fixtureRoot
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          foreach ($variant in @('baseline','candidate')) {
+            $sources = if ($variant -eq 'baseline') { 'speech-baseline/src/main' } else { 'src/main' }
+            $classes = Join-Path $fixtureRoot $variant
+            New-Item -ItemType Directory -Path $classes | Out-Null
+            javac --release 21 --source-path "$sources/java" -d $classes ci/speech-focus/FocusFixture.java
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            java -cp "$classes;$sources/resources" dev.mobsear.client.FocusFixture $fixtureRoot $variant
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          python ci/speech-focus/compare.py $fixtureRoot
       - name: Exercise the desktop recognizer in memory
         shell: powershell
         env:
