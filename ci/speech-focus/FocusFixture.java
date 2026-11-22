@@ -44,11 +44,11 @@ public final class FocusFixture {
             if (input.read()!=82) throw new AssertionError("English recognizer unavailable");
             if (!args[1].equals("baseline")) {
                 // The same crowded local roster for every utterance, including unrelated speech.
-                byte[] names = "pikachu\nlopunny\nenderman\nlanturn\nspider\ncave spider\npoponee\nbuneary\nguardian\nowl guardian\nendermite\nhoglin\nzoglin"
+                byte[] nearbyLabels = "pikachu\nlopunny\nenderman\nlanturn\nspider\ncave spider\npoponee\nbuneary\nguardian\nowl guardian\nendermite\nhoglin\nzoglin"
                         .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
                 output.writeInt(0);
-                output.writeInt(Integer.reverseBytes(names.length));
-                output.write(names);
+                output.writeInt(Integer.reverseBytes(nearbyLabels.length));
+                output.write(nearbyLabels);
                 output.flush();
             }
             for (String row : Files.readAllLines(dir.resolve("manifest.tsv"))) {

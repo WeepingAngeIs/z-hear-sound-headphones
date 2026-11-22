@@ -124,7 +124,7 @@ try {
     }
 
     function Find-WholeName([string]$text, $plainWords) {
-        $tokens = @([regex]::Matches($text.ToLowerInvariant(), "[a-z]+(?:'[a-z]+)?") | ForEach-Object { $_.Value })
+        $tokens = @([regex]::Matches($text.ToLowerInvariant(), '[a-z]+(?:''[a-z]+)?') | ForEach-Object { $_.Value })
         if ($tokens.Count -lt 2 -or $tokens.Count -gt 80) { return 0 }
         for ($i=0; $i -lt $tokens.Count; $i++) {
             for ($size=[Math]::Min(8,$tokens.Count-$i); $size -gt 0; $size--) {
@@ -165,7 +165,7 @@ try {
         $start = [Diagnostics.ProcessStartInfo]::new()
         $start.FileName = [IO.Path]::Combine($modelDir,'whisper-cli.exe')
         $start.WorkingDirectory = $modelDir
-        $start.Arguments = '-m tiny.en.bin -f - -t 3 -nt -np -l en -bs 1 -bo 1 -nf -ac 512 --prompt "'+$prompt+'."'
+        $start.Arguments = '-m tiny.en.bin -f - -t 3 -nt -np -l en -bs 1 -bo 1 -nf -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
         $start.UseShellExecute = $false
         $start.CreateNoWindow = $true
         $start.RedirectStandardInput = $start.RedirectStandardOutput = $start.RedirectStandardError = $true
@@ -194,6 +194,7 @@ try {
         } catch {
             return 0
         } finally {
+            try { if (-not $child.HasExited) { $child.Kill() } } catch {}
             $child.Dispose()
         }
     }
