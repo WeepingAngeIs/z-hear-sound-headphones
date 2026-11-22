@@ -192,7 +192,11 @@ def run():
                         assert len(observations)==count
                         if os.getenv("MOBSEAR_TEST_SENTENCES")=="1":
                             from check_debug import verify
-                            verify(game/"logs/latest.log")
+                            try:
+                                verify(game/"logs/latest.log")
+                            except AssertionError as error:
+                                print("ACOUSTIC_DEBUG_CHECK_FAILED",error,flush=True)
+                                raise
                         if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
                             assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)
                             print("ACOUSTIC_REFERENCE installed 0.3.1 observed",message.split(" ",1)[1],flush=True)

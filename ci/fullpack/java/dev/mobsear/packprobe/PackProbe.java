@@ -42,6 +42,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Observes an unmodified production JAR in one genuine, disposable integrated server. */
 @Mod(value="acoustic_pack_probe", dist=Dist.CLIENT)
 public final class PackProbe {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(PackProbe.class);
     record Trial(String name, int range, boolean creative, boolean hears, boolean openMic, String recording, boolean detail) {
         Trial(String name, int range, boolean creative, boolean hears, boolean openMic, String recording) {
             this(name,range,creative,hears,openMic,recording,true);
@@ -341,7 +342,7 @@ public final class PackProbe {
                 } else CurrentNotices.install(this);
                 if (testSentences) {
                     if (VoiceClient.options().callDebugLog()) throw new IllegalStateException("Debug logging defaulted on");
-                    System.out.println("ACOUSTIC_DEBUG_WINDOW enabled=true freshDefaultOff=true");
+                    LOG.info("ACOUSTIC_DEBUG_WINDOW enabled=true freshDefaultOff=true");
                     VoiceClient.options().setCallDebugLog(true);
                 }
                 hooked=true;
@@ -425,7 +426,7 @@ public final class PackProbe {
                         if (testSentences) {
                             boolean log = !o.test.recording.equals("lopunny-alternate");
                             if (log != VoiceClient.options().callDebugLog()) {
-                                System.out.println("ACOUSTIC_DEBUG_WINDOW enabled="+log+" trial="+o.number);
+                                LOG.info("ACOUSTIC_DEBUG_WINDOW enabled={} trial={}",log,o.number);
                                 VoiceClient.options().setCallDebugLog(log);
                             }
                         }
@@ -534,15 +535,32 @@ public final class PackProbe {
                     success?"PASS":"FAIL",o.test.name,o.test.creative?"Creative":"Survival",o.test.openMic?"activation":"PTT",
                     o.test.range,o.callDistance,Boundary.nonzeroFrames,o.wireAudio,o.recognized,o.dispatched,o.acceptedCue,o.reaction,
                     o.confirmed,o.notice,o.facedAway,o.initialError,o.closestError,o.aligned,o.targeted);
+            if (testSentences && success && o.confirmed && !VoiceClient.options().callDebugLog())
+                LOG.info("ACOUSTIC_DEBUG_CONFIRM_WHILE_DISABLED trial={}",o.number);
             if (!success) failures++;
             if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(false);
             if (o.number+1==tests.length) {
+                if (testSentences) verifyDecoderDirectory();
                 if (testFeedback && (!(observedListening && observedChecking)
                         || !testPreviews.containsAll(Set.of("listening","rejected-guess","no-match","waiting","other-name")))) failures++;
                 System.out.println("ACOUSTIC_COMPLETE trials="+tests.length+" failed="+failures);
                 complete=true;
             } else next=true;
         } catch (Exception ex) { fail(ex); }
+    }
+
+    private static void verifyDecoderDirectory() throws Exception {
+        var field=Class.forName("dev.mobsear.client.OfflineWordModel").getDeclaredField("directory");
+        field.setAccessible(true);
+        var directory=(java.nio.file.Path)field.get(null);
+        if (directory==null) throw new IllegalStateException("Bundled sentence decoder was unavailable");
+        var expected=Set.of("whisper-cli.exe","whisper.dll","ggml.dll","ggml-base.dll","ggml-cpu.dll",
+                "tiny.en.bin","LICENSE-Whisper.txt","LICENSE-whisper.cpp.txt");
+        try (var files=java.nio.file.Files.list(directory)) {
+            var actual=files.map(path->path.getFileName().toString()).collect(java.util.stream.Collectors.toSet());
+            if (!actual.equals(expected)) throw new IllegalStateException("The decoder wrote unexpected files");
+        }
+        System.out.println("ACOUSTIC_MODEL_FILES_PASS only bundled model, executable, libraries and licenses");
     }
 
     private void render(RenderFrameEvent.Post event) {

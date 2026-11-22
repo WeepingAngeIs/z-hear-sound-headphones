@@ -10,7 +10,7 @@ def verify(path):
         if "ACOUSTIC_DEBUG_WINDOW enabled=" in line:
             enabled = "ACOUSTIC_DEBUG_WINDOW enabled=true" in line
             windows.append(enabled)
-        if not enabled and "ACOUSTIC_RESULT PASS Lopunny" in line and windows:
+        if not enabled and "ACOUSTIC_DEBUG_CONFIRM_WHILE_DISABLED " in line and windows:
             disabled_success = True
         if "MOBSEAR_CALL_DEBUG " not in line:
             continue
@@ -19,6 +19,8 @@ def verify(path):
                              line.split("MOBSEAR_CALL_DEBUG ",1)[1])
         assert match, "Unexpected information in a local debug event"
         events.append(match.groups())
+    print("ACOUSTIC_DEBUG_OBSERVED", "windows="+str(windows), "offConfirmation="+str(disabled_success),
+          "outcomes="+str(sorted(set((e,t) for e,t,_ in events))), flush=True)
     assert windows == [True, False, True] and disabled_success, "Missing live opt-out test"
     assert any(event=="ready" and target=="-" for event,target,_ in events)
     assert any(event=="no_match" and target=="-" for event,target,_ in events)
