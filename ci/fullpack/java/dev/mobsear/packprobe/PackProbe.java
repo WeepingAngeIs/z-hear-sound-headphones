@@ -89,8 +89,10 @@ public final class PackProbe {
     }
 
     private static boolean responding(Mob mob) throws ReflectiveOperationException {
-        String cls = mob instanceof PokemonEntity ? "PokemonReactions" : "NamedMobReactions";
-        var m = Class.forName("dev.mobsear.server." + cls).getDeclaredMethod("isReacting", Mob.class);
+        if (!(mob instanceof PokemonEntity))
+            return mob.goalSelector.getAvailableGoals().stream().anyMatch(goal -> goal.isRunning()
+                    && goal.getGoal().getClass().getName().equals("dev.mobsear.server.MobReactions$ListenGoal"));
+        var m = Class.forName("dev.mobsear.server.PokemonReactions").getDeclaredMethod("isReacting", Mob.class);
         m.setAccessible(true);
         return (boolean) m.invoke(null, mob);
     }
