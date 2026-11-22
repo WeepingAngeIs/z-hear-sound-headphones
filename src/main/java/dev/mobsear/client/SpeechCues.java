@@ -220,6 +220,9 @@ public final class SpeechCues implements AutoCloseable {
             var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
                     "-WindowStyle", "Hidden", "-Command", helper)
                     .redirectError(trackedStartup ? ProcessBuilder.Redirect.PIPE : ProcessBuilder.Redirect.DISCARD);
+            if (!trackedStartup && "github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))
+                    && "1".equals(System.getenv("MOBSEAR_SYNTHETIC_WORKER_FAULTS")))
+                process.redirectError(ProcessBuilder.Redirect.INHERIT);
             process.environment().put("MOBSEAR_STARTUP_STEPS", trackedStartup ? "1" : "0");
             process.environment().remove("MOBSEAR_LOCAL_WORD_MODEL");
             Path localModel = OfflineWordModel.prepare();
@@ -427,6 +430,7 @@ public final class SpeechCues implements AutoCloseable {
         static final int FRAME_BYTES = 640;
         private static final int END_SILENCE_FRAMES = 18;
         private static final int DECODER_TAIL_FRAMES = 28;
+        private static final int LONG_SPEECH_FRAMES = 285;
         static final int MAX_FRAMES = 400;
         private final byte[] current = new byte[MAX_FRAMES * FRAME_BYTES];
         // Preserve quiet initial consonants and give the desktop decoder a stable noise floor.
@@ -478,7 +482,7 @@ public final class SpeechCues implements AutoCloseable {
                     used += FRAME_BYTES;
                 }
             }
-            if (silenceFrames >= END_SILENCE_FRAMES || (silenceFrames >= 4 && (tooLong || used >= 145 * FRAME_BYTES))) finish();
+            if (silenceFrames >= END_SILENCE_FRAMES || (silenceFrames >= 4 && (tooLong || used >= LONG_SPEECH_FRAMES * FRAME_BYTES))) finish();
         }
 
         private static boolean hasEnergy(byte[] frame) {

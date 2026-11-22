@@ -227,28 +227,12 @@ try {
         if (-not $hasContext -and $shortCode -eq 0) { return 0 }
         $original=@()
         if ($hasContext) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
-        $time=[Diagnostics.Stopwatch]::StartNew()
         $answer=Read-WordAudio $samples $original $shortCode 3200
         if (-not $hasContext) {
             if ($answer -eq $shortCode -or $answer -ge 65534) { return $answer }
             return 0
         }
-        if ($answer -ne 0 -or $original.Count -lt 7 -or $time.ElapsedMilliseconds -gt 2200) { return $answer }
-        # Recheck a complete short clause before a preposition. Use the independently timed
-        # word boundary, so a name does not get split or compete against a long trailing clause.
-        for ($k=3; $k -lt [Math]::Min(9,$original.Count-1); $k++) {
-            if ($original[$k] -notin @('by','beside','behind','beyond','near','under','over','with','while','because','after','before')) { continue }
-            $span=$plain.GetAudioForWordRange($plain.Words[$k],$plain.Words[$k])
-            $edge=($plain.Audio.AudioPosition+$span.AudioPosition).TotalMilliseconds
-            $bytes=[Math]::Min($samples.Length,[int][Math]::Ceiling(($edge+20)*16)*2)
-            if ($bytes -lt 16000 -or $bytes -gt $samples.Length-6400) { continue }
-            $part=[byte[]]::new($bytes+6400)
-            try {
-                [Array]::Copy($samples,$part,$bytes)
-                return Read-WordAudio $part $original 0 ([Math]::Max(300,3200-[int]$time.ElapsedMilliseconds))
-            } finally { [Array]::Clear($part,0,$part.Length) }
-        }
-        return 0
+        return $answer
     }
 
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
@@ -418,7 +402,10 @@ try {
                     $match = $null
                 }
             }
-            if ($decision -eq 0) { $decision = Read-ConnectedSpeech $pcm $plain $result }
+            if ($decision -eq 0) {
+                try { $decision = Read-ConnectedSpeech $pcm $plain $result }
+                catch { $decision = 65534 }
+            }
         } finally {
             $engine.SetInputToNull()
             $stream.Dispose()
@@ -445,6 +432,9 @@ try {
         $output.Flush()
     }
 } catch {
+    if ($env:MOBSEAR_SYNTHETIC_WORKER_FAULTS -eq '1') {
+        [Console]::Error.WriteLine(('SYNTH_WORKER_FAULT type={0} line={1}' -f $_.Exception.GetType().Name,$_.InvocationInfo.ScriptLineNumber))
+    }
     exit 1
 } finally {
     if ($null -ne $engine) { $engine.Dispose() }

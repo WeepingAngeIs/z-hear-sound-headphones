@@ -3,6 +3,7 @@ import csv
 from collections import Counter
 from pathlib import Path
 import sys
+from sentence_results import failures
 
 root = Path(sys.argv[1])
 def read(name):
@@ -34,9 +35,7 @@ for key, count in sorted(counts.items()):
 if wrong:
     raise SystemExit('Wrong registered cue for generated fixtures: ' + str(wrong))
 
-for row in after:
-    if row['phrase'].startswith('sentence-'):
-        assert row['actual'] == row['expected'], ('Sentence decision', row['fixture'], row['mode'], row['actual'])
+assert not (missed := failures(after)), ('Sentence decisions', missed)
 
 for target in ('ENDERMAN', 'cobblemon:lopunny'):
     old = sum(b['expected'] == b['actual'] == target for b in before)

@@ -37,6 +37,7 @@ $words=@(
     @('sentence-compound','The cave spider is near the wall.','SPIDER'),
     @('sentence-heldout-creeper','My friend spotted a creeper beside the river.','CREEPER'),
     @('sentence-long','After we crossed the river and followed the path, I saw a Pikachu by the old stone bridge.','cobblemon:pikachu'),
+    @('sentence-long-creeper','We crossed the river and followed the path, and the creeper was standing beside the fence.','CREEPER'),
     @('sentence-partial-mob','Our mobility is improving.','neutral'),
     @('sentence-partial-spider','That was spidery handwriting.','neutral'),
     @('sentence-partial-ender','The bartender mentioned it.','neutral'),
