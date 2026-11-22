@@ -91,8 +91,32 @@ try {
             if ($null -ne $result -and $result.Grammar.Name -eq 'mob call' -and $result.Confidence -ge $minConfidence) {
                 $phrase = $result.Text.ToLowerInvariant()
                 if ($phrase.StartsWith('call ')) {
-                    $phrase = $phrase.Substring(5)
-                    if ($result.Confidence -lt 0.82) { $phrase = '' }
+                    if ($result.Confidence -lt 0.82) {
+                        # A marginal explicit call must win the mixed vocabulary first; then
+                        # the command-only pass must independently hear 'call' and select
+                        # the same registered ID. Different official spellings can share an ID.
+                        $engine.SetInputToNull()
+                        $stream.Dispose()
+                        $stream = [System.IO.MemoryStream]::new($pcm, $false)
+                        $background.Enabled = $false
+                        try {
+                            $engine.SetInputToAudioStream($stream, $format)
+                            $verified = $engine.Recognize()
+                            $firstName = $phrase.Substring(5)
+                            $again = if ($null -ne $verified) { $verified.Text.ToLowerInvariant() } else { '' }
+                            if ($null -eq $verified -or $verified.Confidence -lt 0.92 -or
+                                    $verified.Grammar.Name -ne 'mob call' -or -not $again.StartsWith('call ') -or
+                                    -not $aliases.ContainsKey($firstName) -or -not $aliases.ContainsKey($again.Substring(5)) -or
+                                    $aliases[$firstName] -ne $aliases[$again.Substring(5)]) {
+                                $phrase = ''
+                            }
+                        } finally {
+                            $engine.SetInputToNull()
+                            $background.Enabled = $true
+                            $verified = $null
+                        }
+                    }
+                    if ($phrase.Length -gt 0) { $phrase = $phrase.Substring(5) }
                 }
                 if ($phrase.StartsWith('hey ')) { $phrase = $phrase.Substring(4) }
                 if ($aliases.ContainsKey($phrase)) {

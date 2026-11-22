@@ -88,17 +88,33 @@ public final class NamedMobReactions {
                 case "dev.uwu.dimension.BlossomWarden" -> idleWhenClear(clazz, "offender", "chasing", "gripping", "throwing");
                 case "dev.uwu.dimension.VelvetVesper" -> {
                     var phaseIdle = idleWhenClear(clazz, "guarding", "folding", "casting");
+                    Method validVictim = courtTargetCheck(clazz);
                     // The Mirror Court can aim at a participant even during an open phase,
                     // and does not expose that focus through Mob.getTarget().
                     yield mob -> phaseIdle.test(mob) && mob.level().players().stream().noneMatch(player ->
                             player.isAlive() && !player.isCreative() && !player.isSpectator()
                                     && mob.distanceToSqr(player) < 400 && Math.abs(player.getY() - mob.getY()) < 9
-                                    && mob.hasLineOfSight(player));
+                                    && player instanceof ServerPlayer target && courtCanAim(mob, target, validVictim));
                 }
                 default -> mob -> true;
             };
         }
     };
+
+    private static Method courtTargetCheck(Class<?> clazz) {
+        try {
+            var method = clazz.getDeclaredMethod("validVictim", ServerPlayer.class);
+            return method.trySetAccessible() ? method : null;
+        } catch (ReflectiveOperationException | SecurityException unavailable) { return null; }
+    }
+
+    private static boolean courtCanAim(Mob mob, ServerPlayer target, Method check) {
+        if (check != null) {
+            try { return Boolean.TRUE.equals(check.invoke(mob, target)); }
+            catch (ReflectiveOperationException unavailable) { /* Use the conservative line-of-sight check below. */ }
+        }
+        return mob.hasLineOfSight(target);
+    }
 
     private static Predicate<Mob> idleWhenClear(Class<?> clazz, String... names) {
         Method[] methods = new Method[names.length];

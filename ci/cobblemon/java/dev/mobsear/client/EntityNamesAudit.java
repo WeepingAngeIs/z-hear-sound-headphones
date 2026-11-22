@@ -29,6 +29,9 @@ public final class EntityNamesAudit {
         var owl=MobCallTypes.OWL_GUARDIAN;
         if (BuiltInRegistries.ENTITY_TYPE.containsKey(owl) && !entries.get(owl.toString()).containsAll(java.util.List.of("Owl Guardian","UwU Guardian")))
             throw new IllegalStateException("Missing the registered Owl Guardian aliases");
+        if (net.neoforged.fml.ModList.get().isLoaded("cumimic") &&
+                !java.util.List.of("Dungeon Mimic").equals(entries.get(MobCallTypes.DUNGEON_MIMIC.toString())))
+            throw new IllegalStateException("Missing distinct native Dungeon Mimic call");
         var rows=new ArrayList<String>();
         rows.add("id\tlabels");
         entries.forEach((id,labels)->rows.add(id+"\t"+String.join("|",labels)));
