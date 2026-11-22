@@ -1,5 +1,5 @@
-# This helper receives short, length-prefixed PCM utterances on stdin. Its only
-# output is a binary readiness byte followed by one numeric decision per request.
+# The local binary pipe carries a bounded grammar followed by short PCM clips.
+# Only a readiness byte and one unsigned 16-bit decision per request leave the worker.
 $ErrorActionPreference = 'Stop'
 $engine = $null
 try {
@@ -14,19 +14,27 @@ try {
     # Disable acoustic adaptation on this in-process engine only.
     $engine.UpdateRecognizerSetting('AdaptationOn', [int]0)
 
+    $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
+    $size = $reader.ReadInt32()
+    if ($size -le 0 -or $size -gt 524288) { exit 3 }
+    $vocabulary = $reader.ReadBytes($size)
+    if ($vocabulary.Length -ne $size) { exit 3 }
     $aliases = @{}
-    foreach ($entry in $env:MOBSEAR_GRAMMAR.Split('|')) {
+    $words = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in [Text.Encoding]::ASCII.GetString($vocabulary).Split([char]10)) {
+        if ($entry.Length -eq 0) { continue }
         $parts = $entry.Split(':')
         if ($parts.Count -ne 2) { exit 3 }
-        $aliases.Add($parts[1], [byte]$parts[0])
+        $aliases.Add($parts[1], [uint16]$parts[0])
+        $words.Add($parts[1])
+        $words.Add('hey ' + $parts[1])
     }
     $phrases = [System.Speech.Recognition.Choices]::new()
-    foreach ($alias in $aliases.Keys) {
-        $phrases.Add([string]$alias)
-        $phrases.Add('hey ' + $alias)
+    # Explicit rejection phrases give greetings and generic collective calls a harmless match.
+    foreach ($ignored in @('hey', 'pokemon', 'hey pokemon', 'all pokemon', 'every pokemon')) {
+        if (-not $aliases.ContainsKey($ignored)) { $words.Add($ignored) }
     }
-    # Give a standalone greeting a direct match with no mapped decision.
-    $phrases.Add('hey')
+    $phrases.Add($words.ToArray())
     $builder = [System.Speech.Recognition.GrammarBuilder]::new()
     $builder.Culture = $english.Culture
     $builder.Append($phrases)
@@ -47,7 +55,6 @@ try {
     $null = $engine.Recognize()
     $engine.SetInputToNull()
     $warmup.Dispose()
-    $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
     $output = [Console]::OpenStandardOutput()
     $output.WriteByte(82)
     $output.Flush()
@@ -88,7 +95,8 @@ try {
             [Array]::Clear($pcm, 0, $length)
             $result = $null
         }
-        $output.WriteByte([byte]$decision)
+        $output.WriteByte([byte]($decision -shr 8))
+        $output.WriteByte([byte]($decision -band 255))
         $output.Flush()
     }
 } catch {

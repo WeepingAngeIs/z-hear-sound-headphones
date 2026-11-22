@@ -27,9 +27,9 @@ jobs:
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
-          cp build/libs/mobsear-0.2.1.jar dist/
-          jar tf dist/mobsear-0.2.1.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
-          if jar tf dist/mobsear-0.2.1.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
+          cp build/libs/mobsear-0.3.0.jar dist/
+          jar tf dist/mobsear-0.3.0.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
+          if jar tf dist/mobsear-0.3.0.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
         run: |
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mobs-hear-u
-          path: dist/mobsear-0.2.1.jar
+          path: dist/mobsear-0.3.0.jar
           if-no-files-found: error
   packaged-server:
     name: Packaged jar on NeoForge ${{ matrix.loader }}
@@ -77,11 +77,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Prepare the pinned public English species vocabulary
+        shell: powershell
+        run: |
+          python ci/cobblemon/stage.py build/speech-mods
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
       - name: Exercise the desktop recognizer in memory
         shell: powershell
         env:
           MOBSEAR_SYNTH_PROOF_DIR: build/synthetic-speech
           MOBSEAR_CUE_PROOF: recognized-calls.txt
+          MOBSEAR_SPEECH_CATALOG: build/speech-species.tsv
+          MOBSEAR_SPECIES_PROOF: recognized-species.txt
         run: |
           Add-Type -AssemblyName System.Speech
           [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object Id,Culture
@@ -99,7 +107,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: recognized-calls
-          path: recognized-calls.txt
+          path: |
+            recognized-calls.txt
+            recognized-species.txt
           if-no-files-found: error
   integrated:
     name: Single-player world and local connection on NeoForge 21.1.249

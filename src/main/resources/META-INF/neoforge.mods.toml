@@ -4,9 +4,9 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="mobsear"
-version="0.2.1"
+version="0.3.0"
 displayName="Mobs Hear U"
-description="Proximity voice with optional local speech cues for nearby hostile mobs."
+description="Proximity voice with optional local speech cues for nearby hostile mobs and wild Cobblemon."
 
 [[dependencies.mobsear]]
 modId="neoforge"

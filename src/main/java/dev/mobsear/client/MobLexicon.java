@@ -11,7 +11,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /** Only curated and explicitly configured labels enter the local recognizer grammar. */
 final class MobLexicon {
@@ -25,7 +24,7 @@ final class MobLexicon {
             # creeper=green menace
             """;
 
-    static String grammar(Path file) {
+    static Map<String, Cue> phrases(Path file) {
         var phrases = new LinkedHashMap<String, Cue>();
         for (Cue cue : Cue.values()) {
             String name = cue.entityPath.replace('_', ' ');
@@ -44,14 +43,13 @@ final class MobLexicon {
                 var aliases = custom.getProperty(cue.entityPath, "").split(",");
                 for (int i = 0; i < Math.min(4, aliases.length); i++) {
                     String a = aliases[i].strip().toLowerCase(Locale.ROOT);
-                    if (a.length() <= 32 && SHORT_CALL.matcher(a).matches() && !a.equals("hey") && !a.startsWith("hey ")) {
+                    if (a.length() <= 32 && SHORT_CALL.matcher(a).matches() && !SpeechGrammar.reserved(a)) {
                         phrases.putIfAbsent(a, cue);
                     }
                 }
             }
         }
-        return phrases.entrySet().stream().map(e -> (e.getValue().ordinal() + 1) + ":" + e.getKey())
-                .collect(Collectors.joining("|"));
+        return phrases;
     }
 
     private static void add(Map<String, Cue> phrases, Cue cue, String... aliases) {

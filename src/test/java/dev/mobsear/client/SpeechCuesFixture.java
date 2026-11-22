@@ -2,6 +2,7 @@ package dev.mobsear.client;
 
 import dev.mobsear.net.Cue;
 
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
@@ -13,6 +14,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import javax.sound.sampled.AudioFileFormat;
@@ -26,6 +29,7 @@ public final class SpeechCuesFixture {
 
     public static void main(String[] args) throws Exception {
         checkSegmentation();
+        checkSpeciesCatalog();
         var received = new ArrayBlockingQueue<Cue>(8);
         var aliasFile = Files.createTempFile("mobsear-alias-fixture-", ".properties");
         try (var speech = new SpeechCues(received::add, aliasFile)) {
@@ -37,6 +41,7 @@ public final class SpeechCuesFixture {
             require(received.isEmpty(), "Off state emitted a cue");
             if (args.length == 1 && args[0].equals("--windows-speech")) {
                 checkWindows(speech, received, aliasFile);
+                checkWindowsSpecies(aliasFile);
                 writeSyntheticPitchPreview();
             } else if (!System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows")) {
                 speech.setEnabled(true);
@@ -84,11 +89,7 @@ public final class SpeechCuesFixture {
                 unknown_type=bogus
                 """);
         var actual = new LinkedHashMap<String, Integer>();
-        for (String pair : MobLexicon.grammar(file).split("\\|")) {
-            String[] parts = pair.split(":");
-            require(parts.length == 2, "Grammar entry delimiter");
-            require(actual.put(parts[1], Integer.parseInt(parts[0])) == null, "Duplicate grammar phrase");
-        }
+        MobLexicon.phrases(file).forEach((name, cue) -> actual.put(name, cue.ordinal() + 1));
         for (Cue cue : Cue.values()) {
             require(actual.get(cue.entityPath.replace('_', ' ')) == cue.ordinal() + 1, "Built-in cue collision");
         }
@@ -99,9 +100,9 @@ public final class SpeechCuesFixture {
         for (String blocked : new String[]{"hey", "hey there", "a", "b", "javascript", "foo", "extra", "bogus",
                 "has four full words", "longlonglonglonglong"}) require(!actual.containsKey(blocked), "Reserved or malformed alias");
         Files.writeString(file, "skeleton=" + "a".repeat(16_385));
-        require(MobLexicon.grammar(file).equals(MobLexicon.grammar(null)), "Oversize alias file");
+        require(MobLexicon.phrases(file).equals(MobLexicon.phrases(null)), "Oversize alias file");
         Files.writeString(file, "skeleton=bad" + (char) 92 + "uXYZ1");
-        require(MobLexicon.grammar(file).equals(MobLexicon.grammar(null)), "Malformed properties fallback");
+        require(MobLexicon.phrases(file).equals(MobLexicon.phrases(null)), "Malformed properties fallback");
     }
 
     private static void checkSegmentation() {
@@ -124,6 +125,96 @@ public final class SpeechCuesFixture {
         segments.accept(signal);
         segments.finish();
         require(clips.size() == 2, "Short call after over-length speech");
+    }
+
+    private static void checkSpeciesCatalog() throws IOException {
+        var names = new LinkedHashMap<String, List<String>>();
+        names.put("cobblemon:nidoranf", List.of("Nidoran♀", "Nidoran"));
+        names.put("cobblemon:nidoranm", List.of("Nidoran♂", "Nidoran"));
+        names.put("pack:flabebe", List.of("Flabébé", "Flabebe"));
+        names.put("pack:other", List.of("Zombie", "All Pokémon"));
+        names.put("pack:unsafe", List.of("x:3|boom", "hey there"));
+        names.put("pack:short", List.of("x", "ab"));
+        names.put("not a registry id", List.of("extra"));
+        names.put("pack:generic", List.of("Pokémon", "Everyone"));
+        names.put("pack:untranslated", List.of("cobblemon.species.hello.name", "ピカチュウ"));
+        var resolved = SpeechGrammar.speciesPhrases(names);
+        require("cobblemon:nidoranf".equals(resolved.get("nidoran female"))
+                && "cobblemon:nidoranm".equals(resolved.get("nidoran male")), "Gendered display names");
+        var grammar = new SpeechGrammar(null, resolved);
+        require(grammar.code("zombie") == Cue.ZOMBIE.ordinal() + 1, "Species displaced vanilla cue");
+        require(grammar.code("flabebe") > Cue.values().length, "Accent-insensitive English name");
+        for (String word : List.of("nidoran", "pokemon", "all pokemon", "everyone", "hey", "hey there",
+                "x:3|boom", "a", "ab", "extra", "my nickname", "cobblemon species hello name"))
+            require(grammar.code(word) == 0, "Ambiguous, unknown or unsupported label admitted");
+        require(!grammar.dispatch(65535, c -> {}, id -> {}), "Invalid helper index");
+        var boundary = new LinkedHashMap<String, List<String>>();
+        for (int i = 0; i < 4097; i++) boundary.put("test:" + i, List.of("species " + i));
+        require(SpeechGrammar.speciesPhrases(boundary).isEmpty(), "Oversize catalog partially admitted");
+    }
+
+    private static void checkWindowsSpecies(Path aliasFile) throws Exception {
+        String filename = System.getenv("MOBSEAR_SPEECH_CATALOG");
+        if (filename == null || filename.isBlank()) return;
+        var names = new LinkedHashMap<String, List<String>>();
+        for (String entry : Files.readAllLines(Path.of(filename))) {
+            String[] fields = entry.split("\\t");
+            require(fields.length == 3, "Pinned species fixture format");
+            require(names.put(fields[0], List.of(fields[1], fields[2])) == null, "Duplicate registry ID");
+        }
+        require(names.size() == 1025, "Expected complete Cobblemon 1.8.4 English catalog");
+        long begin = System.nanoTime();
+        var vocabulary = SpeechGrammar.speciesPhrases(names);
+        var grammar = new SpeechGrammar(aliasFile, vocabulary);
+        require(new java.util.HashSet<>(vocabulary.values()).size() == 1025, "Missing pinned English species");
+        require(grammar.code("pikachu") > 255 && grammar.code("nidoran female") != grammar.code("nidoran male"),
+                "Large vocabulary wire index or gender separation");
+        long buildMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - begin);
+        var encoded = new ByteArrayOutputStream();
+        grammar.writeTo(new DataOutputStream(encoded));
+        byte[] pikachu = synthesize("Pikachu");
+        byte[] ditto = synthesize("hey Ditto");
+        byte[][] clips = {pikachu, ditto, synthesize("spider"), synthesize("hey"), synthesize("pokemon"),
+                synthesize("all pokemon"), synthesize("the garden is beautiful"), new byte[16000]};
+        int[] expected = {grammar.code("pikachu"), grammar.code("ditto"), Cue.SPIDER.ordinal() + 1, 0, 0, 0, 0, 0};
+        long started = System.nanoTime();
+        int[] result = decisions(SpeechCues.launch(), grammar, clips);
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        if (!Arrays.equals(result, expected)) {
+            diagnoseSyntheticDecisions(clips, grammar);
+            throw new AssertionError("Full English catalog decisions " + Arrays.toString(result) + " expected " + Arrays.toString(expected));
+        }
+        var ids = new ArrayBlockingQueue<String>(4);
+        var mobs = new ArrayBlockingQueue<Cue>(4);
+        try (var speech = new SpeechCues(mobs::add, ids::add, aliasFile, names)) {
+            speech.refreshSpecies(names);
+            require(speech.status() == SpeechCues.Status.OFF, "Catalog refresh enabled recognition");
+            started = System.nanoTime();
+            speech.setEnabled(true);
+            awaitReady(speech);
+            long readyMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            speech.refreshSpecies(names);
+            require(speech.status() == SpeechCues.Status.READY, "Unchanged registry restarted worker");
+            for (int pos = 0; pos < pikachu.length; pos += FRAME)
+                speech.acceptFrame(Arrays.copyOfRange(pikachu, pos, pos + FRAME));
+            speech.endUtterance();
+            require("cobblemon:pikachu".equals(ids.poll(8, TimeUnit.SECONDS)), "End-to-end species callback");
+            require(mobs.isEmpty(), "Species emitted an extra vanilla cue");
+            speech.refreshSpecies(Map.of());
+            awaitReady(speech);
+            require(ids.isEmpty(), "Removed registry produced a stale callback");
+            String proof = System.getenv("MOBSEAR_SPECIES_PROOF");
+            if (proof != null) Files.writeString(Path.of(proof), "cobblemon:pikachu\n", StandardCharsets.US_ASCII);
+            System.out.println("MOBSEAR_SPECIES_SPEECH_PASS source=Cobblemon-1.8.4 English species="
+                    + names.size() + " normalizedNames=" + vocabulary.size() + " grammarBytes=" + encoded.size()
+                    + " javaBuildMs=" + buildMillis + " SAPIReadyMs=" + readyMillis + " startupAndEightClipsMs=" + elapsedMillis);
+        }
+    }
+
+    private static void awaitReady(SpeechCues speech) throws InterruptedException {
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
+        while (speech.status() == SpeechCues.Status.STARTING && System.nanoTime() < until) Thread.sleep(25);
+        require(speech.status() == SpeechCues.Status.READY, "Desktop catalog startup " + speech.status());
     }
 
     private static byte[] toneFrame() {
@@ -155,7 +246,7 @@ public final class SpeechCuesFixture {
         byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000], greetingZombie,
                 zombies, conversation, greetingOnly, zombie, skeleton, creeper, custom, singular, namedEnderman, spider};
         int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1, 4, 5, 4, 2, 3, 6};
-        int[] decisions = decisions(SpeechCues.launch(aliasFile), cases);
+        int[] decisions = decisions(SpeechCues.launch(), new SpeechGrammar(aliasFile, Map.of()), cases);
         if (!Arrays.equals(decisions, expected)) {
             diagnoseSyntheticDecisions(cases, aliasFile);
             throw new AssertionError("Synthetic SAPI decisions " + Arrays.toString(decisions)
@@ -230,18 +321,18 @@ public final class SpeechCuesFixture {
         require(speech.status() == SpeechCues.Status.OFF && received.isEmpty(), "Opt-out or duplicate cue");
     }
 
-    private static int[] decisions(Process helper, byte[][] cases) throws Exception {
+    private static int[] decisions(Process helper, SpeechGrammar grammar, byte[][] cases) throws Exception {
         int[] actual = new int[cases.length];
         Arrays.fill(actual, -1);
         killAfter(helper, 55);
-        try (var input = helper.getInputStream(); var output = new DataOutputStream(helper.getOutputStream())) {
+        try (var input = new DataInputStream(helper.getInputStream()); var output = new DataOutputStream(helper.getOutputStream())) {
+            grammar.writeTo(output);
             require(input.read() == 82, "Requires an installed English desktop speech recognizer");
             for (int i = 0; i < cases.length; i++) {
                 output.writeInt(Integer.reverseBytes(cases[i].length));
                 output.write(cases[i]);
                 output.flush();
-                actual[i] = input.read();
-                if (actual[i] < 0) break;
+                actual[i] = input.readUnsignedShort();
             }
             return actual;
         } finally {
@@ -252,6 +343,10 @@ public final class SpeechCuesFixture {
     // This instrumentation exists only in the fixture source set. It prints fixed grammar labels,
     // scores and exception locations for synthetic cases, without displaying words or PCM.
     private static void diagnoseSyntheticDecisions(byte[][] cases, Path aliasFile) throws Exception {
+        diagnoseSyntheticDecisions(cases, new SpeechGrammar(aliasFile, Map.of()));
+    }
+
+    private static void diagnoseSyntheticDecisions(byte[][] cases, SpeechGrammar grammar) throws Exception {
         try (var source = SpeechCues.class.getResourceAsStream("recognize.ps1")) {
             require(source != null, "Missing speech helper resource");
             String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
@@ -271,8 +366,7 @@ public final class SpeechCuesFixture {
                             $_.InvocationInfo.ScriptLineNumber, $_.Exception.GetType().Name, $_.Exception.HResult))
                         exit 1""");
             var diagnostic = powershell(helper, ProcessBuilder.Redirect.INHERIT);
-            diagnostic.environment().put("MOBSEAR_GRAMMAR", MobLexicon.grammar(aliasFile));
-            decisions(diagnostic.start(), cases);
+            decisions(diagnostic.start(), grammar, cases);
         }
     }
 

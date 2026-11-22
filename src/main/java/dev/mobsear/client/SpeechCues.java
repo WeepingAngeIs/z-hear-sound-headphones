@@ -2,14 +2,16 @@ package dev.mobsear.client;
 
 import dev.mobsear.net.Cue;
 
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -23,7 +25,9 @@ public final class SpeechCues implements AutoCloseable {
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeouts();
     private static final long MAX_AGE_NANOS = TimeUnit.SECONDS.toNanos(4);
     private final Consumer<Cue> listener;
+    private final Consumer<String> speciesListener;
     private final Path aliasFile;
+    private Map<String, String> speciesPhrases;
     private Session session;
     private Status status = Status.OFF;
     private boolean closed;
@@ -33,8 +37,27 @@ public final class SpeechCues implements AutoCloseable {
     }
 
     public SpeechCues(Consumer<Cue> listener, Path aliasFile) {
+        this(listener, id -> {}, aliasFile, Map.of());
+    }
+
+    public SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Path aliasFile,
+                      Map<String, List<String>> speciesDisplayNames) {
         this.listener = Objects.requireNonNull(listener);
+        this.speciesListener = Objects.requireNonNull(speciesListener);
         this.aliasFile = aliasFile;
+        this.speciesPhrases = SpeechGrammar.speciesPhrases(speciesDisplayNames);
+    }
+
+    /** English desktop SAPI uses the registry's English canonical/display names, never an entity nickname. */
+    public synchronized void refreshSpecies(Map<String, List<String>> speciesDisplayNames) {
+        if (closed) return;
+        var updated = SpeechGrammar.speciesPhrases(speciesDisplayNames);
+        if (speciesPhrases.equals(updated)) return;
+        speciesPhrases = updated;
+        if (session != null) {
+            setEnabled(false);
+            setEnabled(true);
+        }
     }
 
     public synchronized Status status() {
@@ -83,7 +106,7 @@ public final class SpeechCues implements AutoCloseable {
         return executor;
     }
 
-    static Process launch(Path aliases) throws IOException {
+    static Process launch() throws IOException {
         String windows = System.getenv("SystemRoot");
         if (windows == null) throw new IOException("Missing Windows system directory");
         Path shell = Path.of(windows, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -94,7 +117,6 @@ public final class SpeechCues implements AutoCloseable {
             var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
                     "-WindowStyle", "Hidden", "-Command", helper)
                     .redirectError(ProcessBuilder.Redirect.DISCARD);
-            process.environment().put("MOBSEAR_GRAMMAR", MobLexicon.grammar(aliases));
             return process.start();
         }
     }
@@ -110,6 +132,7 @@ public final class SpeechCues implements AutoCloseable {
     }
 
     private final class Session {
+        private final Map<String, String> species = speciesPhrases;
         private final ArrayBlockingQueue<Clip> pending = new ArrayBlockingQueue<>(1);
         private final Utterances utterances = new Utterances(this::submit);
         private final Thread worker = Thread.ofPlatform().daemon().name("Mob's Ear speech")
@@ -137,14 +160,15 @@ public final class SpeechCues implements AutoCloseable {
         private void run() {
             Process child = null;
             try {
-                child = launch(aliasFile);
+                var grammar = new SpeechGrammar(aliasFile, species);
+                child = launch();
                 synchronized (SpeechCues.this) {
                     if (session != this) return;
                     helper = child;
                 }
-                try (var input = child.getInputStream();
+                try (var input = new DataInputStream(child.getInputStream());
                      var output = new DataOutputStream(child.getOutputStream())) {
-                    if (exchange(child, input, output, null) != 82) throw new IOException();
+                    if (exchange(child, input, output, grammar, null) != 82) throw new IOException();
                     synchronized (SpeechCues.this) {
                         if (session != this) return;
                         status = Status.READY;
@@ -153,11 +177,10 @@ public final class SpeechCues implements AutoCloseable {
                         Clip clip = pending.take();
                         try {
                             if (!clip.fresh()) continue;
-                            int decision = exchange(child, input, output, clip);
-                            if (decision > Cue.values().length) throw new IOException("Invalid speech helper reply");
-                            Cue cue = decision == 0 ? null : Cue.values()[decision - 1];
+                            int decision = exchange(child, input, output, grammar, clip);
                             synchronized (SpeechCues.this) {
-                                if (session == this && cue != null && clip.fresh()) listener.accept(cue);
+                                if (session == this && clip.fresh() && !grammar.dispatch(decision, listener, speciesListener))
+                                    throw new IOException("Invalid speech helper reply");
                             }
                         } finally {
                             clip.clear();
@@ -181,19 +204,19 @@ public final class SpeechCues implements AutoCloseable {
             }
         }
 
-        private int exchange(Process child, InputStream input, DataOutputStream output, Clip clip)
+        private int exchange(Process child, DataInputStream input, DataOutputStream output, SpeechGrammar grammar, Clip clip)
                 throws IOException {
             var deadline = TIMEOUTS.schedule(() -> { child.toHandle().destroyForcibly(); },
-                    clip == null ? 20 : 8, TimeUnit.SECONDS);
+                    clip == null ? 40 : 8, TimeUnit.SECONDS);
             try {
-                if (clip != null) {
-                    output.writeInt(Integer.reverseBytes(clip.pcm.length));
-                    output.write(clip.pcm);
-                    output.flush();
+                if (clip == null) {
+                    grammar.writeTo(output);
+                    return input.readUnsignedByte();
                 }
-                int reply = input.read();
-                if (reply < 0) throw new EOFException();
-                return reply;
+                output.writeInt(Integer.reverseBytes(clip.pcm.length));
+                output.write(clip.pcm);
+                output.flush();
+                return input.readUnsignedShort();
             } finally {
                 deadline.cancel(false);
             }
