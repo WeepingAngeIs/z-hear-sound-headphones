@@ -16,6 +16,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
@@ -89,7 +90,12 @@ public final class PackGlanceProbe {
             mob.setYHeadRot(-90);
             mob.yBodyRot = -90;
             born = mob.position();
-            if (c.walking) mob.goalSelector.addGoal(5, new WalkPast(mob, test.absoluteVec(new Vec3(11.5, 2, 5.5))));
+            if (c.walking) {
+                // Replace the equivalent vanilla stroll only in the controlled walking trial.
+                // Ambient trials keep the original goal selector, including pack-supplied AI.
+                mob.goalSelector.removeAllGoals(goal -> goal instanceof WaterAvoidingRandomStrollGoal);
+                mob.goalSelector.addGoal(5, new WalkPast(mob, test.absoluteVec(new Vec3(11.5, 2, 5.5))));
+            }
         }
 
         void call(Scenario c) {

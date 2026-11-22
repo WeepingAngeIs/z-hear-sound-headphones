@@ -74,8 +74,11 @@ def run(mode):
             start("listener")
             wait("server", "MOBSEAR_POKEMON_MULTI_PASS", 660)
         landed = (root/"evidence")
-        if not (landed/f"{mode}-pikachu-before.png").is_file() or not (landed/f"{mode}-approach-after.png").is_file():
-            raise RuntimeError("Missing actual state captures")
+        expected = ["pikachu-before", "pikachu-after", "eevee-after", "look-after", "approach-after", "addon-after",
+                    "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
+        if env.get("MOBSEAR_POKEMON_PACK") == "1": expected.append("pack_form-after")
+        for view in expected:
+            if not (landed/f"{mode}-{view}.png").is_file(): raise RuntimeError("Missing actual in-game capture " + view)
     except BaseException:
         for f in sorted(root.glob("*.console")):
             print(f.name, flush=True)
@@ -90,7 +93,7 @@ def run(mode):
         for p in (root/"evidence").glob("*.png"): shutil.copy2(p,dest/p.name)
         for log in root.glob("*.console"):
             for line in log.read_text(errors="replace").splitlines():
-                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_CLIENT_READY","MOBSEAR_POKEMON_")): print(line[:450])
+                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","MOBSEAR_POKEMON_")): print(line[:450])
 
 
 if __name__ == "__main__":

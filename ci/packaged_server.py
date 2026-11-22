@@ -84,12 +84,14 @@ def main():
         print(f"PACKAGED_SERVER_PASS Minecraft 1.21.1  NeoForge {version}  mobsear SHA-256 {digest}")
         if version == "21.1.249":
             stage = Path(__file__).parent / "cobblemon" / "stage.py"
-            subprocess.run([sys.executable, str(stage), str(folder / "mods")], check=True)
+            subprocess.run([sys.executable, str(stage), str(folder / "mods")], check=True,
+                           env=dict(os.environ, MOBSEAR_POKEMON_PACK="1"))
             (folder / "user_jvm_args.txt").write_text("-Xms512m\n-Xmx3200m\n-XX:ActiveProcessorCount=2\n")
             run_server(folder)
             loaded = (folder / "console.log").read_text(errors="replace")
-            assert "Cobblemon" in loaded and "Done (" in loaded
-            print(f"PACKAGED_COBBLEMON_PASS Minecraft 1.21.1 NeoForge {version} Cobblemon 1.8.4 mobsear SHA-256 {digest}")
+            assert "Cobblemon" in loaded and "mega_showdown" in loaded and "Done (" in loaded
+            print(f"PACKAGED_COBBLEMON_PASS Minecraft 1.21.1 NeoForge {version} Cobblemon 1.8.4 "
+                  f"Mega Showdown 1.3.3 mobsear SHA-256 {digest}")
 
 
 if __name__ == "__main__":

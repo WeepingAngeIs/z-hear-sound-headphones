@@ -9,6 +9,8 @@ jobs:
   species:
     name: Cobblemon 1.8.4 / ${{ matrix.mode }}
     runs-on: ubuntu-latest
+    env:
+      MOBSEAR_POKEMON_PACK: '1'
     timeout-minutes: 44
     strategy:
       fail-fast: false

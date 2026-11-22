@@ -20,6 +20,21 @@ FILES = (
      "a40f2cdce076b709cd14ac5d2a5d660f32512115528ed6d5d7b80c1a071b637a"),
 )
 
+MEGA_FILES = (
+    ("mega_showdown-neoforge-1.3.3+1.8.4+1.21.1-release.jar",
+     "https://edge.forgecdn.net/files/9343/427/mega_showdown-neoforge-1.3.3%2B1.8.4%2B1.21.1-release.jar",
+     "58f00a27068bcdfdb2c7866b54ef818e7f7812911346b6e9b59b0ff0bb1956ac"),
+    ("architectury-13.0.11-neoforge.jar",
+     "https://edge.forgecdn.net/files/8492/726/architectury-13.0.11-neoforge.jar",
+     "9cc92f2c09533fc5482c60f993bd891c655a0e32b637037cdcb7c2b23adedeeb"),
+    ("accessories-neoforge-1.1.0-beta.53+1.21.1.jar",
+     "https://edge.forgecdn.net/files/7583/320/accessories-neoforge-1.1.0-beta.53%2B1.21.1.jar",
+     "10017a3da78ea63e9ece27a1ca32f8cf490362f348778cf8cb759e7282f3beb0"),
+    ("owo-lib-neoforge-0.12.15.5-beta.1+1.21.jar",
+     "https://edge.forgecdn.net/files/6785/734/owo-lib-neoforge-0.12.15.5-beta.1%2B1.21.jar",
+     "de6ed336bd80154b7241a7b3276694befc1c94550add8bcdfe7f82e5172fd13d"),
+)
+
 
 def main():
     if os.environ.get("GITHUB_ACTIONS") != "true" or len(sys.argv) < 2:
@@ -28,7 +43,8 @@ def main():
     for directory in destinations:
         directory.mkdir(parents=True, exist_ok=True)
     dest = destinations[0]
-    for name, url, sha in FILES:
+    files = FILES + MEGA_FILES if os.getenv("MOBSEAR_POKEMON_PACK") == "1" else FILES
+    for name, url, sha in files:
         with NamedTemporaryFile(dir=dest, delete=False) as handle:
             temp = Path(handle.name)
         try:

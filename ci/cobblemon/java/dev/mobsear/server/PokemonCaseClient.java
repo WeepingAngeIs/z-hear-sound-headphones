@@ -57,6 +57,7 @@ public final class PokemonCaseClient {
     private void tick(ClientTickEvent.Post ignored) {
         mc=Minecraft.getInstance();
         if (!installed) { FixtureSound.install(); installed=true; }
+        mc.getToasts().clear();
         if (mc.player==null || mc.level==null) return;
         if ((!hello || caller) && !VoiceClient.connected()) { waitFor("voice session"); return; }
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
@@ -72,6 +73,7 @@ public final class PokemonCaseClient {
                 }
             solo=connection.getConnection().isMemoryConnection();
             caller=solo || mc.getUser().getName().equals("PokemonCaller");
+            mc.options.fov().set(caller ? 30 : 45);
             hello=true;
             PacketDistributor.sendToServer(new PokemonProbe.Message(PokemonProbe.HELLO,0,0));
             System.out.println("POKEMON_CLIENT_READY "+mc.getUser().getName()+" integrated="+solo+" registries=pikachu,acideon,hearfixture:chimekin");
@@ -83,6 +85,7 @@ public final class PokemonCaseClient {
                 " heard="+recognized+" facing="+aligned+" signed="+sent+" target="+mc.level.getEntity(stage.entity()));
         if (stage.stage()==PokemonProbe.BEFORE) {
             if (ticks<4 || mc.level.getEntity(stage.entity())==null) return;
+            if (c==PokemonCase.PACK_FORM) c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client before call");
             if (acoustic && c==PokemonCase.PIKACHU && !recognizerReady()) return;
             if ((solo || !caller) && c==PokemonCase.PIKACHU && !saved) { capture="before"; return; }
             reply(PokemonProbe.BEFORE); acknowledged=true;
@@ -118,6 +121,11 @@ public final class PokemonCaseClient {
             if (Math.abs(Mth.wrapDegrees(entity.getYHeadRot()-yaw))<=30 && ++alignedTicks>=2) aligned=true;
         }
         if ((caller && !sent) || (c.accepts() && !aligned) || ticks<5) return;
+        if (c==PokemonCase.PACK_FORM) {
+            c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client after call");
+            if (!saved && capture==null) System.out.println("POKEMON_PACK_FORM_CLIENT id="+c.species+
+                    " form=Pom-Pom aspect=pom-pom-style aligned="+aligned+" caller="+caller);
+        }
         if ((solo || !caller) && c.accepts() && !saved) { capture="after"; return; }
         reply(PokemonProbe.SEEN); acknowledged=true;
         if (acoustic) System.out.println("POKEMON_REAL_SPEECH "+c+" canonical=true client-facing="+aligned+

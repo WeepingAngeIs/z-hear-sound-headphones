@@ -106,13 +106,15 @@ final class PokemonCaseServer {
         ModConfigSpec.DoubleValue chance=config.getValues().get("wildPokemonApproachChance");
         chance.set(c==PokemonCase.LOOK || c.ordinal()>=PokemonCase.COOLDOWN_PRIME.ordinal() ? 0d
                 : c==PokemonCase.APPROACH || c==PokemonCase.BLOCKED ? 1d : .20d);
-        caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,3);
+        caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
         if (viewer!=caller) viewer.teleportTo(world,3.5,Y+0.1,Z+5.5,148,9);
         if (c == PokemonCase.PASSIVE) {
             subject=EntityType.COW.create(world);
         } else if (!c.reusesSubject()) {
-            var entity = PokemonProperties.Companion.parse("pikachu level=15").createEntity(world);
-            entity.getPokemon().setSpecies(PokemonSpecies.getByIdentifier(c.species));
+            var entity = PokemonProperties.Companion.parse(c==PokemonCase.PACK_FORM
+                    ? "oricorio dance_style=pom-pom level=15" : "pikachu level=15").createEntity(world);
+            if (c==PokemonCase.PACK_FORM) c.checkTrackedForm(entity,"Spawn");
+            else entity.getPokemon().setSpecies(PokemonSpecies.getByIdentifier(c.species));
             subject=entity;
             if (c==PokemonCase.OWNER) setOwner(caller.getUUID());
         }
@@ -190,6 +192,10 @@ final class PokemonCaseServer {
         if (c==PokemonCase.OFFLINE_OWNER && !offlineChecked) throw PokemonProbe.fail("Missing live offline owner assertion");
         if (c==PokemonCase.COOLDOWN_HELD && !witnessReacted) return;
         if (age < (c.controlled()?45:27)) return;
+        if (c==PokemonCase.PACK_FORM) {
+            c.checkTrackedForm((PokemonEntity)subject,"Server after call");
+            System.out.println("POKEMON_PACK_FORM_SERVER id="+c.species+" form=Pom-Pom aspect=pom-pom-style aligned="+aligned);
+        }
         System.out.printf(java.util.Locale.ROOT,"POKEMON_CASE_PASS %s species=%s radius=32 startDistance=%d reacted=%s aligned=%d forward=%.2f ownPath=%s captureLock=%s offlineGuard=%s gapTicks=%d freshWitness=%s%n",
                 c,c.species,c.distance,reacted,aligned,advance,pathSeen,captureLockSeen,offlineChecked,gap,witnessReacted);
         if (c==PokemonCase.BATTLE) {
@@ -202,7 +208,8 @@ final class PokemonCaseServer {
         if (c==PokemonCase.BLOCKED) wall(false);
         if (c!=PokemonCase.COOLDOWN_PRIME && c!=PokemonCase.COOLDOWN_HELD) subject.discard();
         if (ownedStore!=null) { ownedStore.remove(owned); ownedStore=null; owned=null; }
-        int limit="1".equals(System.getenv("MOBSEAR_POKEMON_ACOUSTIC")) ? 2 : PokemonCase.values().length;
+        int limit="1".equals(System.getenv("MOBSEAR_POKEMON_ACOUSTIC")) ? 2
+                : "1".equals(System.getenv("MOBSEAR_POKEMON_PACK")) ? PokemonCase.values().length : PokemonCase.PACK_FORM.ordinal();
         if (++index<limit) prepare();
         else {
             live=false;

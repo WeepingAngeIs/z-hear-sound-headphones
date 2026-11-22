@@ -7,7 +7,8 @@ enum PokemonCase {
     ADDON("acideon", 18), NAMESPACE("hearfixture:chimekin", 18), NEAR_EDGE("pikachu", 31),
     FAR("eevee", 36), WRONG("eevee", 15), OWNER("pikachu", 12), OFFLINE_OWNER("eevee", 12),
     BATTLE("pikachu", 12), CAPTURE("eevee", 12), PASSIVE("pikachu", 12),
-    BLOCKED("eevee", 10), COOLDOWN_PRIME("pikachu", 14), COOLDOWN_HELD("pikachu", 14), COOLDOWN_EXPIRED("pikachu", 14);
+    BLOCKED("eevee", 10), COOLDOWN_PRIME("pikachu", 14), COOLDOWN_HELD("pikachu", 14), COOLDOWN_EXPIRED("pikachu", 14),
+    PACK_FORM("oricorio", 8);
 
     final ResourceLocation species;
     final int distance;
@@ -15,8 +16,17 @@ enum PokemonCase {
         this.species = ResourceLocation.parse(name.contains(":") ? name : "cobblemon:" + name);
         this.distance = distance;
     }
-    boolean accepts() { return ordinal() <= NEAR_EDGE.ordinal() || this == BLOCKED || this == COOLDOWN_PRIME || this == COOLDOWN_EXPIRED; }
+    boolean accepts() { return ordinal() <= NEAR_EDGE.ordinal() || this == BLOCKED || this == COOLDOWN_PRIME || this == COOLDOWN_EXPIRED || this == PACK_FORM; }
     boolean controlled() { return this == LOOK || this == APPROACH || this == BLOCKED; }
     boolean reusesSubject() { return this == COOLDOWN_HELD || this == COOLDOWN_EXPIRED; }
+    void checkTrackedForm(com.cobblemon.mod.common.entity.pokemon.PokemonEntity entity, String observer) {
+        if (this!=PACK_FORM) return;
+        var data=entity.getPokemon();
+        if (!species.equals(data.getSpecies().getResourceIdentifier()) || !"Pom-Pom".equals(data.getForm().getName())
+                || !data.getAspects().contains("pom-pom-style")) {
+            throw PokemonProbe.fail(observer+" saw wrong form of "+data.getSpecies().getResourceIdentifier()+
+                    " form="+data.getForm().getName()+" aspects="+data.getAspects());
+        }
+    }
     ResourceLocation spoken() { return this == WRONG ? PIKACHU.species : species; }
 }
