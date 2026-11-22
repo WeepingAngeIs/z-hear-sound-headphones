@@ -153,7 +153,9 @@ for role in hud nameplate; do
 done
 snapshots+=(nameplate-out-of-range nameplate-team-visible nameplate-team-hidden status-speaking status-quiet gain-zero device-meter)
 snapshots+=(menu-first-open menu-compact menu-voice-changer)
-for call in enderman spider mob mobs; do snapshots+=("gaze-$call-before" "gaze-$call-after" "gaze-$call-feedback"); done
+for call in enderman spider mob mobs mob-spider mobs-enderman; do
+  snapshots+=("gaze-$call-before" "gaze-$call-after" "gaze-$call-feedback")
+done
 snapshots+=(menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
 for name in "${snapshots[@]}"; do test -s "build/state-previews/$name.png" || { echo "Missing $name"; exit 1; }; done
 printf 'MOBSEAR_CAPTURE %s.png\n' "${snapshots[@]}"

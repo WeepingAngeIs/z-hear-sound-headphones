@@ -44,12 +44,14 @@ jobs:
             cp ci/gametest/dev/mobsear/server/GlanceGameTests.java ci/pack-compat/java/dev/mobsear/server/
           fi
           python3 ci/pack-compat/prepare.py "$PROFILE"
+          python3 ci/pack-compat/settings.py prepare "$PROFILE"
           printf '\napply from: "ci/pack-compat/probe.gradle"\n' >> build.gradle
           trap 'grep "PACK_GLANCE " "$RUNNER_TEMP/pack-probe.log" > "$RUNNER_TEMP/angles.txt" || true' EXIT
           bash gradlew --no-daemon -PprobeRevision="$REVISION" -PprobeProfile="$PROFILE" runGameTestServer 2>&1 | tee "$RUNNER_TEMP/pack-probe.log"
           grep -E 'All [1-9][0-9]* required tests passed' "$RUNNER_TEMP/pack-probe.log"
           grep 'PACK_GLANCE ' "$RUNNER_TEMP/pack-probe.log" > "$RUNNER_TEMP/angles.txt"
           grep -q 'PACK_GLANCE_COMPLETE' "$RUNNER_TEMP/pack-probe.log"
+          python3 ci/pack-compat/settings.py verify "$PROFILE"
       - name: Keep only the measured results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

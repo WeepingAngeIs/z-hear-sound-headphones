@@ -75,6 +75,8 @@ final class MenuSmoke {
 
     void tick() {
         if (step == Step.DONE) return;
+        // A fresh offline fixture shows safety and advancement toasts over the header ornament.
+        mc.getToasts().clear();
         if (System.nanoTime() - deadline > 0) {
             throw SmokeControl.failure("menu timed out in " + step + ", active=" + mc.isWindowActive()
                     + ", screen=" + (mc.screen == null ? "none" : mc.screen.getClass().getSimpleName()));

@@ -41,10 +41,11 @@ public final class GlanceGameTests {
         mob.goalSelector.addGoal(5, walk);
         var player = speaker(test, origin);
         for (int attempt = 0; attempt < 2; attempt++) {
-            int begins = 8 + 44 * attempt;
+            int begins = 15 + 44 * attempt;
             Cue cue = attempt == 0 ? named : Cue.MOBS;
             test.runAfterDelay(begins, () -> {
-                test.assertTrue(walk.running && mob.distanceToSqr(origin) > 0.04, "The fixture never walked");
+                test.assertTrue(walk.running && mob.distanceToSqr(origin) > 0.04, "The fixture never walked: running="
+                        + walk.running + " grounded=" + mob.onGround() + " pos=" + mob.position() + " from=" + origin);
                 // Behind the competing look goal and high enough to require a visible pitch change.
                 player.setPos(mob.position().add(-12, 7, -3));
                 MobReactions.handle(player, cue, 32);
@@ -62,7 +63,7 @@ public final class GlanceGameTests {
                     && Math.abs(Mth.wrapDegrees(mob.getYHeadRot() - yaw(mob, player.getEyePosition()))) > 50,
                     "Movement/look controls failed to resume after " + cue));
         }
-        test.runAfterDelay(82, test::succeed);
+        test.runAfterDelay(89, test::succeed);
     }
 
     @GameTest(template = "hearing_floor", timeoutTicks = 200)
@@ -120,6 +121,7 @@ public final class GlanceGameTests {
             facing(test, enderman, listener.getEyePosition(), "calm before eye contact");
             var watcher = speaker(test, enderman.position().add(-5, 0, 0));
             watcher.setYRot(yaw(watcher, enderman.getEyePosition()));
+            watcher.setYHeadRot(watcher.getYRot()); // LivingEntity.getViewYRot(1) reads yHeadRot.
             watcher.setXRot(pitch(watcher, enderman.getEyePosition()));
             // Register a synthetic survival player so the real vanilla target selector can discover the stare.
             test.getLevel().addNewPlayer(watcher);
@@ -200,13 +202,15 @@ public final class GlanceGameTests {
             this.destination = destination;
             setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
         }
-        @Override public boolean canUse() { return true; }
+        @Override public boolean canUse() { return mob.onGround(); }
         @Override public boolean requiresUpdateEveryTick() { return true; }
         @Override public void start() {
             running = true;
             mob.getNavigation().moveTo(destination.x, destination.y, destination.z, 0.65);
         }
         @Override public void tick() {
+            if (mob.getNavigation().isDone() && mob.distanceToSqr(destination) > 2)
+                mob.getNavigation().moveTo(destination.x, destination.y, destination.z, 0.65);
             mob.getLookControl().setLookAt(mob.getX() + 10, mob.getEyeY(), mob.getZ(), 45, 45);
         }
         @Override public void stop() { running = false; mob.getNavigation().stop(); }

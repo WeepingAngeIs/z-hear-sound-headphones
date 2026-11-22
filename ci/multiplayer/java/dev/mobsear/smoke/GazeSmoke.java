@@ -18,17 +18,18 @@ import net.neoforged.neoforge.network.PacketDistributor;
 /** Observe a genuine client's tracked head rotation following a normal serverbound Call. */
 final class GazeSmoke {
     static final int BEFORE = -100, SEND = -110;
-    static final String[] CASES = {"enderman", "spider", "mob", "mobs"};
+    static final String[] CASES = {"enderman", "spider", "mob", "mobs", "mob-spider", "mobs-enderman"};
+    static final int[] DECISIONS = {0, 1, 2, 3, 2, 3};
     static final int X = 0, Y = 108, Z = 200;
     static boolean handles(int value) {
         return value <= BEFORE && value > BEFORE - CASES.length || value <= SEND && value > SEND - CASES.length;
     }
-    static boolean enderman(int index) { return index == 0 || index == 2; }
+    static boolean enderman(int index) { return index == 0 || index == 2 || index == 5; }
     private static final Set<UUID> ready = new HashSet<>();
     private static ServerPlayer speaker, observer;
     private static Mob mob;
     private static int index, stage, startTick, alignedTicks, firstAligned;
-    private static boolean finished;
+    private static boolean finished, accepted;
 
     static void start(ServerPlayer a, ServerPlayer b) {
         speaker = a;
@@ -55,6 +56,7 @@ final class GazeSmoke {
         mob.setPersistenceRequired();
         if (!level.addFreshEntity(mob)) throw SmokeControl.failure("cannot place gaze fixture");
         alignedTicks = 0;
+        accepted = false;
         firstAligned = -1;
         announce(BEFORE);
     }
@@ -89,14 +91,16 @@ final class GazeSmoke {
                 announce(SEND);
             }
         } else {
+            accepted |= mob.goalSelector.getAvailableGoals().stream().anyMatch(goal -> goal.isRunning()
+                    && goal.getGoal().getClass().getName().equals("dev.mobsear.server.MobReactions$ListenGoal"));
             double expected = Math.toDegrees(Math.atan2(speaker.getZ()-mob.getZ(), speaker.getX()-mob.getX()))-90;
             if (Math.abs(Mth.wrapDegrees(mob.getYHeadRot() - expected)) <= 25) {
                 alignedTicks++;
                 if (firstAligned < 0) firstAligned = age;
             }
-            if (ready.size() == 2 && alignedTicks >= 6) {
+            if (ready.size() == 2 && accepted && alignedTicks >= 6) {
                 System.out.println("MOBSEAR_GAZE_CLIENT_PASS " + CASES[index] + " firstAligned=" + firstAligned
-                        + " alignedTicks=" + alignedTicks + " target=none actual-game-clients=2");
+                        + " alignedTicks=" + alignedTicks + " server-listen-goal=true target=none actual-game-clients=2");
                 mob.discard();
                 if (++index < CASES.length) begin();
                 else {

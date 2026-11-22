@@ -55,7 +55,7 @@ final class GazeClient {
             if (before) {
                 if (VoiceClient.localState() != dev.mobsear.net.MicState.SPEAKING) return;
             } else {
-                Cue cue = Cue.valueOf(decisions.get(index));
+                Cue cue = Cue.valueOf(decisions.get(GazeSmoke.DECISIONS[index]));
                 if (!supplied) { supplyDecision(cue); supplied = true; return; }
                 var fixedName = cue == Cue.MOBS ? Component.translatable("mobsear.speech.hostiles")
                         : Component.translatable("entity.minecraft." + cue.entityPath);

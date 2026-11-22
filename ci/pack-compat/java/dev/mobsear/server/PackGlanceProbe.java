@@ -67,7 +67,7 @@ public final class PackGlanceProbe {
         void plan(List<Scenario> cases) {
             var sequence = test.startSequence();
             for (var c : cases) {
-                sequence.thenExecute(() -> spawn(c)).thenIdle(8).thenExecute(() -> call(c));
+                sequence.thenExecute(() -> spawn(c)).thenIdle(18).thenExecute(() -> call(c));
                 for (int t = 1; t < yaw.length; t++) {
                     int sample = t;
                     sequence.thenIdle(1).thenExecute(() -> observe(sample));
@@ -146,7 +146,7 @@ public final class PackGlanceProbe {
         }
     }
 
-    /** A repeatable low-priority walk uses normal navigation and a competing look control. */
+    /** A repeatable low-priority straight walk over the unobstructed floor uses normal movement physics. */
     private static final class WalkPast extends Goal {
         private final Mob mob;
         private final Vec3 destination;
@@ -155,10 +155,16 @@ public final class PackGlanceProbe {
             this.destination = destination;
             setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
         }
-        @Override public boolean canUse() { return true; }
+        @Override public boolean canUse() { return mob.onGround(); }
+        @Override public boolean canContinueToUse() { return true; }
         @Override public boolean requiresUpdateEveryTick() { return true; }
-        @Override public void start() { mob.getNavigation().moveTo(destination.x, destination.y, destination.z, 0.8); }
-        @Override public void tick() { mob.getLookControl().setLookAt(destination.x, mob.getEyeY(), destination.z, 45,45); }
-        @Override public void stop() { mob.getNavigation().stop(); }
+        @Override public void tick() {
+            mob.getMoveControl().setWantedPosition(destination.x, mob.getY(), destination.z, 0.8);
+            mob.getLookControl().setLookAt(destination.x, mob.getEyeY(), destination.z, 45, 45);
+        }
+        @Override public void stop() {
+            mob.getMoveControl().setWantedPosition(mob.getX(), mob.getY(), mob.getZ(), 0);
+            mob.getNavigation().stop();
+        }
     }
 }

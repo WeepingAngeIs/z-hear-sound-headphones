@@ -196,24 +196,32 @@ public final class SpeechCuesFixture {
         var phrases = new byte[][] {namedEnderman, spider, singular, mobs};
         var calls = new Cue[] {Cue.ENDERMAN, Cue.SPIDER, Cue.MOBS, Cue.MOBS};
         var results = new ArrayList<String>();
-        for (int i = 0; i < phrases.length; i++) {
-            // Use the normal operating system recognizer, segmenter and the TEST profile's noise filter.
-            var filter = new CaptureGate();
-            var clips = new ArrayList<byte[]>();
-            var diagnostics = new SpeechCues.Utterances(clips::add);
-            for (int pos = 0; pos < phrases[i].length; pos += FRAME) {
-                byte[] pcm = Arrays.copyOfRange(phrases[i], pos, pos + FRAME);
-                filter.accept(pcm, false, 50, true, true, (wire, original) -> {
-                    diagnostics.accept(original);
-                    speech.acceptFrame(original);
-                }, speech::endUtterance);
+        for (boolean automatic : new boolean[]{false, true}) {
+            for (int i = 0; i < phrases.length; i++) {
+                var filter = new CaptureGate();
+                var clips = new ArrayList<byte[]>();
+                var diagnostics = new SpeechCues.Utterances(clips::add);
+                Runnable endpoint = () -> { speech.endUtterance(); diagnostics.finish(); };
+                var outgoing = new OutgoingPitch();
+                int cents = automatic ? VoicePreferences.SQUEAKY_CENTS : 0;
+                // Gate, noise suppression, pitch and segmentation match the opted-in game path.
+                for (int pos = 0; pos < phrases[i].length; pos += FRAME) {
+                    byte[] frame = Arrays.copyOfRange(phrases[i], pos, pos + FRAME);
+                    filter.accept(frame, automatic, 50, true, true, (wire, original) ->
+                        outgoing.route(wire, cents, accepted -> true, ignored -> {
+                            diagnostics.accept(original);
+                            speech.acceptFrame(original);
+                        }), endpoint);
+                }
+                // Open mic must finish by itself. PTT also accepts a key release.
+                if (!automatic) endpoint.run();
+                Cue recognized = received.poll(8, TimeUnit.SECONDS);
+                if (recognized != calls[i]) diagnoseSyntheticDecisions(clips.toArray(byte[][]::new), aliasFile);
+                require(recognized == calls[i], "Synthetic call " + i + " auto=" + automatic
+                        + " expected " + calls[i] + " got " + recognized);
+                if (!automatic) results.add(recognized.name());
             }
-            speech.endUtterance();
-            diagnostics.finish();
-            Cue recognized = received.poll(8, TimeUnit.SECONDS);
-            if (recognized != calls[i]) diagnoseSyntheticDecisions(clips.toArray(byte[][]::new), aliasFile);
-            require(recognized == calls[i], "Filtered synthetic call " + i + " expected " + calls[i] + " got " + recognized);
-            results.add(recognized.name());
+            System.out.println("MOBSEAR_CALL_INPUT_PASS automatic=" + automatic + " noiseSuppression=true");
         }
         String proof = System.getenv("MOBSEAR_CUE_PROOF");
         if (proof != null) Files.write(Path.of(proof), results, StandardCharsets.US_ASCII);

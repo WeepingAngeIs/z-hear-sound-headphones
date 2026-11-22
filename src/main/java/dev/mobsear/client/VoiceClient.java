@@ -317,8 +317,9 @@ public final class VoiceClient {
             frames.clear();
         }
 
-        void enableRecognition(boolean enable) {
+        synchronized void enableRecognition(boolean enable) {
             recognition = enable;
+            gate.reset();
             speech.setEnabled(enable && !suspended);
             if (!enable) cue.set(null);
         }
