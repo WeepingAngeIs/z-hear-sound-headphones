@@ -585,15 +585,17 @@ public final class PackProbe {
                 int scale=(int)mc.getWindow().getGuiScale();
                 int left=(mc.getWindow().getGuiScaledWidth()/2-91)*scale;
                 int top=pic.getHeight(), bottom=0;
-                for (int y=pic.getHeight()/2; y<pic.getHeight()*9/10; y++) {
+                for (int y=pic.getHeight()/2; y<pic.getHeight()-2*scale; y++) {
                     int row=0;
                     for (int x=Math.max(0,left); x<Math.min(pic.getWidth(),left+182*scale); x+=scale)
                         if ((pic.getPixelRGBA(x,y)&0xffffff)==0xa177d7) row++;
                     if (row>=8) { top=Math.min(top,y); bottom=y; }
                 }
-                // Diagnostics are enabled here. A matched name alone draws one line. A server
-                // acknowledgement draws two. Wait for that taller rail in two completed frames.
-                if (bottom-top+1<21*scale || ++o.renderedNoticeFrames<2) return;
+                // Earlier gates require a real server confirmation and that exact named message
+                // still being displayed. A separately visible diagnostic adds a second line.
+                String diagnostic = Boundary.notice("localMatch");
+                int minHeight = diagnostic.isEmpty() || diagnostic.equals(o.test.name+" heard you") ? 13 : 21;
+                if (bottom-top+1<minHeight*scale || ++o.renderedNoticeFrames<2) return;
                 var folder=Files.createDirectories(home.resolve("evidence"));
                 pic.writeToFile(folder.resolve(o.number+"-"+o.test.name+".png"));
                 o.screenshot=true;
