@@ -328,7 +328,17 @@ public final class VoiceClient {
                 PacketDistributor.sendToServer(new Packets.Up(frame));
             }
             Cue ready = cue.getAndSet(null);
-            if (ready == null || !recognition || !link.hasChannel(Packets.Call.TYPE)) return;
+            if (ready == null || !recognition) return;
+            var mc = Minecraft.getInstance();
+            var name = ready == Cue.MOBS ? Component.translatable("mobsear.speech.hostiles")
+                    : Component.translatable("entity.minecraft." + ready.entityPath);
+            // Display the fixed cue meaning privately. Never display a recognized phrase or a transcript.
+            if (mc.player != null && (mc.player.isCreative() || mc.player.isSpectator())) {
+                mc.gui.setOverlayMessage(Component.translatable("mobsear.speech.recognized_mode", name), false);
+                return;
+            }
+            mc.gui.setOverlayMessage(Component.translatable("mobsear.speech.recognized", name), false);
+            if (!link.hasChannel(Packets.Call.TYPE)) return;
             boolean supported = switch (ready) {
                 case ZOMBIE, MOBS, ENDERMAN -> true;
                 default -> link.hasChannel(MicPresence.Controls.TYPE);

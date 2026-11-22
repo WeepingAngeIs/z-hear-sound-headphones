@@ -26,9 +26,9 @@ jobs:
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
-          cp build/libs/mobsear-0.2.0.jar dist/
-          jar tf dist/mobsear-0.2.0.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
-          if jar tf dist/mobsear-0.2.0.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
+          cp build/libs/mobsear-0.2.1.jar dist/
+          jar tf dist/mobsear-0.2.1.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
+          if jar tf dist/mobsear-0.2.1.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
         run: |
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mobs-hear-u
-          path: dist/mobsear-0.2.0.jar
+          path: dist/mobsear-0.2.1.jar
           if-no-files-found: error
   packaged-server:
     name: Packaged jar on NeoForge ${{ matrix.loader }}
@@ -80,6 +80,7 @@ jobs:
         shell: powershell
         env:
           MOBSEAR_SYNTH_PROOF_DIR: build/synthetic-speech
+          MOBSEAR_CUE_PROOF: recognized-calls.txt
         run: |
           Add-Type -AssemblyName System.Speech
           [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object Id,Culture
@@ -93,8 +94,15 @@ jobs:
           name: spoken-pitch-proof
           path: build/synthetic-speech/*.wav
           if-no-files-found: error
+      - name: Pass only the synthetic cue decisions to the game clients
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: recognized-calls
+          path: recognized-calls.txt
+          if-no-files-found: error
   multiplayer:
     name: Two NeoForge 21.1.249 clients on a disposable server
+    needs: windows-speech
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -106,9 +114,14 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: recognized-calls
+          path: build/cue-proof
       - name: Send generated audio across real game connections
         env:
           MOBSEAR_STATE_CAPTURE: '1'
+          MOBSEAR_CUE_PROOF: ${{ github.workspace }}/build/cue-proof/recognized-calls.txt
         run: xvfb-run -a -s '-screen 0 1024x768x24' bash ci/multiplayer/run.sh
       - name: Keep in-game microphone state captures
         if: ${{ !cancelled() }}

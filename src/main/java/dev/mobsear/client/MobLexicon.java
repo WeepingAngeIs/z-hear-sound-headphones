@@ -32,6 +32,7 @@ final class MobLexicon {
             phrases.put(name, cue);
         }
         add(phrases, Cue.ZOMBIE, "zombies", "zombified piglin", "zombified piglins", "husk", "drowned", "zombie villager");
+        add(phrases, Cue.MOBS, "mob");
         add(phrases, Cue.ENDERMAN, "endermen", "ender man", "ender men");
         add(phrases, Cue.SKELETON, "skeletons", "stray", "bogged", "wither skeleton");
         add(phrases, Cue.SPIDER, "spiders", "cave spider");

@@ -149,9 +149,12 @@ public final class SpeechCuesFixture {
         byte[] skeleton = synthesize("skeleton");
         byte[] creeper = synthesize("creeper");
         byte[] custom = synthesize("bone walker");
+        byte[] singular = synthesize("mob");
+        byte[] namedEnderman = synthesize("Enderman");
+        byte[] spider = synthesize("spider");
         byte[][] cases = {zombie, mobs, enderman, greeting, unrelated, new byte[16000], greetingZombie,
-                zombies, conversation, greetingOnly, zombie, skeleton, creeper, custom};
-        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1, 4, 5, 4};
+                zombies, conversation, greetingOnly, zombie, skeleton, creeper, custom, singular, namedEnderman, spider};
+        int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1, 4, 5, 4, 2, 3, 6};
         int[] decisions = decisions(SpeechCues.launch(aliasFile), cases);
         if (!Arrays.equals(decisions, expected)) {
             diagnoseSyntheticDecisions(cases, aliasFile);
@@ -190,6 +193,24 @@ public final class SpeechCuesFixture {
                 throw new AssertionError("End-to-end cue was " + actual + " with outgoing cents " + cents);
             }
         }
+        var phrases = new byte[][] {namedEnderman, spider, singular, mobs};
+        var calls = new Cue[] {Cue.ENDERMAN, Cue.SPIDER, Cue.MOBS, Cue.MOBS};
+        var results = new ArrayList<String>();
+        for (int i = 0; i < phrases.length; i++) {
+            // Use the normal operating system recognizer, segmenter and the TEST profile's noise filter.
+            var filter = new CaptureGate();
+            for (int pos = 0; pos < phrases[i].length; pos += FRAME) {
+                byte[] pcm = Arrays.copyOfRange(phrases[i], pos, pos + FRAME);
+                filter.accept(pcm, false, 50, true, speech::acceptFrame, speech::endUtterance);
+            }
+            speech.endUtterance();
+            Cue recognized = received.poll(8, TimeUnit.SECONDS);
+            require(recognized == calls[i], "Filtered synthetic call " + i + " expected " + calls[i] + " got " + recognized);
+            results.add(recognized.name());
+        }
+        String proof = System.getenv("MOBSEAR_CUE_PROOF");
+        if (proof != null) Files.write(Path.of(proof), results, StandardCharsets.US_ASCII);
+        System.out.println("MOBSEAR_SYNTH_CALL_PASS Enderman, spider, mob, mobs -> " + results);
         speech.setEnabled(false);
         require(speech.status() == SpeechCues.Status.OFF && received.isEmpty(), "Opt-out or duplicate cue");
     }
