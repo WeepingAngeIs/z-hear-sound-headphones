@@ -161,23 +161,56 @@ try {
     $sentence.Enabled = $false
     $engine.LoadGrammar($sentence)
 
-    function Find-Mention($plain, [byte[]]$samples) {
+    $spotRule = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('WordSpot')
+    $free = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new(0,1)
+    $free.Add([System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::Garbage)
+    $spotRule.Add($free)
+    $spotRule.Add($nameItems)
+    $spotRule.Add($free)
+    $spotDoc = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($spotRule)
+    $spotDoc.Culture = $english.Culture
+    $spotDoc.PhoneticAlphabet = $contextDocument.PhoneticAlphabet
+    $spot = [System.Speech.Recognition.Grammar]::new($spotDoc)
+    $spot.Name = 'word spot'
+    $spot.Enabled = $false
+    $engine.LoadGrammar($spot)
+
+    function Read-WholeName($plain) {
+        $w = $plain.Words
+        for ($i=0; $i -lt $w.Count; $i++) {
+            $joined = ''
+            $best = 0
+            for ($j=$i; $j -lt [Math]::Min($w.Count, $i+8); $j++) {
+                if ($w[$j].Confidence -lt 0.68) { break }
+                $joined = ($joined+' '+$w[$j].LexicalForm.ToLowerInvariant()).TrimStart()
+                if (-not $aliases.ContainsKey($joined)) { continue }
+                if ($wordBreaks.ContainsKey($joined) -or $confirm.ContainsKey($joined)) { continue }
+                if ($i -eq 0 -and $j -eq $w.Count-1) { continue }
+                if ($overlapping.ContainsKey($joined) -and $w.Count-($j-$i+1) -le 1) { continue }
+                $best = $aliases[$joined]
+            }
+            if ($best -gt 0) { return $best }
+        }
+        return 0
+    }
+
+    function Find-Mention($plain, [byte[]]$samples, $activeGrammar) {
         if ($null -eq $plain -or $plain.Words.Count -lt 2) { return 0 }
         $audio = [IO.MemoryStream]::new($samples, $false)
         $engine.SetInputToNull()
         try {
-            $sentence.Enabled = $true
+            $activeGrammar.Enabled = $true
             $calls.Enabled = $false
             $background.Enabled = $false
             $engine.SetInputToAudioStream($audio,$format)
             $mention = $engine.Recognize()
-            if ($null -eq $mention -or $mention.Grammar.Name -ne 'name in speech' -or
+            if ($null -eq $mention -or $mention.Grammar -ne $activeGrammar -or
                     -not $mention.Semantics.ContainsKey('mob')) { return 0 }
             $label = [string]$mention.Semantics['mob'].Value
             if (-not $aliases.ContainsKey($label)) { return 0 }
             $units = $label.Split(' ')
             $mw = $mention.Words
-            if ($mw.Count -le $units.Length) { return 0 }
+            if ($mw.Count -lt $units.Length) { return 0 }
             # A short possible compound such as Owl Guardian cannot fall through to the base Guardian.
             if ($overlapping.ContainsKey($label) -and $mw.Count -eq $units.Length+1 -and
                     $mw[0].LexicalForm -notin @('a','an','the','that','this','my','your','one','look','hey','call')) { return 0 }
@@ -191,19 +224,22 @@ try {
                 # Check the name's edges against an unconstrained interpretation of the same sound.
                 # This prevents taking 'mob' from inside 'mobility' or 'spider' from 'spidery'.
                 $span = $mention.GetAudioForWordRange($mw[$i],$mw[$last])
-                $left = $span.AudioPosition.TotalMilliseconds
+                $left = ($mention.Audio.AudioPosition+$span.AudioPosition).TotalMilliseconds
                 $right = $left + $span.Duration.TotalMilliseconds
                 $plainWords = $plain.Words
                 $startEdge = $endEdge = $false
                 $sameWords = [Collections.Generic.List[string]]::new()
+                $outside = 0
                 for ($k=0; $k -lt $plainWords.Count; $k++) {
                     $word = $plain.GetAudioForWordRange($plainWords[$k],$plainWords[$k])
-                    if ([Math]::Abs($word.AudioPosition.TotalMilliseconds-$left) -le 75) { $startEdge=$true }
-                    if ([Math]::Abs(($word.AudioPosition+$word.Duration).TotalMilliseconds-$right) -le 75) { $endEdge=$true }
-                    $middle = $word.AudioPosition.TotalMilliseconds + $word.Duration.TotalMilliseconds / 2
+                    $absolute = ($plain.Audio.AudioPosition+$word.AudioPosition).TotalMilliseconds
+                    if ([Math]::Abs($absolute-$left) -le 75) { $startEdge=$true }
+                    if ([Math]::Abs($absolute+$word.Duration.TotalMilliseconds-$right) -le 75) { $endEdge=$true }
+                    $middle = $absolute + $word.Duration.TotalMilliseconds / 2
                     if ($middle -ge $left -and $middle -le $right) { $sameWords.Add($plainWords[$k].LexicalForm.ToLowerInvariant()) }
+                    elseif ($plainWords[$k].LexicalForm -notin @('call','hey')) { $outside++ }
                 }
-                if (-not ($startEdge -and $endEdge)) { continue }
+                if (-not ($startEdge -and $endEdge) -or $outside -eq 0) { continue }
                 $heard = $sameWords -join ' '
                 $target = $aliases[$label]
                 if ($aliases.ContainsKey($heard)) {
@@ -234,7 +270,7 @@ try {
                     for ($n=0; $n -lt 3; $n++) { $wordAudio.Write($silence,0,$silence.Length) }
                     $wordAudio.Position=0
                     $engine.SetInputToNull()
-                    $sentence.Enabled=$false
+                    $activeGrammar.Enabled=$false
                     $calls.Enabled=$true
                     $background.Enabled=$true
                     $shortName = if ($label -in @('endermen','ender man','ender men')) { 'enderman' } else { $label }
@@ -265,7 +301,7 @@ try {
             return 0
         } finally {
             $engine.SetInputToNull()
-            $sentence.Enabled=$false
+            $activeGrammar.Enabled=$false
             $calls.Enabled=$true
             $background.Enabled=$true
             $audio.Dispose()
@@ -431,7 +467,15 @@ try {
                     $match = $null
                 }
             }
-            if ($decision -eq 0 -and $null -ne $plain) { $decision = Find-Mention $plain $pcm }
+            if ($decision -eq 0 -and $null -ne $plain) {
+                $decision = Read-WholeName $plain
+                if ($decision -eq 0) {
+                    foreach ($contextGrammar in @($sentence,$spot)) {
+                        $decision = Find-Mention $plain $pcm $contextGrammar
+                        if ($decision -ne 0) { break }
+                    }
+                }
+            }
         } finally {
             $engine.SetInputToNull()
             $stream.Dispose()
