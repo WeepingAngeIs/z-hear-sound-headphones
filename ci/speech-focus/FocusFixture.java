@@ -53,7 +53,7 @@ public final class FocusFixture {
             }
             for (String row : Files.readAllLines(dir.resolve("manifest.tsv"))) {
                 var f=row.split("\\t",-1);
-                if (mentions && !f[2].startsWith("sentence-") && !List.of("enderman","lopunny","ordinary-chat").contains(f[2])) continue;
+                if (mentions && !f[2].startsWith("sentence-") && !List.of("enderman","lopunny","ordinary-chat","low-money").contains(f[2])) continue;
                 byte[] pcm=Files.readAllBytes(dir.resolve(f[0]+".pcm"));
                 for (boolean automatic : new boolean[]{false,true}) {
                     var clips=new ArrayList<byte[]>();
@@ -77,7 +77,7 @@ public final class FocusFixture {
                         output.write(clip);
                         output.flush();
                         String reply=id(grammar,input.readUnsignedShort());
-                        if (mentions && !automatic && f[2].startsWith("sentence-") && !reply.equals(f[4]))
+                        if (mentions && !automatic && (f[2].startsWith("sentence-") || f[2].equals("low-money")) && !reply.equals(f[4]))
                             Files.write(dir.resolve("miss-" + f[0] + "-" + clips.indexOf(clip) + ".pcm"), clip);
                         maxMillis = Math.max(maxMillis, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
                         if (!reply.equals("neutral")) replies.add(reply);

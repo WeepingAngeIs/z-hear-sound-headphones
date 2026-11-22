@@ -11,7 +11,7 @@ wrong = []
 for row in rows:
     print("MENTION_CASE", row["fixture"], row["mode"], "expected=" + row["expected"], "actual=" + row["actual"],
           "segments=" + row["segments"], "ms=" + row["maxMillis"], flush=True)
-    if row["phrase"].startswith("sentence-") and row["actual"] != row["expected"]:
+    if (row["phrase"].startswith("sentence-") or row["phrase"]=="low-money") and row["actual"] != row["expected"]:
         wrong.append((row["fixture"], row["mode"], row["actual"]))
 if wrong:
     from trace_mentions import show

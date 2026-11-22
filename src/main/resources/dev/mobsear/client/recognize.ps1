@@ -115,6 +115,10 @@ try {
     $nearNames = @()
     # Written equivalents of the short-call pronunciation variants in the English lexicon.
     $spokenForms = @{'la punny'='lopunny'; 'lapunny'='lopunny'; 'lop bunny'='lopunny'}
+    $ordinaryRivals = @{
+        lopunny='\b(low( on)?|little|more) money\b'
+        lanturn='\b(lanterns?|land turn)\b'
+    }
     $compounds = @{}
     foreach ($label in $aliases.Keys) {
         $tokens = $label.Split(' ')
@@ -130,6 +134,7 @@ try {
         $normalized = $normalized.Replace([string][char]0x2019,'').Replace('''','') -replace '\bmr\b','mister' -replace '\bjr\b','junior'
         $tokens = @([regex]::Matches($normalized, '[a-z]+') | ForEach-Object { $_.Value })
         if ($tokens.Count -eq 0 -or $tokens.Count -gt 80) { return 0 }
+        $plainText=$plainWords -join ' '
         for ($i=0; $i -lt $tokens.Count; $i++) {
             for ($size=[Math]::Min(8,$tokens.Count-$i); $size -gt 0; $size--) {
                 $label = $tokens[$i..($i+$size-1)] -join ' '
@@ -142,6 +147,7 @@ try {
                 }
                 if (-not $aliases.ContainsKey($label) -or $aliases[$label] -eq 0 -or
                         $wordBreaks.ContainsKey($label) -or $confirm.ContainsKey($label)) { continue }
+                if ($ordinaryRivals.ContainsKey($label) -and $plainText -match $ordinaryRivals[$label]) { continue }
                 # Leave bare labels and incomplete longer names to the established command recognizer.
                 if (($tokens.Count -eq $size -and $aliases[$label] -ne $shortCode) -or ($compounds.ContainsKey($label) -and $tokens.Count -le $size+3 -and
                         -not ($tokens -match '^(is|was|were|see|saw|here|there|near|over|ran|went|came|found|watch|beside)$'))) { continue }
