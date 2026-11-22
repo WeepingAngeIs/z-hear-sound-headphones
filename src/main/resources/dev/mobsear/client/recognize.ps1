@@ -125,11 +125,11 @@ try {
         }
     }
 
-    function Find-WholeName([string]$text, $plainWords) {
+    function Find-WholeName([string]$text, $plainWords, [int]$shortCode) {
         $normalized = $text.ToLowerInvariant().Normalize([Text.NormalizationForm]::FormD) -replace '\p{M}+',''
         $normalized = $normalized.Replace([string][char]0x2019,'').Replace('''','') -replace '\bmr\b','mister' -replace '\bjr\b','junior'
         $tokens = @([regex]::Matches($normalized, '[a-z]+') | ForEach-Object { $_.Value })
-        if ($tokens.Count -lt 2 -or $tokens.Count -gt 80) { return 0 }
+        if ($tokens.Count -eq 0 -or $tokens.Count -gt 80) { return 0 }
         for ($i=0; $i -lt $tokens.Count; $i++) {
             for ($size=[Math]::Min(8,$tokens.Count-$i); $size -gt 0; $size--) {
                 $label = $tokens[$i..($i+$size-1)] -join ' '
@@ -143,7 +143,7 @@ try {
                 if (-not $aliases.ContainsKey($label) -or $aliases[$label] -eq 0 -or
                         $wordBreaks.ContainsKey($label) -or $confirm.ContainsKey($label)) { continue }
                 # Leave bare labels and incomplete longer names to the established command recognizer.
-                if ($tokens.Count -eq $size -or ($compounds.ContainsKey($label) -and $tokens.Count -le $size+3 -and
+                if (($tokens.Count -eq $size -and $aliases[$label] -ne $shortCode) -or ($compounds.ContainsKey($label) -and $tokens.Count -le $size+3 -and
                         -not ($tokens -match '^(is|was|were|see|saw|here|there|near|over|ran|went|came|found|watch|beside)$'))) { continue }
                 if ($size -eq 1) {
                     $close = $false
@@ -164,10 +164,7 @@ try {
         return 0
     }
 
-    function Read-ConnectedSpeech([byte[]]$samples, $plain) {
-        if ($null -eq $plain -or $plain.Words.Count -lt 2) { return 0 }
-        $original = @($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() })
-        if ($null -eq $modelDir -or -not $modelDir) { return 0 }
+    function Read-WordAudio([byte[]]$samples, $original, [int]$shortCode, [int]$budget) {
         # Hints come from registered local creatures and an existing pronunciation lexicon. Dictation remains open.
         $hints = @(($nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
             $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
@@ -199,10 +196,10 @@ try {
                 $pipe.Write([Text.Encoding]::ASCII.GetBytes('data'))
                 $pipe.Write([int]$samples.Length); $pipe.Write($samples)
             } finally { $pipe.Dispose() }
-            if (-not $child.WaitForExit(3200)) { $child.Kill(); return 65535 }
+            if (-not $child.WaitForExit($budget)) { $child.Kill(); return 65535 }
             if ($child.ExitCode -ne 0) { return 65534 }
             $text = $stdout.GetAwaiter().GetResult()
-            if ($text.Length -le 500) { return Find-WholeName $text $original }
+            if ($text.Length -le 500) { return Find-WholeName $text $original $shortCode }
             return 0
         } catch {
             return 65534
@@ -210,6 +207,42 @@ try {
             try { if (-not $child.HasExited) { $child.Kill() } } catch {}
             $child.Dispose()
         }
+    }
+
+    function Read-ConnectedSpeech([byte[]]$samples, $plain, $command) {
+        if (-not $modelDir) { return 0 }
+        $shortCode=0
+        if ($null -ne $command -and $command.Grammar -eq $calls -and $command.Confidence -ge 0.80) {
+            $name=$command.Text.ToLowerInvariant()
+            if ($nearNames -contains $name -and $aliases.ContainsKey($name) -and -not $confirm.ContainsKey($name) -and
+                    -not $compounds.ContainsKey($name) -and $name -notin @('hoglin','poponee')) { $shortCode=$aliases[$name] }
+        }
+        $hasContext=$null -ne $plain -and $plain.Words.Count -ge 2
+        if (-not $hasContext -and $shortCode -eq 0) { return 0 }
+        $original=@()
+        if ($hasContext) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
+        $time=[Diagnostics.Stopwatch]::StartNew()
+        $answer=Read-WordAudio $samples $original $shortCode 3200
+        if (-not $hasContext) {
+            if ($answer -eq $shortCode -or $answer -ge 65534) { return $answer }
+            return 0
+        }
+        if ($answer -ne 0 -or $original.Count -lt 7 -or $time.ElapsedMilliseconds -gt 2200) { return $answer }
+        # Recheck a complete short clause before a preposition. Use the independently timed
+        # word boundary, so a name does not get split or compete against a long trailing clause.
+        for ($k=3; $k -lt [Math]::Min(9,$original.Count-1); $k++) {
+            if ($original[$k] -notin @('by','beside','behind','beyond','near','under','over','with','while','because','after','before')) { continue }
+            $span=$plain.GetAudioForWordRange($plain.Words[$k],$plain.Words[$k])
+            $edge=($plain.Audio.AudioPosition+$span.AudioPosition).TotalMilliseconds
+            $bytes=[Math]::Min($samples.Length,[int][Math]::Ceiling(($edge+20)*16)*2)
+            if ($bytes -lt 16000 -or $bytes -gt $samples.Length-6400) { continue }
+            $part=[byte[]]::new($bytes+6400)
+            try {
+                [Array]::Copy($samples,$part,$bytes)
+                return Read-WordAudio $part $original 0 ([Math]::Max(300,3200-[int]$time.ElapsedMilliseconds))
+            } finally { [Array]::Clear($part,0,$part.Length) }
+        }
+        return 0
     }
 
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
@@ -379,7 +412,7 @@ try {
                     $match = $null
                 }
             }
-            if ($decision -eq 0) { $decision = Read-ConnectedSpeech $pcm $plain }
+            if ($decision -eq 0) { $decision = Read-ConnectedSpeech $pcm $plain $result }
         } finally {
             $engine.SetInputToNull()
             $stream.Dispose()

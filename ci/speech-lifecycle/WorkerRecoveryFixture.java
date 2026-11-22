@@ -76,6 +76,15 @@ public final class WorkerRecoveryFixture {
             await(() -> Files.exists(root.resolve("request-6")) && speech.lastDecision().number() > before + 1, 4);
             if (!Files.readString(root.resolve("request-6")).equals("False") || speech.takeTestFeedback() != null)
                 throw new AssertionError("The tester data channel stayed active");
+            speech.setTesting(true);
+            for (var issue : new SpeechCues.DecoderIssue[]{SpeechCues.DecoderIssue.ERROR, SpeechCues.DecoderIssue.TIMEOUT}) {
+                long prior = speech.lastDecision().number();
+                submit(speech);
+                await(() -> speech.lastDecision().number() > prior, 4);
+                if (speech.lastDecision().matched() || speech.lastDecision().issue() != issue || !cues.isEmpty())
+                    throw new AssertionError("A local decoder fault became a mob call or a no-match");
+                expectFeedback(speech, SpeechCues.TestStage.DECODER_ERROR, "");
+            }
         }
         System.out.println("MOBSEAR_PRIVATE_FEEDBACK_PASS listening checking wrongChoice rejectedGuess emptyGuess quiet dropped long optOut");
     }

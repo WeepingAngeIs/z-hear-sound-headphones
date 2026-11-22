@@ -27,9 +27,9 @@ while ($true) {
         $number++
         [IO.File]::WriteAllText((Join-Path $folder ('request-' + $number)),$detail.ToString())
         Start-Sleep -Milliseconds 600
-        $code=if ($number -eq 1) {3} elseif ($number -eq 2) {5} else {0}
-        $outPipe.WriteByte(0)
-        $outPipe.WriteByte($code)
+        $code=if ($number -eq 1) {3} elseif ($number -eq 2) {5} elseif ($number -eq 7) {65534} elseif ($number -eq 8) {65535} else {0}
+        $outPipe.WriteByte([byte]($code -shr 8))
+        $outPipe.WriteByte([byte]($code -band 255))
         if ($detail) {
             $example=if ($number -in @(3,5)) {'low bunny'} else {''}
             $bytes=[Text.Encoding]::UTF8.GetBytes($example)

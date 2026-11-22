@@ -10,7 +10,7 @@ def show(root):
     script = Path("src/main/resources/dev/mobsear/client/recognize.ps1").read_text(encoding="utf8")
     for hook,event in [("$plain = if ($null",'("first="+$result.Grammar.Name+" "+$result.Text)'),
                        ("if ($text.Length -le 500)",'("words="+$text.Trim())'),
-                       ("if (-not $child.WaitForExit(3200))",'("sentence-decoder-started")')]:
+                       ("if (-not $child.WaitForExit($budget))",'("sentence-decoder-started")')]:
         assert script.count(hook) == 1, hook
         script = script.replace(hook, "[Console]::Error.WriteLine(" + event + ")\n            " + hook)
     script=script.replace("$pcm = $reader.ReadBytes($length)",'[Console]::Error.WriteLine("NEXT")\n        $pcm = $reader.ReadBytes($length)')
