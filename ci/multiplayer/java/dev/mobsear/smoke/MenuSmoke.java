@@ -62,6 +62,7 @@ final class MenuSmoke {
     private boolean displayed;
     private int fixedX, fixedY;
     private int framesSeen;
+    private long frameStartSlot = -1;
     private long reducedAt;
     private Screen pitchParent;
     private static final boolean PUBLIC_STACK = "1".equals(System.getenv("MOBSEAR_PUBLIC_MENU_STACK"));
@@ -69,6 +70,7 @@ final class MenuSmoke {
 
     MenuSmoke(Runnable acknowledge) {
         this.acknowledge = acknowledge;
+        NeoForge.EVENT_BUS.addListener(this::beginFrame);
         NeoForge.EVENT_BUS.addListener(this::render);
         GLFW.glfwFocusWindow(mc.getWindow().getWindow());
     }
@@ -253,6 +255,10 @@ final class MenuSmoke {
         }
     }
 
+    private void beginFrame(RenderFrameEvent.Pre event) {
+        frameStartSlot = step == Step.ANIMATION ? Util.getMillis() / 400L : -1;
+    }
+
     private void render(RenderFrameEvent.Post event) {
         if (step == Step.PITCH_CAPTURE && mc.screen instanceof PitchSettingsScreen && ++renderedFrames >= 3) {
             save("menu-voice-changer.png");
@@ -294,9 +300,10 @@ final class MenuSmoke {
         if (step == Step.ANIMATION || step == Step.REDUCED) {
             long now = Util.getMillis();
             if (step == Step.ANIMATION) {
-                // Sample well inside the production time slot so a frame boundary cannot relabel a capture.
-                if (now % 400 < 65 || now % 400 > 315) return;
-                int frame = FixtureSound.sceneFrame();
+                // Only label a finished draw if the complete render stayed in one production time slot.
+                if (frameStartSlot != now / 400L) return;
+                int frame = (int)(frameStartSlot % 8);
+                if (FixtureSound.sceneFrame() != frame) return;
                 if ((framesSeen & (1 << frame)) == 0) {
                     save("menu-" + BACKDROPS[theme].id() + "-frame-" + frame + ".png");
                     framesSeen |= 1 << frame;

@@ -47,6 +47,12 @@ final class PokemonCaseServer {
     private double advance, nativeTravel;
     private BlockPos nativeDestination;
     private net.minecraft.world.level.pathfinder.Path interruptedRoute;
+    private net.minecraft.world.level.pathfinder.Path initialPath;
+    private WalkTarget initialWalk;
+    private boolean preemptedPath, preemptedWalk;
+    private int activeSamples;
+    private net.minecraft.world.phys.Vec3 soundOrigin;
+    private StringBuilder angleTrace;
     private int interruptionTick;
     private boolean released;
 
@@ -81,9 +87,13 @@ final class PokemonCaseServer {
             throw PokemonProbe.fail("Invalid barrier owner or subject");
         if (m.stage()==PokemonProbe.ARRANGE && p==caller && phase==PokemonProbe.FIRE && !arranged) {
             arranged=true;
+            soundOrigin=caller.position();
             if (c==PokemonCase.OFFLINE_OWNER) checkOfflineOwner();
             if (c.ordinaryEntity()) named.arrange(c,subject,caller);
             if (c.accepts() || c==PokemonCase.COOLDOWN_HELD) prepareIdle(subject);
+            if (c==PokemonCase.APPROACH || c==PokemonCase.INTERRUPTED)
+                System.out.println("POKEMON_NATIVE_START "+c+" ground="+subject.onGround()+" navDone="+subject.getNavigation().isDone()+
+                        " walkMemory="+subject.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)+" active="+subject.getBrain().getActiveNonCoreActivity());
             if (witness!=null) {
                 prepareIdle(witness);
                 System.out.println("POKEMON_FRESH_WITNESS species="+witness.getPokemon().getSpecies().getResourceIdentifier()
@@ -96,6 +106,12 @@ final class PokemonCaseServer {
         }
         if (m.stage() == PokemonProbe.FIRE && p == caller && phase == PokemonProbe.FIRE && !fired) {
             fired = true;
+            if (c==PokemonCase.APPROACH || c==PokemonCase.INTERRUPTED) {
+                initialPath=subject.getNavigation().getPath();
+                initialWalk=subject.getBrain().getMemory(MemoryModuleType.WALK_TARGET).orElse(null);
+                System.out.println("POKEMON_NATIVE_ROUTE "+c+" assigned="+CobblemonCalls.hasResponsePath(subject)+
+                        " navDestination="+(initialPath==null ? "none" : initialPath.getTarget())+" walkMemory="+(initialWalk!=null));
+            }
             if (c.ordinaryEntity()) {
                 named.afterWire(c,subject,caller);
                 if (c.guardPicture()) {
@@ -133,6 +149,8 @@ final class PokemonCaseServer {
             default -> .20d;
         });
         caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
+        caller.setDeltaMovement(0,0,0);
+        caller.hurtMarked=true;
         if (viewer!=caller) viewer.teleportTo(world,3.5,Y+0.1,Z+5.5,148,9);
         if (c.ordinaryEntity()) {
             subject=named.spawn(c,caller);
@@ -159,7 +177,9 @@ final class PokemonCaseServer {
         }
         if (c==PokemonCase.BLOCKED) wall(true);
         phase=PokemonProbe.BEFORE; age=aligned=0; reacted=fired=captureLockSeen=pathSeen=witnessReacted=offlineChecked=arranged=keptRoute=false;
-        advance=nativeTravel=0; gap=0; nativeDestination=null; interruptedRoute=null; released=false;
+        advance=nativeTravel=0; gap=0; nativeDestination=null; interruptedRoute=initialPath=null; initialWalk=null;
+        released=preemptedPath=preemptedWalk=false; activeSamples=0;
+        soundOrigin=caller.position(); angleTrace=new StringBuilder();
         acknowledgements.clear();
         announce();
     }
@@ -212,7 +232,8 @@ final class PokemonCaseServer {
         age++;
         if (age>1100) throw PokemonProbe.fail(c + " timed out, phase=" + phase + " fired=" + fired + " acks="
                 + acknowledgements.size() + " reacted=" + reacted + " aligned=" + aligned + " forward=" + advance
-                + " nativeTravel="+nativeTravel+" nativeRoute="+keptRoute+" gap="+gap+" witness="+witnessReacted);
+                + " nativeTravel="+nativeTravel+" nativeRoute="+keptRoute+" gap="+gap+" witness="+witnessReacted
+                + " activeTicks="+activeSamples+" headErrorByTick="+angleTrace+" last="+subjectState());
         int count=caller==viewer ? 1:2;
         if (phase==PokemonProbe.BEFORE) {
             subject.moveTo(.5,Y,Z+.5,90,0);
@@ -226,6 +247,7 @@ final class PokemonCaseServer {
             if (c==PokemonCase.COOLDOWN_EXPIRED && caller.serverLevel().getGameTime()-firstCall<110) return;
             if (c==PokemonCase.BATTLE) engageBattle();
             if (c==PokemonCase.CAPTURE) engageCapture();
+            soundOrigin=caller.position();
             phase=PokemonProbe.FIRE;
             age=0; acknowledgements.clear(); announce();
             return;
@@ -236,14 +258,23 @@ final class PokemonCaseServer {
         if (active && !c.accepts()) throw PokemonProbe.fail("Protected or wrong subject reacted: " + c);
         if (active) {
             reacted=true;
+            activeSamples++;
+            if (c==PokemonCase.APPROACH || c==PokemonCase.INTERRUPTED) {
+                var nowPath=subject.getNavigation().getPath();
+                var nowWalk=subject.getBrain().getMemory(MemoryModuleType.WALK_TARGET).orElse(null);
+                preemptedPath |= initialPath!=null && nowPath!=null && !initialPath.getTarget().equals(nowPath.getTarget());
+                preemptedWalk |= nowWalk!=null && nowWalk!=initialWalk;
+            }
             if (!c.ordinaryEntity()) pathSeen |= CobblemonCalls.hasResponsePath(subject);
             if (c.walking()) {
                 var existing=subject.getNavigation().getPath();
                 keptRoute |= existing!=null && nativeDestination.equals(existing.getTarget());
                 nativeTravel=Math.max(nativeTravel,subject.getZ()-(Z+.5));
             }
-            double yaw=Math.toDegrees(Math.atan2(caller.getZ()-subject.getZ(),caller.getX()-subject.getX()))-90;
-            if (Math.abs(Mth.wrapDegrees(subject.getYHeadRot()-yaw))<30) aligned++;
+            double yaw=Math.toDegrees(Math.atan2(soundOrigin.z-subject.getZ(),soundOrigin.x-subject.getX()))-90;
+            double error=Math.abs(Mth.wrapDegrees(subject.getYHeadRot()-yaw));
+            if (c.ordinaryEntity() && activeSamples<=22) angleTrace.append(age).append('=').append(Math.round(error)).append(',');
+            if (error<30) aligned++;
             advance=Math.max(advance,subject.getX()-.5);
             if (subject.getTarget()!=null) throw PokemonProbe.fail("Species call assigned combat target");
             if (c==PokemonCase.INTERRUPTED && ball==null && pathSeen && aligned>=2 && advance>=.2 && !subject.getNavigation().isDone()) {
@@ -259,10 +290,18 @@ final class PokemonCaseServer {
             if (!released && age-interruptionTick>=2) throw PokemonProbe.fail("Hearing kept control during a real capture");
         }
         if (acknowledgements.size()!=count || !fired) return;
-        if (c.accepts() && (!reacted || aligned<2)) return;
+        if (c.accepts() && (!reacted || aligned<2)) {
+            if (c.ordinaryEntity() && age>=65) throw PokemonProbe.fail(c+" accepted="+reacted+" activeTicks="+activeSamples+
+                    " headErrorByTick="+angleTrace+" at="+subjectState());
+            return;
+        }
         if ((c==PokemonCase.LOOK || c==PokemonCase.BLOCKED) && pathSeen) throw PokemonProbe.fail("Unsafe or unexpected navigation " + c);
         if (c==PokemonCase.BLOCKED && advance>1.5) throw PokemonProbe.fail("Crossed solid wall " + advance);
-        if (c==PokemonCase.APPROACH && (!pathSeen || advance<.55)) return;
+        if (c==PokemonCase.APPROACH && (!pathSeen || advance<.55)) {
+            if (age>=65) throw PokemonProbe.fail("Controlled approach travel="+advance+" ownPath="+pathSeen+
+                    " activeTicks="+activeSamples+" changedDestination="+preemptedPath+" replacedWalk="+preemptedWalk);
+            return;
+        }
         if (c==PokemonCase.APPROACH && advance>4.8) throw PokemonProbe.fail("Approached beyond fixed short route");
         if (c.walking() && pathSeen) throw PokemonProbe.fail("Replaced a native walking route");
         if (c.walking() && (!keptRoute || nativeTravel<.12)) return;
@@ -302,6 +341,12 @@ final class PokemonCaseServer {
             live=false;
             System.out.println(caller==viewer ? "MOBSEAR_POKEMON_SOLO_PASS" : "MOBSEAR_POKEMON_MULTI_PASS");
         }
+    }
+    private String subjectState() {
+        return "origin="+soundOrigin+" caller="+caller.position()+" alive="+caller.isAlive()+" subject="+subject.position()
+                +" yaw="+subject.getYHeadRot()+" body="+subject.yBodyRot+" hurt="+subject.hurtTime+" aggressive="+subject.isAggressive()
+                +" attackTarget="+(subject.getTarget()!=null)+" lastHurtBy="+(subject.getLastHurtByMob()!=null)
+                +" panic="+subject.getBrain().hasMemoryValue(MemoryModuleType.IS_PANICKING);
     }
     private void engageBattle() {
         var party=Cobblemon.INSTANCE.getStorage().getParty(caller);

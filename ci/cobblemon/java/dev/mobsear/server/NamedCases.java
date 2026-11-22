@@ -84,6 +84,12 @@ final class NamedCases {
             throw PokemonProbe.fail("Wither left its native charge");
         System.out.println("ENTITY_NAME_CASE_PASS "+c+" id="+c.species+" spoken="+c.spoken()+" reacted="+reacted+
                 " aligned="+aligned+" protectedOrBroadWitness="+preserved);
+        if (subject.level() instanceof net.minecraft.server.level.ServerLevel level) {
+            var projectiles=level.getEntitiesOfClass(net.minecraft.world.entity.projectile.Projectile.class,
+                    subject.getBoundingBox().inflate(128),shot -> shot.getOwner()==subject || (companion!=null && shot.getOwner()==companion));
+            projectiles.forEach(net.minecraft.world.entity.Entity::discard);
+            if (!projectiles.isEmpty()) System.out.println("ENTITY_CASE_CLEANUP "+c+" projectiles="+projectiles.size());
+        }
         if (companion!=null) { companion.discard(); companion=null; }
     }
     private static Object read(Mob subject,String name) {

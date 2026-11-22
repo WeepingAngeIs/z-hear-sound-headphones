@@ -16,6 +16,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.behavior.BlockPosTracker;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.level.pathfinder.PathType;
@@ -51,7 +52,7 @@ final class CobblemonCalls {
 
     static boolean hasResponsePath(Mob mob) {
         Response response = responses.get(mob);
-        return response != null && response.path != null;
+        return response != null && response.walk != null;
     }
 
     static void hear(ServerPlayer speaker, ResourceLocation id, double radius, ToIntFunction<Mob> roll) {
@@ -69,8 +70,8 @@ final class CobblemonCalls {
             Vec3 sound = speaker.getEyePosition();
             var tracker = new BlockPosTracker(sound);
             mob.getBrain().setMemoryWithExpiry(MemoryModuleType.LOOK_TARGET, tracker, LOOK_TICKS);
-            Path path = roll.applyAsInt(mob) == 0 ? startWalk(mob, sound) : null;
-            var response = new Response(speaker, limit, mob.position(), sound, tracker, path, now, mob.getYHeadRot(), mob.yBodyRot);
+            Approach walk = roll.applyAsInt(mob) == 0 ? startWalk(mob, sound) : null;
+            var response = new Response(speaker, limit, mob.position(), sound, tracker, walk, now, mob.getYHeadRot(), mob.yBodyRot);
             responses.put(mob, response);
             orient(mob, response, now);
         }
@@ -93,10 +94,10 @@ final class CobblemonCalls {
                 && !brain.hasMemoryValue(MemoryModuleType.BREED_TARGET);
     }
 
-    private static Path startWalk(PokemonEntity mob, Vec3 sound) {
+    private static Approach startWalk(PokemonEntity mob, Vec3 sound) {
         var nav = mob.getNavigation();
         if (!mob.canWalk() || mob.isFlying() || !mob.onGround() || mob.isInWaterOrBubble() || mob.isInLava()
-                || !nav.isDone() || mob.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)) return null;
+                || !nav.isDone() || !mob.getBrain().checkMemory(MemoryModuleType.WALK_TARGET, MemoryStatus.VALUE_ABSENT)) return null;
         var from = mob.position();
         var toward = new Vec3(sound.x - from.x, 0, sound.z - from.z);
         double distance = toward.length();
@@ -107,7 +108,14 @@ final class CobblemonCalls {
         if (!mob.level().hasChunkAt(block) || !mob.level().getWorldBorder().isWithinBounds(block)
                 || !mob.isWithinRestriction(block)) return null;
         Path path = nav.createPath(block, 0);
-        if (path == null || !path.canReach() || path.getNodeCount() > 8) return null;
+        if (!safeRoute(mob, path, from) || !nav.moveTo(path, 0.8)) return null;
+        var memory = new WalkTarget(block, 0.8F, 0);
+        mob.getBrain().setMemoryWithExpiry(MemoryModuleType.WALK_TARGET, memory, WALK_TICKS);
+        return new Approach(nav.getPath(), memory);
+    }
+
+    private static boolean safeRoute(PokemonEntity mob, Path path, Vec3 from) {
+        if (path == null || !path.canReach() || path.getNodeCount() > 8) return false;
         // Keep only a short ground route. The Pokémon's own navigator handles obstacles and collision.
         for (int n = 0; n < path.getNodeCount(); n++) {
             BlockPos node = path.getNodePos(n);
@@ -116,15 +124,15 @@ final class CobblemonCalls {
                     || !mob.level().hasChunkAt(node) || !mob.level().getWorldBorder().isWithinBounds(node)
                     || !mob.isWithinRestriction(node) || !mob.level().getFluidState(node).isEmpty()
                     || !mob.level().getBlockState(node.below()).isFaceSturdy(mob.level(), node.below(), Direction.UP)) {
-                return null;
+                return false;
             }
         }
-        return nav.moveTo(path, 0.8) ? nav.getPath() : null;
+        return true;
     }
 
     private static void orient(PokemonEntity mob, Response r, long now) {
         float yaw = (float)Math.toDegrees(Math.atan2(r.sound.z - mob.getZ(), r.sound.x - mob.getX())) - 90;
-        boolean ownMovement = mob.getNavigation().isDone() || (r.path != null && mob.getNavigation().getPath() == r.path);
+        boolean ownMovement = mob.getNavigation().isDone() || (r.walk != null && r.walk.ownsPath(mob));
         if (ownMovement) {
             mob.setYRot(Mth.approachDegrees(mob.getYRot(), yaw, 30));
         }
@@ -151,15 +159,42 @@ final class CobblemonCalls {
                     && mob.getBrain().getMemory(MemoryModuleType.LOOK_TARGET).orElse(null) == r.tracker) {
                 mob.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
             }
-            boolean ownPath = r.path != null && mob.getNavigation().getPath() == r.path && !mob.getNavigation().isDone();
-            boolean walking = allowed && ownPath && now < r.start + WALK_TICKS
-                    && mob.position().distanceToSqr(r.from) < WALK_BLOCKS * WALK_BLOCKS
-                    && !mob.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET);
-            if (ownPath && !walking) mob.getNavigation().stop();
+            boolean walking = false;
+            if (r.walk != null) {
+                var nav = mob.getNavigation();
+                boolean ownMemory = r.walk.ownsMemory(mob);
+                boolean ownPath = r.walk.ownsPath(mob);
+                walking = allowed && ownMemory && ownPath && !nav.isDone() && now < r.start + WALK_TICKS
+                        && mob.position().distanceToSqr(r.from) < WALK_BLOCKS * WALK_BLOCKS
+                        && (nav.getPath() == r.walk.original || safeRoute(mob, nav.getPath(), r.from));
+                if (!walking) {
+                    if (ownMemory) mob.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+                    if (ownPath && !nav.isDone()) nav.stop();
+                    if (looking) entry.setValue(r.withoutWalk());
+                }
+            }
             return !looking && !walking;
         });
     }
 
+    private record Approach(Path original, WalkTarget memory) {
+        boolean ownsMemory(PokemonEntity mob) {
+            return mob.getBrain().getMemory(MemoryModuleType.WALK_TARGET).orElse(null) == memory;
+        }
+
+        boolean ownsPath(PokemonEntity mob) {
+            var path = mob.getNavigation().getPath();
+            var active = mob.getBrain().getMemory(MemoryModuleType.WALK_TARGET).orElse(null);
+            // The native brain can recalculate our short route. A new native walk keeps its own path.
+            if (path == null || (active != null && active != memory)) return false;
+            return path == original || (active == memory && path.getTarget().equals(original.getTarget()));
+        }
+    }
+
     private record Response(ServerPlayer speaker, double limit, Vec3 from, Vec3 sound, BlockPosTracker tracker,
-                            Path path, long start, float headYaw, float bodyYaw) {}
+                            Approach walk, long start, float headYaw, float bodyYaw) {
+        Response withoutWalk() {
+            return new Response(speaker, limit, from, sound, tracker, null, start, headYaw, bodyYaw);
+        }
+    }
 }

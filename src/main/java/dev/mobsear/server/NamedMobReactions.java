@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
@@ -22,6 +23,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /** Exact entity-type calls give a brief visual turn. Target, navigation and physical heading belong to the mob. */
@@ -33,7 +35,8 @@ public final class NamedMobReactions {
     private NamedMobReactions() {}
 
     public static void register() {
-        NeoForge.EVENT_BUS.addListener(NamedMobReactions::tick);
+        NeoForge.EVENT_BUS.addListener(NamedMobReactions::afterLevelTick);
+        NeoForge.EVENT_BUS.addListener(NamedMobReactions::expireCooldowns);
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> { active.clear(); cooldowns.clear(); });
     }
 
@@ -132,12 +135,20 @@ public final class NamedMobReactions {
         };
     }
 
-    private static void tick(ServerTickEvent.Post event) {
+    private static void expireCooldowns(ServerTickEvent.Post event) {
         long now = event.getServer().overworld().getGameTime();
         if (now % 20 == 0) cooldowns.values().removeIf(expiry -> expiry <= now);
+    }
+
+    // Apply the pose immediately after this world's native AI has updated its head and body.
+    private static void afterLevelTick(LevelTickEvent.Post event) {
+        if (!(event.getLevel() instanceof ServerLevel level) || active.isEmpty()) return;
+        long now = level.getServer().overworld().getGameTime();
         active.entrySet().removeIf(entry -> {
             var mob = entry.getKey();
             var glance = entry.getValue();
+            if (mob.isRemoved()) return true;
+            if (mob.level() != level) return false;
             if (now >= glance.start + LOOK_TICKS || !eligibleCaller(glance.caller) || mob.level() != glance.caller.level()
                     || mob.distanceToSqr(glance.caller) > glance.limit || !canGlance(mob)) return true;
             turn(mob, glance, now);
