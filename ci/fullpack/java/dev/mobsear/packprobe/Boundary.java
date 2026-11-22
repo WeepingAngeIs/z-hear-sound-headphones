@@ -8,6 +8,7 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.Line;
@@ -18,6 +19,7 @@ final class Boundary {
     private static byte[] speech;
     private static int offset;
     static volatile int nonzeroFrames;
+    static volatile long lastSignalAt;
 
     static Field field(Class<?> type, String name) throws ReflectiveOperationException {
         var f = type.getDeclaredField(name);
@@ -53,6 +55,27 @@ final class Boundary {
         synchronized (speech) {
             var session=get(speech,"session");
             return session==null ? -1 : (int)get(session,"startupStep");
+        }
+    }
+
+    private static Object wrappedSegmenter;
+
+    static void observeGeneratedSegments(Consumer<byte[]> sink) throws ReflectiveOperationException {
+        var speech=get(get(client(),"session"),"speech");
+        synchronized (speech) {
+            var session=get(speech,"session");
+            if (session==null) return;
+            var segmenter=get(session,"utterances");
+            if (segmenter==wrappedSegmenter) return;
+            var field=field(segmenter.getClass(),"output");
+            @SuppressWarnings("unchecked") var original=(Consumer<byte[]>)field.get(segmenter);
+            Consumer<byte[]> observed=pcm->{
+                var generated=pcm.clone();
+                original.accept(pcm);
+                sink.accept(generated);
+            };
+            field.set(segmenter,observed);
+            wrappedSegmenter=segmenter;
         }
     }
 
@@ -95,6 +118,7 @@ final class Boundary {
         speech = input;
         offset = 0;
         nonzeroFrames = 0;
+        lastSignalAt = 0;
     }
 
     static synchronized boolean consumed() { return speech == null; }
@@ -105,7 +129,11 @@ final class Boundary {
         int copy = Math.min(count, speech.length - offset);
         System.arraycopy(speech, offset, dest, start, copy);
         for (int i = start; i < start + copy; i++) {
-            if (dest[i] != 0) { nonzeroFrames++; break; }
+            if (dest[i] != 0) {
+                nonzeroFrames++;
+                lastSignalAt=System.nanoTime();
+                break;
+            }
         }
         offset += copy;
         if (offset == speech.length) speech = null;

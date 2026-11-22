@@ -76,6 +76,7 @@ jobs:
       MOBSEAR_INSTALLED_REFERENCE: ${{ matrix.profile == 'installed-public-pack' && '1' || '0' }}
       MOBSEAR_PRIORITY_CONTROL: ${{ matrix.profile == 'public-pack-helper-priority' && '1' || '0' }}
       MOBSEAR_LIGHT_GRAPHICS: ${{ matrix.profile == 'public-pack-software-renderer' && '1' || '0' }}
+      MOBSEAR_CONFIDENCE_COMPARE: ${{ (matrix.profile == 'public-pack' || matrix.profile == 'public-pack-helper-priority') && '1' || '0' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -159,6 +160,15 @@ jobs:
           path: ${{ runner.temp }}/hearing-windows/boot-progress.txt
       - name: Play generated speech in disposable Survival and Creative
         run: python ci/fullpack/watch.py finish
+      - name: Measure first-pass and retry confidence on the shared synthetic clips
+        if: ${{ !cancelled() && env.MOBSEAR_CONFIDENCE_COMPARE == '1' && steps.subject.outputs.build != '' }}
+        shell: python
+        run: |
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0,'ci/fullpack')
+          from confidence import compare
+          compare(Path(os.environ['MOBSEAR_SMOKE_DIR']))
       - name: Save the public registry vocabulary for the offline comparison
         if: ${{ !cancelled() && matrix.profile == 'public-pack' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

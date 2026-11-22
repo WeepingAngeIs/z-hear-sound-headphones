@@ -26,7 +26,7 @@ $variants = Join-Path $env:RUNNER_TEMP 'comparison-pronunciations'
 New-Item -ItemType Directory -Path $variants -Force | Out-Null
 & "$PSScriptRoot/../speech-focus/make.ps1" $variants
 $manifest = Import-Csv -LiteralPath (Join-Path $variants 'sources.tsv') -Delimiter ([char]9) -Header File,Voice,Phrase,Rate,Expected
-foreach ($pair in @(@('ender-unstressed','enderman-alternate'),@('low-punny','lopunny-alternate'))) {
+foreach ($pair in @(@('ender-unstressed','enderman-alternate'),@('low-punny','lopunny-alternate'),@('hold-on','hold-on'))) {
     $row = $manifest | Where-Object { $_.Phrase -eq $pair[0] -and $_.Rate -eq '0' } | Select-Object -Last 1
     if ($null -eq $row) { throw 'Missing second-voice pronunciation fixture' }
     $raw = [IO.File]::ReadAllBytes((Join-Path $variants ($row.File+'.raw')))

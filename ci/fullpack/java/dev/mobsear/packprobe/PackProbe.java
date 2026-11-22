@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -72,6 +73,9 @@ public final class PackProbe {
         int aligned, postAckTicks;
         double initialError = -1, closestError = 180;
         long initialRequest, startedAt, seenAt;
+        long matchedAt, dispatchedAt, turnedAt;
+        volatile long acceptedAt;
+        final ConcurrentLinkedQueue<byte[]> segments = new ConcurrentLinkedQueue<>();
         Observation(Trial test, int number, Mob mob, long frame, long cue) {
             this.test = test; this.number = number; this.subject = mob; this.entity = mob.getId();
             this.frameBefore = frame; this.cueBefore = cue;
@@ -168,6 +172,7 @@ public final class PackProbe {
                         && (int)Boundary.get(status,"heard")>=e.getServer().getTickCount()-2) o.wireAudio=true;
                 if (!o.acceptedCue && timestamp(p,"lastCue") > o.cueBefore) {
                     o.callDistance=o.subject.distanceTo(p);
+                    o.acceptedAt=System.nanoTime();
                     o.acceptedCue=true;
                 }
                 o.reaction |= responding(o.subject);
@@ -220,6 +225,10 @@ public final class PackProbe {
                 return;
             }
             String state=Boundary.readiness();
+            Boundary.observeGeneratedSegments(pcm->{
+                var trial=current;
+                if (trial!=null && trial.started) trial.segments.add(pcm);
+            });
             if (!earlier && "1".equals(System.getenv("MOBSEAR_TRACK_STARTUP"))) {
                 int step=Boundary.startupProgress();
                 if (step!=startupStep) {
@@ -282,7 +291,10 @@ public final class PackProbe {
                 if (earlier ? o.acceptedCue : o.confirmed) {
                     o.postAckTicks++;
                     o.closestError=Math.min(o.closestError,err);
-                    if (err<=30) o.aligned++;
+                    if (err<=30) {
+                        o.aligned++;
+                        if (o.turnedAt==0) o.turnedAt=System.nanoTime();
+                    }
                 }
             }
             if (!o.started) return;
@@ -296,6 +308,8 @@ public final class PackProbe {
                 o.notice |= Boundary.notice("current").equals(o.test.name + " heard you");
                 o.dispatched |= (long)Boundary.get(Boundary.client(),"lastRequestId") > o.initialRequest;
             }
+            if (o.recognized && o.matchedAt==0) o.matchedAt=System.nanoTime();
+            if (o.dispatched && o.dispatchedAt==0) o.dispatchedAt=System.nanoTime();
             if (o.notice && o.aligned>=2 && !o.screenshot) {
                 try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
                     var evidence=home.resolve("evidence");
@@ -308,10 +322,21 @@ public final class PackProbe {
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
             if (elapsed<6_000_000_000L && !(o.test.hears && (earlier ? o.recognized : o.notice) && o.aligned>=2 && o.reaction)) return;
             boolean capture=Boundary.consumed() && Boundary.nonzeroFrames>=2;
+            int segments=0;
+            byte[] generated;
+            while ((generated=o.segments.poll())!=null) {
+                var folder=home.resolve("segments");
+                Files.createDirectories(folder);
+                Files.write(folder.resolve(o.number+"_"+o.test.recording+"_"+segments++ +".pcm"),generated);
+            }
+            System.out.println("ACOUSTIC_SEGMENTS sample="+o.test.recording+" submitted="+segments);
             boolean expectWire=!o.test.creative;
             boolean success=capture && o.wireAudio && o.recognized && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2));
+            System.out.println("ACOUSTIC_LATENCY "+o.test.recording+" lastVoicedToMatchMs="+milliseconds(Boundary.lastSignalAt,o.matchedAt)
+                    +" inputToDispatchMs="+milliseconds(o.startedAt,o.dispatchedAt)+" inputToServerMs="+milliseconds(o.startedAt,o.acceptedAt)
+                    +" inputToTurnMs="+milliseconds(o.startedAt,o.turnedAt));
             System.out.printf(Locale.ROOT,
                     "ACOUSTIC_RESULT %s %s mode=%s input=%s arranged=%d callDistance=%.1f captureFrames=%d serverAudio=%s localMatch=%s dispatch=%s serverAccepted=%s response=%s reply=%s notice=%s away=%s startAngle=%.1f bestAfter=%.1f facingTicks=%d attackTarget=%s%n",
                     success?"PASS":"FAIL",o.test.name,o.test.creative?"Creative":"Survival",o.test.openMic?"activation":"PTT",
@@ -324,6 +349,10 @@ public final class PackProbe {
                 complete=true;
             } else next=true;
         } catch (Exception ex) { fail(ex); }
+    }
+
+    private static long milliseconds(long start,long end) {
+        return start==0 || end==0 ? -1 : (end-start)/1_000_000L;
     }
 
     void heard(long request, String id, boolean species) {
