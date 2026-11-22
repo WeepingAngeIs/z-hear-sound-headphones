@@ -87,7 +87,10 @@ public final class PokemonCaseClient {
             if (ticks<4 || mc.level.getEntity(stage.entity())==null) return;
             if (c==PokemonCase.PACK_FORM) c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client before call");
             if (acoustic && c==PokemonCase.PIKACHU && !recognizerReady()) return;
-            if ((solo || !caller) && c==PokemonCase.PIKACHU && !saved) { capture="before"; return; }
+            if ((solo || !caller) && c==PokemonCase.PIKACHU && !saved) {
+                if (ticks<35 || mc.screen!=null || mc.getOverlay()!=null) return;
+                capture="before"; return;
+            }
             reply(PokemonProbe.BEFORE); acknowledged=true;
             return;
         }
@@ -108,7 +111,7 @@ public final class PokemonCaseClient {
                 // Only the Linux recognizer boundary is replayed. The real server validates the client's normal PCM and species packet.
                 byte[] pcm=new byte[640];
                 for (int i=0;i<320;i++) { int v=(i%20-10)*650; pcm[i*2]=(byte)v; pcm[i*2+1]=(byte)(v>>8); }
-                if (c==PokemonCase.OFFLINE_OWNER) reply(PokemonProbe.TRANSFER);
+                reply(PokemonProbe.ARRANGE);
                 PacketDistributor.sendToServer(new Packets.Up(pcm));
                 PacketDistributor.sendToServer(new Packets.SpeciesCall(c.spoken()));
                 reply(PokemonProbe.FIRE); sent=true;
@@ -161,6 +164,16 @@ public final class PokemonCaseClient {
         Path output=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT"),"evidence");
         String name=(solo?"solo":"multi")+"-"+c.name().toLowerCase(java.util.Locale.ROOT)+"-"+capture+".png";
         try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+            if ("before".equals(capture)) {
+                // Entity tracking can precede the first actual terrain draw after teleport.
+                int floor=0;
+                for (int i=2;i<=6;i++) {
+                    int pixel=pic.getPixelRGBA(pic.getWidth()*i/8,pic.getHeight()*2/3);
+                    int red=pixel&255, green=(pixel>>>8)&255, blue=(pixel>>>16)&255;
+                    if (red>=35 && red<=180 && Math.abs(green-red)<12 && Math.abs(blue-red)<12) floor++;
+                }
+                if (floor<3) return;
+            }
             Files.createDirectories(output); pic.writeToFile(output.resolve(name));
         } catch (Exception ex) { throw PokemonProbe.fail("Cannot save rendered Pokémon "+name+": "+ex); }
         capture=null; saved=true;

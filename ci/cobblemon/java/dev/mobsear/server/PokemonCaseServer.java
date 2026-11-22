@@ -18,6 +18,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
+import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -39,9 +41,13 @@ final class PokemonCaseServer {
     private Pokemon owned;
     private PokemonCase c;
     private int index, phase, age, aligned;
-    private boolean live, reacted, fired, captureLockSeen, pathSeen, witnessReacted, offlineChecked;
+    private boolean live, reacted, fired, captureLockSeen, pathSeen, witnessReacted, offlineChecked, arranged, keptRoute;
     private long firstCall, gap;
-    private double advance;
+    private double advance, nativeTravel;
+    private BlockPos nativeDestination;
+    private net.minecraft.world.level.pathfinder.Path interruptedRoute;
+    private int interruptionTick;
+    private boolean released;
 
     PokemonCaseServer() { NeoForge.EVENT_BUS.addListener(this::tick); }
 
@@ -71,17 +77,18 @@ final class PokemonCaseServer {
         }
         if (!live || (p != caller && p != viewer) || m.scenario()!=index || m.entity()!=subject.getId())
             throw PokemonProbe.fail("Invalid barrier owner or subject");
-        if (m.stage()==PokemonProbe.TRANSFER && c==PokemonCase.OFFLINE_OWNER && p==caller && !offlineChecked) {
-            // Wild party entities return to storage on their next tick when the owner is offline.
-            // Check the real, still-present subject before that native recall, then receive the ordered wire cue.
-            setOwner(UUID.fromString("b885e8b7-29b9-422d-a75c-29f4a7470827"));
-            if (subject.isRemoved() || owned.getOwnerPlayer()!=null || caller.serverLevel().getEntity(subject.getId())!=subject)
-                throw PokemonProbe.fail("Offline-owned subject missing at the live safety check");
-            PokemonReactions.hear(caller,c.species,32, mob -> {
-                if (mob==subject) throw PokemonProbe.fail("Offline owner's Pokémon accepted call");
-                return 1;
-            });
-            offlineChecked=true;
+        if (m.stage()==PokemonProbe.ARRANGE && p==caller && phase==PokemonProbe.FIRE && !arranged) {
+            arranged=true;
+            if (c==PokemonCase.OFFLINE_OWNER) checkOfflineOwner();
+            if (c.accepts() || c==PokemonCase.COOLDOWN_HELD) prepareIdle(subject);
+            if (witness!=null) {
+                prepareIdle(witness);
+                System.out.println("POKEMON_FRESH_WITNESS species="+witness.getPokemon().getSpecies().getResourceIdentifier()
+                        +" distance="+Math.round(witness.distanceTo(caller))+" present="+(caller.serverLevel().getEntity(witness.getId())==witness)
+                        +" activity="+witness.getBrain().getActiveNonCoreActivity()+" wild="+witness.getPokemon().isWild()
+                        +" busy="+witness.isBusy()+" health="+witness.getHealth()+" phasing="+witness.getPhasingTargetId());
+            }
+            if (c.walking()) startNativeWalk();
             return;
         }
         if (m.stage() == PokemonProbe.FIRE && p == caller && phase == PokemonProbe.FIRE && !fired) {
@@ -92,6 +99,11 @@ final class PokemonCaseServer {
                 gap=now-firstCall;
                 if ((c==PokemonCase.COOLDOWN_HELD && (gap<45 || gap>=100)) || (c==PokemonCase.COOLDOWN_EXPIRED && gap<105))
                     throw PokemonProbe.fail("Unexpected repeated-call interval " + gap);
+            }
+            if (c.walking()) {
+                var existing=subject.getNavigation().getPath();
+                if (existing==null || existing.isDone() || !nativeDestination.equals(existing.getTarget()))
+                    throw PokemonProbe.fail("Native walk was no longer live at the species call " + c);
             }
             return;
         }
@@ -104,8 +116,11 @@ final class PokemonCaseServer {
         var world = caller.serverLevel();
         var config=(ModConfigSpec)ModConfigs.getFileMap().get("mobsear-server.toml").getSpec();
         ModConfigSpec.DoubleValue chance=config.getValues().get("wildPokemonApproachChance");
-        chance.set(c==PokemonCase.LOOK || c.ordinal()>=PokemonCase.COOLDOWN_PRIME.ordinal() ? 0d
-                : c==PokemonCase.APPROACH || c==PokemonCase.BLOCKED ? 1d : .20d);
+        chance.set(switch (c) {
+            case APPROACH, BLOCKED, WALKING_PIKACHU, WALKING_EEVEE, INTERRUPTED -> 1d;
+            case LOOK, COOLDOWN_PRIME, COOLDOWN_HELD, COOLDOWN_EXPIRED, PACK_FORM, PACK_CUSTOM -> 0d;
+            default -> .20d;
+        });
         caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
         if (viewer!=caller) viewer.teleportTo(world,3.5,Y+0.1,Z+5.5,148,9);
         if (c == PokemonCase.PASSIVE) {
@@ -124,11 +139,14 @@ final class PokemonCaseServer {
         if (!c.reusesSubject() && !world.addFreshEntity(subject)) throw PokemonProbe.fail("Could not spawn actual subject");
         if (c==PokemonCase.COOLDOWN_HELD) {
             witness=PokemonProperties.Companion.parse("pikachu level=15").createEntity(world);
-            witness.moveTo(.5,Y,Z+3.5,90,0);
+            witness.getPokemon().setSpecies(PokemonSpecies.getByIdentifier(c.species));
+            witness.setPersistenceRequired();
+            witness.moveTo(25.5,Y,Z+.5,90,0);
             if (!world.addFreshEntity(witness)) throw PokemonProbe.fail("No fresh cooldown witness");
         }
         if (c==PokemonCase.BLOCKED) wall(true);
-        phase=PokemonProbe.BEFORE; age=aligned=0; reacted=fired=captureLockSeen=pathSeen=witnessReacted=offlineChecked=false; advance=0; gap=0;
+        phase=PokemonProbe.BEFORE; age=aligned=0; reacted=fired=captureLockSeen=pathSeen=witnessReacted=offlineChecked=arranged=keptRoute=false;
+        advance=nativeTravel=0; gap=0; nativeDestination=null; interruptedRoute=null; released=false;
         acknowledgements.clear();
         announce();
     }
@@ -148,6 +166,30 @@ final class PokemonCaseServer {
         if (!ownedStore.add(owned) || !owner.equals(owned.getOwnerUUID()) || owned.isWild())
             throw PokemonProbe.fail("Cobblemon party did not establish ownership " + c);
     }
+    private void checkOfflineOwner() {
+        // Cobblemon recalls a party member on its next tick after its owner goes offline.
+        setOwner(UUID.fromString("b885e8b7-29b9-422d-a75c-29f4a7470827"));
+        if (subject.isRemoved() || owned.getOwnerPlayer()!=null || caller.serverLevel().getEntity(subject.getId())!=subject)
+            throw PokemonProbe.fail("Offline-owned subject missing at the live safety check");
+        PokemonReactions.hear(caller,c.species,32, mob -> {
+            if (mob==subject) throw PokemonProbe.fail("Offline owner's Pokémon accepted call");
+            return 1;
+        });
+        offlineChecked=true;
+    }
+    private static void prepareIdle(Mob mob) {
+        idle(mob);
+        mob.getBrain().setActiveActivityIfPossible(Activity.IDLE);
+        mob.setDeltaMovement(0,0,0);
+    }
+    private void startNativeWalk() {
+        nativeDestination=new BlockPos(0,Y,Z+6);
+        var nav=subject.getNavigation();
+        var route=nav.createPath(nativeDestination,0);
+        if (route==null || !route.canReach() || !nav.moveTo(route,.8))
+            throw PokemonProbe.fail("No native walking route for " + c);
+        subject.getBrain().setMemory(MemoryModuleType.WALK_TARGET,new WalkTarget(nativeDestination,.8f,0));
+    }
     private void wall(boolean place) {
         for (int dz=-7;dz<=7;dz++) for (int dy=0;dy<4;dy++)
             caller.serverLevel().setBlockAndUpdate(new BlockPos(2,Y+dy,Z+dz),(place ? Blocks.STONE : Blocks.AIR).defaultBlockState());
@@ -156,13 +198,17 @@ final class PokemonCaseServer {
         if (!live) return;
         age++;
         if (age>1100) throw PokemonProbe.fail(c + " timed out, phase=" + phase + " fired=" + fired + " acks="
-                + acknowledgements.size() + " reacted=" + reacted + " aligned=" + aligned + " forward=" + advance);
+                + acknowledgements.size() + " reacted=" + reacted + " aligned=" + aligned + " forward=" + advance
+                + " nativeTravel="+nativeTravel+" nativeRoute="+keptRoute+" gap="+gap+" witness="+witnessReacted);
         int count=caller==viewer ? 1:2;
         if (phase==PokemonProbe.BEFORE) {
             subject.moveTo(.5,Y,Z+.5,90,0);
             subject.setYHeadRot(90); subject.yBodyRot=90;
             idle(subject);
-            if (witness!=null) idle(witness);
+            if (witness!=null) {
+                witness.moveTo(25.5,Y,Z+.5,90,0);
+                prepareIdle(witness);
+            }
             if (age<36 || acknowledgements.size()!=count) return;
             if (c==PokemonCase.COOLDOWN_EXPIRED && caller.serverLevel().getGameTime()-firstCall<110) return;
             if (c==PokemonCase.BATTLE) engageBattle();
@@ -173,15 +219,31 @@ final class PokemonCaseServer {
         }
         boolean active=PokemonReactions.isReacting(subject);
         if (witness!=null && PokemonReactions.isReacting(witness)) witnessReacted=true;
-        if (!active && !fired && c.controlled()) idle(subject);
+        if (!active && !fired && !arranged && c.controlled()) idle(subject);
         if (active && !c.accepts()) throw PokemonProbe.fail("Protected or wrong subject reacted: " + c);
         if (active) {
             reacted=true;
             pathSeen |= CobblemonCalls.hasResponsePath(subject);
+            if (c.walking()) {
+                var existing=subject.getNavigation().getPath();
+                keptRoute |= existing!=null && nativeDestination.equals(existing.getTarget());
+                nativeTravel=Math.max(nativeTravel,subject.getZ()-(Z+.5));
+            }
             double yaw=Math.toDegrees(Math.atan2(caller.getZ()-subject.getZ(),caller.getX()-subject.getX()))-90;
             if (Math.abs(Mth.wrapDegrees(subject.getYHeadRot()-yaw))<30) aligned++;
             advance=Math.max(advance,subject.getX()-.5);
             if (subject.getTarget()!=null) throw PokemonProbe.fail("Species call assigned combat target");
+            if (c==PokemonCase.INTERRUPTED && ball==null && pathSeen && aligned>=2 && advance>=.2 && !subject.getNavigation().isDone()) {
+                interruptedRoute=subject.getNavigation().getPath();
+                engageCapture();
+                interruptionTick=age;
+            }
+        }
+        if (c==PokemonCase.INTERRUPTED && ball!=null && age>interruptionTick) {
+            var nav=subject.getNavigation();
+            if (ball.getCapturingPokemon()!=subject || !((PokemonEntity)subject).isBusy()) throw PokemonProbe.fail("Lost ongoing capture");
+            released=!active && (nav.isDone() || nav.getPath()!=interruptedRoute);
+            if (!released && age-interruptionTick>=2) throw PokemonProbe.fail("Hearing kept control during a real capture");
         }
         if (acknowledgements.size()!=count || !fired) return;
         if (c.accepts() && (!reacted || aligned<2)) return;
@@ -189,15 +251,21 @@ final class PokemonCaseServer {
         if (c==PokemonCase.BLOCKED && advance>1.5) throw PokemonProbe.fail("Crossed solid wall " + advance);
         if (c==PokemonCase.APPROACH && (!pathSeen || advance<.55)) return;
         if (c==PokemonCase.APPROACH && advance>4.8) throw PokemonProbe.fail("Approached beyond fixed short route");
+        if (c.walking() && pathSeen) throw PokemonProbe.fail("Replaced a native walking route");
+        if (c.walking() && (!keptRoute || nativeTravel<.12)) return;
         if (c==PokemonCase.OFFLINE_OWNER && !offlineChecked) throw PokemonProbe.fail("Missing live offline owner assertion");
-        if (c==PokemonCase.COOLDOWN_HELD && !witnessReacted) return;
+        if (c==PokemonCase.COOLDOWN_HELD && !witnessReacted) {
+            if (age>=50) throw PokemonProbe.fail("Fresh witness failed the accepted repeated-call interval "+gap);
+            return;
+        }
+        if (c==PokemonCase.INTERRUPTED && !released) return;
         if (age < (c.controlled()?45:27)) return;
         if (c==PokemonCase.PACK_FORM) {
             c.checkTrackedForm((PokemonEntity)subject,"Server after call");
             System.out.println("POKEMON_PACK_FORM_SERVER id="+c.species+" form=Pom-Pom aspect=pom-pom-style aligned="+aligned);
         }
-        System.out.printf(java.util.Locale.ROOT,"POKEMON_CASE_PASS %s species=%s radius=32 startDistance=%d reacted=%s aligned=%d forward=%.2f ownPath=%s captureLock=%s offlineGuard=%s gapTicks=%d freshWitness=%s%n",
-                c,c.species,c.distance,reacted,aligned,advance,pathSeen,captureLockSeen,offlineChecked,gap,witnessReacted);
+        System.out.printf(java.util.Locale.ROOT,"POKEMON_CASE_PASS %s species=%s radius=32 startDistance=%d reacted=%s aligned=%d forward=%.2f ownPath=%s nativeRoute=%s nativeTravel=%.2f captureLock=%s released=%s offlineGuard=%s gapTicks=%d freshWitness=%s%n",
+                c,c.species,c.distance,reacted,aligned,advance,pathSeen,keptRoute,nativeTravel,captureLockSeen,released,offlineChecked,gap,witnessReacted);
         if (c==PokemonCase.BATTLE) {
             var battle=((PokemonEntity)subject).getBattle();
             if (battle==null) throw PokemonProbe.fail("Battle terminated before safety check");

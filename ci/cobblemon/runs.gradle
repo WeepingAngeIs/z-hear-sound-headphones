@@ -2,6 +2,9 @@ sourceSets.main.java.srcDirs('ci/cobblemon/java', 'ci/multiplayer/java')
 sourceSets.main.java.exclude('dev/mobsear/smoke/**')
 sourceSets.main.resources.srcDir('ci/cobblemon/resources')
 def root = new File(providers.environmentVariable('MOBSEAR_POKEMON_ROOT').get())
+if (providers.environmentVariable('MOBSEAR_POKEMON_PACK').getOrElse('') == '1') {
+    sourceSets.main.resources.srcDir(new File(root, 'lunavee-resources'))
+}
 neoForge.runs.create('pokemonServer') {
     server()
     gameDirectory = new File(root, 'server')

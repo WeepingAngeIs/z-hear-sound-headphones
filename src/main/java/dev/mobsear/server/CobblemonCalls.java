@@ -68,9 +68,9 @@ final class CobblemonCalls {
             var tracker = new BlockPosTracker(sound);
             mob.getBrain().setMemoryWithExpiry(MemoryModuleType.LOOK_TARGET, tracker, LOOK_TICKS);
             Path path = roll.applyAsInt(mob) == 0 ? startWalk(mob, sound) : null;
-            var response = new Response(speaker, limit, mob.position(), sound, tracker, path, now);
+            var response = new Response(speaker, limit, mob.position(), sound, tracker, path, now, mob.getYHeadRot(), mob.yBodyRot);
             responses.put(mob, response);
-            orient(mob, response);
+            orient(mob, response, now);
         }
     }
 
@@ -120,15 +120,18 @@ final class CobblemonCalls {
         return nav.moveTo(path, 0.8) ? nav.getPath() : null;
     }
 
-    private static void orient(PokemonEntity mob, Response r) {
-        // Cobblemon's idle Brain can look around every tick. Ask its ordinary look controller for
-        // this brief glance and turn the body only while stationary or following our own short path.
-        if (mob.getNavigation().isDone() || (r.path != null && mob.getNavigation().getPath() == r.path)) {
-            float yaw = (float)Math.toDegrees(Math.atan2(r.sound.z - mob.getZ(), r.sound.x - mob.getX())) - 90;
+    private static void orient(PokemonEntity mob, Response r, long now) {
+        float yaw = (float)Math.toDegrees(Math.atan2(r.sound.z - mob.getZ(), r.sound.x - mob.getX())) - 90;
+        boolean ownMovement = mob.getNavigation().isDone() || (r.path != null && mob.getNavigation().getPath() == r.path);
+        if (ownMovement) {
             mob.setYRot(Mth.approachDegrees(mob.getYRot(), yaw, 30));
-            mob.yBodyRot = Mth.approachDegrees(mob.yBodyRot, yaw, 30);
         }
+        // Navigation can clamp the native head controller back toward the path on every tick.
+        // Turn the rendered upper body and head while leaving an existing walk's direction intact.
+        float ticks = (float) (now - r.start + 1);
+        mob.yBodyRot = Mth.approachDegrees(r.bodyYaw, yaw, 30 * ticks);
         mob.getLookControl().setLookAt(r.sound.x, r.sound.y, r.sound.z, 40F, 35F);
+        mob.setYHeadRot(Mth.approachDegrees(r.headYaw, yaw, 40 * ticks));
     }
 
     private static void tick(ServerTickEvent.Post event) {
@@ -141,7 +144,7 @@ final class CobblemonCalls {
             boolean allowed = speaker.isAlive() && !speaker.isRemoved() && !speaker.isCreative() && !speaker.isSpectator()
                     && mob.level() == speaker.level() && mob.distanceToSqr(speaker) <= r.limit && available(mob);
             boolean looking = allowed && now < r.start + LOOK_TICKS;
-            if (looking) orient(mob, r);
+            if (looking) orient(mob, r, now);
             else if (mob.getBrain().checkMemory(MemoryModuleType.LOOK_TARGET, MemoryStatus.REGISTERED)
                     && mob.getBrain().getMemory(MemoryModuleType.LOOK_TARGET).orElse(null) == r.tracker) {
                 mob.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
@@ -156,5 +159,5 @@ final class CobblemonCalls {
     }
 
     private record Response(ServerPlayer speaker, double limit, Vec3 from, Vec3 sound, BlockPosTracker tracker,
-                            Path path, long start) {}
+                            Path path, long start, float headYaw, float bodyYaw) {}
 }

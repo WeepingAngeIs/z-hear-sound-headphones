@@ -83,6 +83,8 @@ jobs:
           python ci/cobblemon/stage.py build/speech-mods
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python ci/cobblemon/public_species.py --vocabulary build/speech-species.tsv
       - name: Exercise the desktop recognizer in memory
         shell: powershell
         env:

@@ -13,7 +13,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 /** CI-only ordering/control. Species identity is transmitted separately on the real mod connection. */
 @Mod("mobsear")
 public final class PokemonProbe {
-    static final int HELLO=0, BEFORE=1, FIRE=2, SEEN=3, TRANSFER=4;
+    static final int HELLO=0, BEFORE=1, FIRE=2, SEEN=3, ARRANGE=4;
     static Consumer<Message> client;
     public record Message(int stage, int scenario, int entity) implements CustomPacketPayload {
         static final Type<Message> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath("mobsear","ci_pokemon"));

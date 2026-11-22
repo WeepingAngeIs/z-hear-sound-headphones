@@ -8,7 +8,8 @@ enum PokemonCase {
     FAR("eevee", 36), WRONG("eevee", 15), OWNER("pikachu", 12), OFFLINE_OWNER("eevee", 12),
     BATTLE("pikachu", 12), CAPTURE("eevee", 12), PASSIVE("pikachu", 12),
     BLOCKED("eevee", 10), COOLDOWN_PRIME("pikachu", 14), COOLDOWN_HELD("pikachu", 14), COOLDOWN_EXPIRED("pikachu", 14),
-    PACK_FORM("oricorio", 8);
+    WALKING_PIKACHU("pikachu", 14), WALKING_EEVEE("eevee", 14), INTERRUPTED("eevee", 10),
+    PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8);
 
     final ResourceLocation species;
     final int distance;
@@ -16,7 +17,8 @@ enum PokemonCase {
         this.species = ResourceLocation.parse(name.contains(":") ? name : "cobblemon:" + name);
         this.distance = distance;
     }
-    boolean accepts() { return ordinal() <= NEAR_EDGE.ordinal() || this == BLOCKED || this == COOLDOWN_PRIME || this == COOLDOWN_EXPIRED || this == PACK_FORM; }
+    boolean accepts() { return ordinal() <= NEAR_EDGE.ordinal() || this == BLOCKED || this == COOLDOWN_PRIME || this == COOLDOWN_EXPIRED || walking() || this == INTERRUPTED || this == PACK_FORM || this == PACK_CUSTOM; }
+    boolean walking() { return this==WALKING_PIKACHU || this==WALKING_EEVEE; }
     boolean controlled() { return this == LOOK || this == APPROACH || this == BLOCKED; }
     boolean reusesSubject() { return this == COOLDOWN_HELD || this == COOLDOWN_EXPIRED; }
     void checkTrackedForm(com.cobblemon.mod.common.entity.pokemon.PokemonEntity entity, String observer) {

@@ -9,6 +9,7 @@ import tempfile
 import time
 
 from datapack import create
+from public_species import stage as stage_public_species
 
 
 def run(mode):
@@ -29,6 +30,8 @@ def run(mode):
     subprocess.run([sys.executable, "ci/cobblemon/stage.py", *[str(root / role / "mods") for role in roles]], check=True, env=env)
     server = root / "server"
     create(next((server/"mods").glob("Cobblemon-*.jar")), server/"PokemonFixture"/"datapacks")
+    if env.get("MOBSEAR_POKEMON_PACK") == "1":
+        stage_public_species(world_root=root)
     (server/"eula.txt").write_text("eula=true\n")
     (server/"server.properties").write_text(
         "server-ip=127.0.0.1\nserver-port=25579\nonline-mode=false\nenforce-secure-profile=false\n"
@@ -76,7 +79,8 @@ def run(mode):
         landed = (root/"evidence")
         expected = ["pikachu-before", "pikachu-after", "eevee-after", "look-after", "approach-after", "addon-after",
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
-        if env.get("MOBSEAR_POKEMON_PACK") == "1": expected.append("pack_form-after")
+        expected.extend(["walking_pikachu-after", "walking_eevee-after", "interrupted-after"])
+        if env.get("MOBSEAR_POKEMON_PACK") == "1": expected.extend(["pack_form-after", "pack_custom-after"])
         for view in expected:
             if not (landed/f"{mode}-{view}.png").is_file(): raise RuntimeError("Missing actual in-game capture " + view)
     except BaseException:

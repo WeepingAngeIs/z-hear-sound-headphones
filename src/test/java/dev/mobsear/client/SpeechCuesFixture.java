@@ -162,12 +162,13 @@ public final class SpeechCuesFixture {
             require(fields.length == 3, "Pinned species fixture format");
             require(names.put(fields[0], List.of(fields[1], fields[2])) == null, "Duplicate registry ID");
         }
-        require(names.size() == 1036, "Expected Cobblemon 1.8.4 and Extra Eeveelutions 1.2 English catalogs");
+        require(names.size() == 1037, "Expected Cobblemon, Extra Eeveelutions and the matching public Lunavee entry");
         long begin = System.nanoTime();
         var vocabulary = SpeechGrammar.speciesPhrases(names);
         var grammar = new SpeechGrammar(aliasFile, vocabulary);
         require(new java.util.HashSet<>(vocabulary.values()).size() == names.size(), "Missing pinned English species");
         require("cobblemon:spectreonee".equals(vocabulary.get("spectreon")), "Add-on display name and registry ID differ");
+        require("cobblemon:lunavee".equals(vocabulary.get("lunavee")), "TEST-matched public Lunavee registry/display name");
         var guarded = grammar.needsConfirmation();
         long guardedSpecies = guarded.stream().map(vocabulary::get).distinct().count();
         require(guardedSpecies == 12 && guarded.containsAll(List.of("spectreon", "spectrier")), "Pinned spelling-neighbor groups");
@@ -192,12 +193,14 @@ public final class SpeechCuesFixture {
         byte[][] clips = {pikachu, ditto, synthesize("Eevee"), synthesize("Dungeon"), synthesize("Spectreon"), synthesize("Spectrier"),
                 synthesize("Spectreon ending O N"), synthesize("Spectrier ending E R"), synthesize("spider"),
                 synthesize("hey"), synthesize("pokemon"), synthesize("all pokemon"),
-                synthesize("the garden is beautiful"), synthesize("my little buddy"), new byte[16000]};
+                synthesize("the garden is beautiful"), synthesize("my little buddy"), new byte[16000],
+                synthesize("Lunavee"), synthesize("hey Lunavee")};
         int spectreon = grammar.code("spectreon");
         int spectrier = grammar.code("spectrier");
         // For a bare close pair, exact or abstained is valid; qualified calls must return the one correct ID.
         int[][] expected = {{grammar.code("pikachu")}, {grammar.code("ditto")}, {grammar.code("eevee")}, {grammar.code("dungeon")},
-                {spectreon, 0}, {spectrier, 0}, {spectreon}, {spectrier}, {Cue.SPIDER.ordinal() + 1}, {0}, {0}, {0}, {0}, {0}, {0}};
+                {spectreon, 0}, {spectrier, 0}, {spectreon}, {spectrier}, {Cue.SPIDER.ordinal() + 1}, {0}, {0}, {0}, {0}, {0}, {0},
+                {grammar.code("lunavee")}, {grammar.code("lunavee")}};
         long started = System.nanoTime();
         int[] result = decisions(SpeechCues.launch(), grammar, clips);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
@@ -212,6 +215,7 @@ public final class SpeechCuesFixture {
         System.out.println("MOBSEAR_SPECIES_NEIGHBORS_PASS needsConfirmation=" + guardedSpecies
                 + " bareSpectreon=" + result[4] + " bareSpectrier=" + result[5]
                 + " qualifiedSpectreon=" + result[6] + " qualifiedSpectrier=" + result[7]);
+        System.out.println("MOBSEAR_LUNAVEE_SPEECH_PASS bare=" + result[15] + " greeting=" + result[16] + " registry=cobblemon:lunavee");
         var ids = new ArrayBlockingQueue<String>(4);
         var mobs = new ArrayBlockingQueue<Cue>(4);
         try (var speech = new SpeechCues(mobs::add, ids::add, aliasFile, names)) {
