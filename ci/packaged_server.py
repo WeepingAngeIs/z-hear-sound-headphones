@@ -51,6 +51,7 @@ def main():
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     with zipfile.ZipFile(artifact) as jar:
         meta = tomllib.loads(jar.read("META-INF/neoforge.mods.toml").decode())
+        assert not any(name.startswith(("com/cobblemon/", "kotlin/")) for name in jar.namelist())
         ranges = {item["modId"]: item["versionRange"] for item in meta["dependencies"]["mobsear"]}
         assert ranges["neoforge"] == "[21.1.249,21.2)" and ranges["minecraft"] == "[1.21.1]"
     with tempfile.TemporaryDirectory(prefix="voice-packaged-", dir=os.environ["RUNNER_TEMP"]) as temp:
@@ -78,7 +79,8 @@ def main():
         # This module registers its config during mod construction. A skipped mod can't create it.
         configs = [*folder.glob("config/mobsear-server.toml"), *folder.glob("world/serverconfig/mobsear-server.toml")]
         settings = [tomllib.loads(path.read_text()) for path in configs]
-        assert any(config["voiceRadius"] == 32 and config["hordeEnabled"] is False for config in settings)
+        assert any(config["voiceRadius"] == 32 and config["hordeEnabled"] is False
+                   and config["wildPokemonApproachChance"] == 0.20 for config in settings)
         print(f"PACKAGED_SERVER_PASS Minecraft 1.21.1  NeoForge {version}  mobsear SHA-256 {digest}")
 
 

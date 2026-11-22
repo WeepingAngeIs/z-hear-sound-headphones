@@ -34,6 +34,7 @@ final class SpeechGrammar {
 
     private final Map<String, Integer> phrases;
     private final List<String> speciesByIndex;
+    private final Set<String> needsConfirmation;
     private static final Cue[] MOBS = Cue.values();
 
     static boolean reserved(String phrase) {
@@ -86,6 +87,7 @@ final class SpeechGrammar {
         MobLexicon.phrases(aliases).forEach((name, cue) -> entries.put(name, cue.ordinal() + 1));
         var ids = new ArrayList<String>();
         var codes = new TreeMap<String, Integer>();
+        var groups = new TreeMap<String, List<String>>();
         new TreeMap<>(speciesPhrases).forEach((phrase, id) -> {
             if (entries.containsKey(phrase)) return; // Vanilla calls and explicit local mob aliases keep precedence.
             int code = codes.computeIfAbsent(id, key -> {
@@ -93,9 +95,42 @@ final class SpeechGrammar {
                 return MOBS.length + ids.size();
             });
             entries.put(phrase, code);
+            String shape = spellingShape(phrase);
+            if (!shape.isEmpty()) groups.computeIfAbsent(shape, ignored -> new ArrayList<>()).add(phrase);
         });
+        var confirm = new HashSet<String>();
+        for (var group : groups.values()) {
+            if (group.stream().map(entries::get).distinct().limit(2).count() < 2) continue;
+            for (String name : group) {
+                confirm.add(name);
+                String lastTwo = name.substring(name.length() - 2);
+                boolean needsThree = group.stream().anyMatch(other -> !entries.get(other).equals(entries.get(name))
+                        && other.endsWith(lastTwo));
+                String ending = name.substring(name.length() - (needsThree ? 3 : 2));
+                StringBuilder spelling = new StringBuilder(name).append(" ending");
+                for (char letter : ending.toCharArray()) spelling.append(' ').append(letter);
+                // Conflicting explicit labels are neutral, even if a datapack deliberately reuses a qualifier.
+                entries.merge(spelling.toString(), entries.get(name), (a, b) -> a.equals(b) ? a : 0);
+            }
+        }
+        needsConfirmation = Set.copyOf(confirm);
         phrases = Collections.unmodifiableMap(entries);
         speciesByIndex = List.copyOf(ids);
+    }
+
+    /** Only equal-length, single-word labels sharing at least six leading letters can form a group. */
+    private static String spellingShape(String phrase) {
+        if (phrase.length() < 7 || phrase.indexOf(' ') >= 0) return "";
+        int prefix = Math.max(6, phrase.length() - 3);
+        var shape = new StringBuilder(phrase.substring(0, prefix)).append(':');
+        for (int i = prefix; i < phrase.length(); i++) {
+            shape.append("aeiouy".indexOf(phrase.charAt(i)) >= 0 ? 'v' : 'c');
+        }
+        return shape.toString();
+    }
+
+    Set<String> needsConfirmation() {
+        return needsConfirmation;
     }
 
     int code(String phrase) {
@@ -112,7 +147,8 @@ final class SpeechGrammar {
     /** The vocabulary uses a length-prefixed binary pipe, independent of the OS environment size limit. */
     void writeTo(DataOutputStream output) throws IOException {
         var encoded = new StringBuilder();
-        phrases.forEach((phrase, code) -> encoded.append(code).append(':').append(phrase).append('\n'));
+        phrases.forEach((phrase, code) -> encoded.append(code).append(needsConfirmation.contains(phrase) ? ":1:" : ":0:")
+                .append(phrase).append('\n'));
         byte[] bytes = encoded.toString().getBytes(StandardCharsets.US_ASCII);
         output.writeInt(Integer.reverseBytes(bytes.length));
         output.write(bytes);

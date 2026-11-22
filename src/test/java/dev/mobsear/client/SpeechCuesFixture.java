@@ -168,6 +168,13 @@ public final class SpeechCuesFixture {
         var grammar = new SpeechGrammar(aliasFile, vocabulary);
         require(new java.util.HashSet<>(vocabulary.values()).size() == names.size(), "Missing pinned English species");
         require("cobblemon:spectreonee".equals(vocabulary.get("spectreon")), "Add-on display name and registry ID differ");
+        var guarded = grammar.needsConfirmation();
+        long guardedSpecies = guarded.stream().map(vocabulary::get).distinct().count();
+        require(guardedSpecies == 12 && guarded.containsAll(List.of("spectreon", "spectrier")), "Pinned spelling-neighbor groups");
+        require(!guarded.contains("eevee") && !guarded.contains("nidoran female") && !guarded.contains("nidoran male"),
+                "Unrelated or gender-explicit species suppressed");
+        require(grammar.code("spectreon ending o n") == grammar.code("spectreon")
+                && grammar.code("spectrier ending e r") == grammar.code("spectrier"), "Explicit registry spelling routes");
         vocabulary.forEach((phrase, id) -> {
             int code = grammar.code(phrase);
             require(code > Cue.values().length && grammar.dispatch(code,
@@ -182,18 +189,29 @@ public final class SpeechCuesFixture {
         grammar.writeTo(new DataOutputStream(encoded));
         byte[] pikachu = synthesize("Pikachu");
         byte[] ditto = synthesize("hey Ditto");
-        byte[][] clips = {pikachu, ditto, synthesize("Eevee"), synthesize("Dungeon"), synthesize("Spectreon"), synthesize("spider"),
+        byte[][] clips = {pikachu, ditto, synthesize("Eevee"), synthesize("Dungeon"), synthesize("Spectreon"), synthesize("Spectrier"),
+                synthesize("Spectreon ending O N"), synthesize("Spectrier ending E R"), synthesize("spider"),
                 synthesize("hey"), synthesize("pokemon"), synthesize("all pokemon"),
                 synthesize("the garden is beautiful"), synthesize("my little buddy"), new byte[16000]};
-        int[] expected = {grammar.code("pikachu"), grammar.code("ditto"), grammar.code("eevee"), grammar.code("dungeon"),
-                grammar.code("spectreon"), Cue.SPIDER.ordinal() + 1, 0, 0, 0, 0, 0, 0};
+        int spectreon = grammar.code("spectreon");
+        int spectrier = grammar.code("spectrier");
+        // For a bare close pair, exact or abstained is valid; qualified calls must return the one correct ID.
+        int[][] expected = {{grammar.code("pikachu")}, {grammar.code("ditto")}, {grammar.code("eevee")}, {grammar.code("dungeon")},
+                {spectreon, 0}, {spectrier, 0}, {spectreon}, {spectrier}, {Cue.SPIDER.ordinal() + 1}, {0}, {0}, {0}, {0}, {0}, {0}};
         long started = System.nanoTime();
         int[] result = decisions(SpeechCues.launch(), grammar, clips);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-        if (!Arrays.equals(result, expected)) {
-            diagnoseSyntheticDecisions(clips, grammar);
-            throw new AssertionError("Full English catalog decisions " + Arrays.toString(result) + " expected " + Arrays.toString(expected));
+        for (int i = 0; i < result.length; i++) {
+            int decision = result[i];
+            if (Arrays.stream(expected[i]).noneMatch(allowed -> allowed == decision)) {
+                diagnoseSyntheticDecisions(clips, grammar);
+                throw new AssertionError("Full English catalog decisions " + Arrays.toString(result)
+                        + " allowed " + Arrays.deepToString(expected));
+            }
         }
+        System.out.println("MOBSEAR_SPECIES_NEIGHBORS_PASS needsConfirmation=" + guardedSpecies
+                + " bareSpectreon=" + result[4] + " bareSpectrier=" + result[5]
+                + " qualifiedSpectreon=" + result[6] + " qualifiedSpectrier=" + result[7]);
         var ids = new ArrayBlockingQueue<String>(4);
         var mobs = new ArrayBlockingQueue<Cue>(4);
         try (var speech = new SpeechCues(mobs::add, ids::add, aliasFile, names)) {

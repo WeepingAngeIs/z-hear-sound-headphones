@@ -111,6 +111,7 @@ final class PokemonCaseServer {
     }
     private void announce() {
         var m = new PokemonProbe.Message(phase,index,subject.getId());
+        System.out.println("POKEMON_STAGE " + c + " phase=" + phase + " players=" + (caller==viewer ? 1:2));
         PacketDistributor.sendToPlayer(caller,m);
         if (caller!=viewer) PacketDistributor.sendToPlayer(viewer,m);
     }

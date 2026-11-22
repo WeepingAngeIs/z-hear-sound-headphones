@@ -32,7 +32,7 @@ public final class PokemonCaseClient {
     private int ticks, alignedTicks;
     private PokemonProbe.Message stage;
     private PokemonCase c;
-    private String capture;
+    private String capture, waiting;
     private boolean saved;
 
     public PokemonCaseClient() {
@@ -57,14 +57,19 @@ public final class PokemonCaseClient {
     private void tick(ClientTickEvent.Post ignored) {
         mc=Minecraft.getInstance();
         if (!installed) { FixtureSound.install(); installed=true; }
-        if (mc.player==null || mc.level==null || !VoiceClient.connected()) return;
+        if (mc.player==null || mc.level==null) return;
+        if ((!hello || caller) && !VoiceClient.connected()) { waitFor("voice session"); return; }
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
         if (!hello) {
-            if (mc.screen!=null || !mc.isWindowActive()) return;
+            if (mc.screen!=null || !mc.isWindowActive()) {
+                waitFor(mc.screen==null ? "window focus" : mc.screen.getClass().getSimpleName()); return;
+            }
             var connection=mc.getConnection();
             if (!connection.hasChannel(Packets.SpeciesCall.TYPE)) throw PokemonProbe.fail("Missing negotiated species channel");
             for (var check:new PokemonCase[]{PokemonCase.PIKACHU,PokemonCase.ADDON,PokemonCase.NAMESPACE})
-                if (PokemonSpecies.getByIdentifier(check.species)==null) return; // Cobblemon completes initial data sync after login.
+                if (PokemonSpecies.getByIdentifier(check.species)==null) {
+                    waitFor("synced species " + check.species); return;
+                }
             solo=connection.getConnection().isMemoryConnection();
             caller=solo || mc.getUser().getName().equals("PokemonCaller");
             hello=true;
@@ -116,6 +121,10 @@ public final class PokemonCaseClient {
         reply(PokemonProbe.SEEN); acknowledged=true;
         if (acoustic) System.out.println("POKEMON_REAL_SPEECH "+c+" canonical=true client-facing="+aligned+
                 " mode="+(c==PokemonCase.EEVEE?"voice-activation":"push-to-talk"));
+    }
+    private void waitFor(String reason) {
+        if (!reason.equals(waiting)) System.out.println("POKEMON_CLIENT_WAIT " + reason);
+        waiting=reason;
     }
     private boolean recognizerReady() {
         // Inspect only the worker status; the acoustic run never writes the recognition result mailbox.

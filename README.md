@@ -37,6 +37,8 @@ A calm wild Pokémon looks toward the sound. A land Pokémon with room to walk h
 
 The vocabulary comes from Cobblemon’s synced species registry, including names supplied by datapacks. English desktop recognition uses canonical species names and English display names when the game uses English. Localized labels still appear in the private feedback. Duplicate spoken names are skipped, and existing mob names retain their meanings. For the two Nidoran species, say **Nidoran female** or **Nidoran male**. Only the matched species identifier goes to the server.
 
+For similar-sounding species, a call can go unanswered when the recognizer cannot confirm the name. Try saying the name followed by its ending spelled aloud, such as **Spectreon ending O N** or **Spectrier ending E R**.
+
 ## Server and privacy
 
 Quiet horror is a separate server option. Set `hordeEnabled = true` in the server configuration to offer it. Each player then opts in from the voice menu for that connection. Death, a dimension change, disconnecting, Peaceful difficulty, or switching to creative or spectator ends participation.

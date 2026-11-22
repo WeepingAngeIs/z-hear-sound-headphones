@@ -41,9 +41,9 @@ def run_game(name, marker, stop_server=False):
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     try:
         for line in process.stdout:
-            if any(key in line for key in ("MOBSEAR_", "ERROR", "Exception", "Caused by", "OpenGL", "Starting integrated")):
+            if any(key in line for key in ("MOBSEAR_", "POKEMON_", "ERROR", "Exception", "Caused by", "OpenGL", "Starting integrated")):
                 print(line.strip()[:800], flush=True)
-            if "MOBSEAR_SMOKE_FAIL" in line or "MOBSEAR_POKEMON_FAIL" in line:
+            if "MOBSEAR_SMOKE_FAIL" in line or "POKEMON_FIXTURE_FAIL" in line:
                 break
             if marker in line:
                 if stop_server:

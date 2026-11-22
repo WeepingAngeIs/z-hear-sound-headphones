@@ -16,18 +16,20 @@ try {
 
     $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
     $size = $reader.ReadInt32()
-    if ($size -le 0 -or $size -gt 524288) { exit 3 }
+    if ($size -le 0 -or $size -gt 1048576) { exit 3 }
     $vocabulary = $reader.ReadBytes($size)
     if ($vocabulary.Length -ne $size) { exit 3 }
     $aliases = @{}
+    $confirm = @{}
     $words = [System.Collections.Generic.List[string]]::new()
     foreach ($entry in [Text.Encoding]::ASCII.GetString($vocabulary).Split([char]10)) {
         if ($entry.Length -eq 0) { continue }
         $parts = $entry.Split(':')
-        if ($parts.Count -ne 2) { exit 3 }
-        $aliases.Add($parts[1], [uint16]$parts[0])
-        $words.Add($parts[1])
-        $words.Add('hey ' + $parts[1])
+        if ($parts.Count -ne 3) { exit 3 }
+        $aliases.Add($parts[2], [uint16]$parts[0])
+        if ($parts[1] -eq '1') { $confirm.Add($parts[2], $true) }
+        $words.Add($parts[2])
+        $words.Add('hey ' + $parts[2])
     }
     $phrases = [System.Speech.Recognition.Choices]::new()
     # Explicit rejection phrases give greetings and generic collective calls a harmless match.
@@ -42,7 +44,7 @@ try {
     $calls.Name = 'mob call'
     $calls.Priority = 1
     $engine.LoadGrammar($calls)
-    # Unrelated speech can match the desktop vocabulary. Its text is never read.
+    # The background vocabulary can reject ordinary speech. No transcript leaves this process.
     $background = [System.Speech.Recognition.DictationGrammar]::new()
     $engine.LoadGrammar($background)
 
@@ -87,7 +89,33 @@ try {
             if ($null -ne $result -and $result.Grammar.Name -eq 'mob call' -and $result.Confidence -ge $minConfidence) {
                 $phrase = $result.Text.ToLowerInvariant()
                 if ($phrase.StartsWith('hey ')) { $phrase = $phrase.Substring(4) }
-                if ($aliases.ContainsKey($phrase)) { $decision = $aliases[$phrase] }
+                if ($aliases.ContainsKey($phrase)) {
+                    $candidate = $aliases[$phrase]
+                    if (-not $confirm.ContainsKey($phrase)) {
+                        $decision = $candidate
+                    } else {
+                        # The command grammar can confidently confuse close names. Require
+                        # the independent desktop vocabulary to agree, or accept the separately
+                        # registered explicit '<name> ending <letters>' command on a later call.
+                        $engine.SetInputToNull()
+                        $stream.Dispose()
+                        $stream = [System.IO.MemoryStream]::new($pcm, $false)
+                        $calls.Enabled = $false
+                        try {
+                            $engine.SetInputToAudioStream($stream, $format)
+                            $second = $engine.Recognize()
+                            if ($null -ne $second -and $second.Confidence -ge 0.58) {
+                                $key = $second.Text.ToLowerInvariant() -replace '^hey ', ''
+                                if ($aliases.ContainsKey($key) -and $aliases[$key] -eq $candidate) { $decision = $candidate }
+                            }
+                        } finally {
+                            $engine.SetInputToNull()
+                            $calls.Enabled = $true
+                            $second = $null
+                            $key = $null
+                        }
+                    }
+                }
             }
         } finally {
             $engine.SetInputToNull()

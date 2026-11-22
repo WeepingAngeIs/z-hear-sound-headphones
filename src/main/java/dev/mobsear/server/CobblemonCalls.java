@@ -47,6 +47,11 @@ final class CobblemonCalls {
         return responses.containsKey(mob);
     }
 
+    static boolean hasResponsePath(Mob mob) {
+        Response response = responses.get(mob);
+        return response != null && response.path != null;
+    }
+
     static void hear(ServerPlayer speaker, ResourceLocation id, double radius, ToIntFunction<Mob> roll) {
         var species = PokemonSpecies.getByIdentifier(id);
         if (species == null || !id.equals(species.getResourceIdentifier())) return;
@@ -55,7 +60,8 @@ final class CobblemonCalls {
         double limit = radius * radius;
         var area = speaker.getBoundingBox().inflate(radius);
         for (PokemonEntity mob : level.getEntitiesOfClass(PokemonEntity.class, area, mob ->
-                mob.distanceToSqr(speaker) <= limit && mob.getPokemon().getSpecies() == species && available(mob))) {
+                mob.distanceToSqr(speaker) <= limit && id.equals(mob.getPokemon().getSpecies().getResourceIdentifier())
+                        && available(mob))) {
             if (now < cooldowns.getOrDefault(mob.getUUID(), 0L)) continue;
             cooldowns.put(mob.getUUID(), now + COOLDOWN_TICKS);
             Vec3 sound = speaker.getEyePosition();

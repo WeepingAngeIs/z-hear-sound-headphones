@@ -13,6 +13,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
@@ -38,6 +39,9 @@ public final class GlanceGameTests {
         var mob = test.spawn(type, 3, 2, 5);
         var origin = mob.position();
         var walk = new WalkAndLook(mob, test.absoluteVec(new Vec3(11.5, 2, 5.5)));
+        // Spider registers a random stroll at this same priority. Give the fixture exclusive
+        // ownership of its walking slot so recovery measures the known competing goal.
+        mob.goalSelector.removeAllGoals(goal -> goal instanceof WaterAvoidingRandomStrollGoal);
         mob.goalSelector.addGoal(5, walk);
         var player = speaker(test, origin);
         for (int attempt = 0; attempt < 2; attempt++) {
@@ -59,9 +63,13 @@ public final class GlanceGameTests {
             }
             // A second speaker during the same pause cannot redirect or prolong it.
             test.runAfterDelay(begins + 9, () -> MobReactions.handle(speaker(test, mob.position().add(10, 0, 0)), cue, 32));
-            test.runAfterDelay(begins + 25, () -> test.assertTrue(walk.running && mob.getXRot() < 10
+            int expectedStarts = attempt + 2;
+            test.runAfterDelay(begins + 25, () -> test.assertTrue(walk.running && walk.starts >= expectedStarts
+                    && Math.abs(mob.getXRot()) < 10
                     && Math.abs(Mth.wrapDegrees(mob.getYHeadRot() - yaw(mob, player.getEyePosition()))) > 50,
-                    "Movement/look controls failed to resume after " + cue));
+                    "Movement/look controls failed to resume after " + cue + ": running=" + walk.running
+                            + " starts=" + walk.starts + " pitch=" + mob.getXRot() + " head=" + mob.getYHeadRot()
+                            + " callerYaw=" + yaw(mob, player.getEyePosition()) + " grounded=" + mob.onGround()));
         }
         test.runAfterDelay(89, test::succeed);
     }
@@ -91,6 +99,7 @@ public final class GlanceGameTests {
     private static void rangeCase(GameTestHelper test, EntityType<? extends Mob> type, Cue cue, int blocks, GameType mode) {
         var mob = test.spawn(type, 6, 2, 5);
         Vec3 forward = mob.getEyePosition().add(0, 0, 4);
+        mob.goalSelector.removeAllGoals(goal -> goal instanceof WaterAvoidingRandomStrollGoal);
         mob.goalSelector.addGoal(5, new Goal() {
             { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
             @Override public boolean canUse() { return true; }
@@ -197,6 +206,7 @@ public final class GlanceGameTests {
         private final Mob mob;
         private final Vec3 destination;
         boolean running;
+        int starts;
         WalkAndLook(Mob mob, Vec3 destination) {
             this.mob = mob;
             this.destination = destination;
@@ -206,6 +216,7 @@ public final class GlanceGameTests {
         @Override public boolean requiresUpdateEveryTick() { return true; }
         @Override public void start() {
             running = true;
+            starts++;
             mob.getNavigation().moveTo(destination.x, destination.y, destination.z, 0.65);
         }
         @Override public void tick() {
