@@ -183,6 +183,8 @@ def run():
                         observations.append(message)
                     if message.startswith("ACOUSTIC_COMPLETE "):
                         count=2 if earlier else 13 if os.environ.get("MOBSEAR_TEST_FEEDBACK")=="1" else 11 if os.environ.get("MOBSEAR_EXTRA_NAMES")=="1" else 6
+                        if os.environ.get("MOBSEAR_TEST_VISIT")=="1":
+                            count+=1
                         assert len(observations)==count
                         if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
                             assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)
@@ -191,6 +193,8 @@ def run():
                             assert message==f"ACOUSTIC_COMPLETE trials={count} failed=0", "One or more acoustic trials failed"
                         return
                     if message.startswith("ACOUSTIC_FATAL "): raise RuntimeError(message[:600])
+                elif "POKEMON_VISIT_PASS" in line:
+                    print("ACOUSTIC_"+line[line.index("POKEMON_VISIT_PASS"):].strip(),flush=True)
                 elif any(x in line for x in ("Starting integrated minecraft server", "Initializing Minecraft", "Loading Minecraft",
                                              "OpenGL Version", "Preparing start region", "Preparing spawn area", "Time elapsed:")):
                     print(line.strip()[:330], flush=True)

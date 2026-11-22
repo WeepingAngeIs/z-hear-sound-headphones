@@ -1,7 +1,7 @@
 allprojects {
     plugins.withId('java') {
         def probe = sourceSets.create('acousticPackProbe') {
-            java.srcDirs = [rootProject.file('ci/fullpack/java')]
+            java.srcDirs = [rootProject.file('ci/fullpack/java'), rootProject.file('ci/shared-pokemon/java')]
             compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
         }
         tasks.register('acousticPackProbeJar', Jar) {

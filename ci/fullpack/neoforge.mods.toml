@@ -8,6 +8,6 @@ displayName="Disposable acoustic observer"
 [[dependencies.acoustic_pack_probe]]
 modId="mobsear"
 type="required"
-versionRange="[0.2.1,0.3.4)"
+versionRange="[0.2.1,0.4)"
 ordering="AFTER"
 side="CLIENT"

@@ -3,6 +3,7 @@ package dev.mobsear.packprobe;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import dev.mobsear.client.VoiceClient;
+import dev.mobsear.fixture.CalledPokemonVisit;
 import dev.mobsear.net.Packets;
 import dev.mobsear.server.NearbyMics;
 import dev.mobsear.server.ServerVoice;
@@ -54,6 +55,7 @@ public final class PackProbe {
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
     private final boolean measuredDecisions = "1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"));
     private final boolean testFeedback = "1".equals(System.getenv("MOBSEAR_TEST_FEEDBACK"));
+    private final boolean testVisit = "1".equals(System.getenv("MOBSEAR_TEST_VISIT"));
     private final Trial[] tests = trials();
 
     private Trial[] trials() {
@@ -75,6 +77,7 @@ public final class PackProbe {
                 cases.add(new Trial("Lopunny",16,false,false,false,"hold-on",false));
             }
         }
+        if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
     }
     static final class Observation {
@@ -82,6 +85,10 @@ public final class PackProbe {
         final int number, entity;
         final Mob subject; // Accessed only on the server thread.
         final long frameBefore, cueBefore;
+        final CalledPokemonVisit visit;
+        int arrangeTicks, lastWanderTick;
+        volatile boolean primed, beside, finished;
+        boolean besideScreenshot;
         volatile boolean wireAudio, acceptedCue, reaction, targeted;
         volatile double callDistance = -1;
         volatile boolean started;
@@ -94,9 +101,10 @@ public final class PackProbe {
         long matchedAt, dispatchedAt, turnedAt;
         volatile long acceptedAt;
         final ConcurrentLinkedQueue<byte[]> segments = new ConcurrentLinkedQueue<>();
-        Observation(Trial test, int number, Mob mob, long frame, long cue) {
+        Observation(Trial test, int number, Mob mob, long frame, long cue, CalledPokemonVisit visit) {
             this.test = test; this.number = number; this.subject = mob; this.entity = mob.getId();
             this.frameBefore = frame; this.cueBefore = cue;
+            this.visit = visit;
         }
     }
     private volatile Observation current;
@@ -165,6 +173,8 @@ public final class PackProbe {
                     level.setWeatherParameters(60000, 0, false, false);
                     for (int x=-6; x<=46; x++) for (int z=-5; z<=5; z++)
                         level.setBlockAndUpdate(new BlockPos(x,159,z), Blocks.SEA_LANTERN.defaultBlockState());
+                    if (testVisit) for (int x=-3; x<=19; x++) for (int z=6; z<=25; z++)
+                        level.setBlockAndUpdate(new BlockPos(x,159,z), Blocks.SEA_LANTERN.defaultBlockState());
                     // The lit wall behind the subject makes a distant Enderman visible against the night sky.
                     for (int y=160; y<=166; y++) for (int z=-5; z<=5; z++)
                         level.setBlockAndUpdate(new BlockPos(-5,y,z), Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
@@ -187,9 +197,27 @@ public final class PackProbe {
                 if (!level.addFreshEntity(mob)) throw new IllegalStateException("Spawn failed");
                 System.out.printf(Locale.ROOT,"ACOUSTIC_ARENA %s mode=%s actualDistance=%.1f wildPokemon=%s%n",
                         t.name,p.gameMode.getGameModeForPlayer(),mob.distanceTo(p),mob instanceof PokemonEntity);
-                current = new Observation(t,index,mob,timestamp(p,"lastFrame"),timestamp(p,"lastCue"));
+                var visit = testVisit && index==tests.length-1 ? new CalledPokemonVisit((PokemonEntity)mob,p,23) : null;
+                current = new Observation(t,index,mob,timestamp(p,"lastFrame"),timestamp(p,"lastCue"),visit);
             }
             var o = current;
+            int tick = e.getServer().getTickCount();
+            boolean active = responding(o.subject);
+            if (o.visit!=null && !o.finished) {
+                if (!o.reaction && !active) {
+                    if (o.visit.isWandering()) {
+                        o.lastWanderTick=tick;
+                        o.primed=true;
+                    }
+                    if (!o.primed && ++o.arrangeTicks>200)
+                        throw new IllegalStateException("Lopunny never began the pre-call wander");
+                } else {
+                    if (!o.reaction && tick-o.lastWanderTick>2)
+                        throw new IllegalStateException("Lopunny was not still wandering when it heard its name");
+                    o.finished=o.visit.observe(active,false,tick);
+                    o.beside=o.visit.staying();
+                }
+            }
             if (o.started) {
                 Object status=((Map<?,?>)Boundary.field(NearbyMics.class,"ACTIVE").get(null)).get(p);
                 if (timestamp(p,"lastFrame") > o.frameBefore && status!=null && (int)Boundary.get(status,"level")>0
@@ -199,7 +227,7 @@ public final class PackProbe {
                     o.acceptedAt=System.nanoTime();
                     o.acceptedCue=true;
                 }
-                o.reaction |= responding(o.subject);
+                o.reaction |= active;
                 o.targeted |= o.subject.getTarget()!=null;
             }
         } catch (Exception ex) { fail(ex); }
@@ -299,6 +327,7 @@ public final class PackProbe {
             var o=current;
             if (o==null || next) return;
             if (mc.level.getEntity(o.entity) instanceof Mob mob) {
+                if (o.visit!=null) mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,mob.getEyePosition());
                 double yaw=Math.toDegrees(Math.atan2(mc.player.getZ()-mob.getZ(),mc.player.getX()-mob.getX()))-90;
                 double err=Math.abs(Mth.wrapDegrees(mob.getYHeadRot()-yaw));
                 if (!o.started) {
@@ -308,6 +337,7 @@ public final class PackProbe {
                     VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
+                    if (o.visit!=null && !o.primed) return;
                     o.initialError=err;
                     if (earlier) mc.gui.setOverlayMessage(Component.empty(),false);
                     else o.initialRequest=(long)Boundary.get(Boundary.client(),"lastRequestId");
@@ -360,8 +390,9 @@ public final class PackProbe {
             if (o.dispatched && o.dispatchedAt==0) o.dispatchedAt=System.nanoTime();
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
-            long observationLimit=o.test.hears ? 12_000_000_000L : 6_000_000_000L;
-            if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction)) return;
+            long observationLimit=o.visit!=null ? 50_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
+            boolean completedVisit=o.visit==null || o.finished && o.besideScreenshot;
+            if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");
             boolean capture=Boundary.consumed() && (silent ? Boundary.nonzeroFrames==0 : Boundary.nonzeroFrames>=2);
             int segments=0;
@@ -380,7 +411,9 @@ public final class PackProbe {
             boolean success=capture && o.wireAudio!=silent && o.recognized==o.test.spokenName() && correctDecision
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
-                    && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot)));
+                    && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot))) && completedVisit;
+            if (o.visit!=null) System.out.println("ACOUSTIC_POKEMON_VISIT audio="+o.wireAudio+" recognized="+o.recognized+
+                    " dispatched="+o.dispatched+" wandering="+o.primed+" fullVisit="+o.finished+" besideFrame="+o.besideScreenshot);
             if (testFeedback) {
                 boolean detailOk=!o.test.detail ? !o.privateText : switch(o.test.recording) {
                     case "hold-on" -> o.guess;
@@ -414,6 +447,14 @@ public final class PackProbe {
     private void render(RenderFrameEvent.Post event) {
         var o=current;
         var mc=Minecraft.getInstance();
+        if (o!=null && o.visit!=null && o.beside && !o.besideScreenshot && !next && !fatal
+                && mc.player!=null && mc.level!=null && mc.screen==null && mc.getOverlay()==null
+                && mc.level.getEntity(o.entity) instanceof PokemonEntity pokemon && mc.player.distanceTo(pokemon)<=2.8) {
+            try (var image=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+                image.writeToFile(Files.createDirectories(home.resolve("evidence")).resolve("visit-beside-Lopunny.png"));
+                o.besideScreenshot=true;
+            } catch (Exception ex) { fail(ex); }
+        }
         if (testFeedback && o!=null && o.started && !next && !fatal && !complete && mc.screen==null && mc.getOverlay()==null) {
             try { captureTestPreview(mc,o); } catch (Exception ex) { fail(ex); }
         }
