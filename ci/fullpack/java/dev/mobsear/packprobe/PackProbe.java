@@ -112,8 +112,6 @@ public final class PackProbe {
     private final Path home = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"));
     private final Set<String> testPreviews = new HashSet<>();
     private boolean observedListening, observedChecking;
-    private String previousPreview = "";
-    private int previewFrames;
 
     public PackProbe() {
         if (!"true".equals(System.getenv("GITHUB_ACTIONS"))) throw new IllegalStateException("Hosted fixture only");
@@ -405,7 +403,8 @@ public final class PackProbe {
             if (!success) failures++;
             if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(false);
             if (o.number+1==tests.length) {
-                if (testFeedback && !(observedListening && observedChecking)) failures++;
+                if (testFeedback && (!(observedListening && observedChecking)
+                        || !testPreviews.containsAll(Set.of("listening","rejected-guess","no-match","waiting","other-name")))) failures++;
                 System.out.println("ACOUSTIC_COMPLETE trials="+tests.length+" failed="+failures);
                 complete=true;
             } else next=true;
@@ -454,14 +453,44 @@ public final class PackProbe {
             default -> o.test.recording.equals("silence") && key.isEmpty()
                     && Boundary.promptKey().equals("mobsear.speech.test_wait") ? "waiting" : "";
         };
-        if (!previousPreview.equals(label)) { previousPreview=label; previewFrames=0; }
-        if (label.isEmpty() || testPreviews.contains(label) || ++previewFrames<2) return;
+        if (label.isEmpty() || testPreviews.contains(label)) return;
+        var text=key.isEmpty() ? Boundary.prompt() : Boundary.noticeComponent("current");
+        if (text==null) return;
         try (var image=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+            if (!showsNotice(mc,image,text)) return;
             var folder=Files.createDirectories(home.resolve("evidence"));
             image.writeToFile(folder.resolve("test-"+label+".png"));
         }
         testPreviews.add(label);
         System.out.println("ACOUSTIC_TEST_PREVIEW "+label);
+    }
+
+    // A render callback can see the next client tick's notice while the captured pixels still
+    // show the previous one. Check the actual frame's rose border against the native font layout.
+    private static boolean showsNotice(Minecraft mc, com.mojang.blaze3d.platform.NativeImage image, Component text) {
+        int scale=(int)mc.getWindow().getGuiScale();
+        int width=mc.getWindow().getGuiScaledWidth();
+        int x=Math.max(2,width/2-91);
+        var face=net.minecraft.network.chat.Style.EMPTY.withFont(
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("mobsear","notice"));
+        var lines=mc.font.split(Component.empty().setStyle(face).append(text),Math.min(182,width-x-2)-27);
+        int boxWidth=27+lines.stream().mapToInt(mc.font::width).max().orElse(0);
+        int boxHeight=Math.max(17,lines.size()*mc.font.lineHeight+7);
+        int borderLeft=x*scale;
+        int borderRight=(x+boxWidth)*scale-1;
+        if (borderRight+1>=image.getWidth()) return false;
+        int rose=0xa177d7; // NativeImage holds ABGR.
+        for (int y=image.getHeight()/2; y<image.getHeight()*9/10; y++) {
+            int center=borderLeft+boxWidth*scale/2;
+            if ((image.getPixelRGBA(center,y)&0xffffff)!=rose) continue;
+            int bottom=y+boxHeight*scale-1, middle=(y+bottom)/2;
+            if (bottom>=image.getHeight()) break;
+            if ((image.getPixelRGBA(center,bottom)&0xffffff)==rose &&
+                    (image.getPixelRGBA(borderLeft,middle)&0xffffff)==rose &&
+                    (image.getPixelRGBA(borderRight,middle)&0xffffff)==rose &&
+                    (image.getPixelRGBA(borderRight+1,middle)&0xffffff)!=rose) return true;
+        }
+        return false;
     }
 
     private static long milliseconds(long start,long end) {
