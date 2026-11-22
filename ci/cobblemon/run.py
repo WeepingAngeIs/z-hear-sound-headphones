@@ -93,6 +93,14 @@ def run(mode):
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
         expected.extend(["walking_pikachu-after", "walking_eevee-after", "interrupted-after"])
         if env.get("MOBSEAR_POKEMON_PACK") == "1":
+            views = {"solo": "caller"} if mode == "solo" else {"speaker": "caller", "listener": "viewer"}
+            for role, observer in views.items():
+                observed = (root / f"{role}.console").read_text(errors="replace").splitlines()
+                frames = [line for line in observed if f"ENTITY_DEER_RENDER role={observer} " in line]
+                if len(frames) != 1:
+                    raise RuntimeError(f"Missing independently rendered walking deer for {observer}")
+                print(frames[0], flush=True)
+                expected.append(f"walking_deer-{observer}-view")
             expected.extend(["pack_form-after", "pack_custom-after", "global_pack-after", "named_cow-before", "named_cow-after",
                              "named_hostile-after", "forest_deer-before", "forest_deer-after", "boss_charging-protected", "naga_combat-protected",
                              "owl_guardian-before", "owl_guardian-after", "owl_offender-protected", "velvet_idle-before",
@@ -123,7 +131,7 @@ def run(mode):
             shutil.copytree(root/"catalogs",Path("build/pokemon-catalogs"),dirs_exist_ok=True)
         for log in root.glob("*.console"):
             for line in log.read_text(errors="replace").splitlines():
-                if any(k in line for k in ("POKEMON_CASE_PASS","ENTITY_NAME_CASE_PASS","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
+                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_BOXTAIL_","ENTITY_NAME_CASE_PASS","ENTITY_DEER_ROUTE","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
 
 
 if __name__ == "__main__":

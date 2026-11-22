@@ -22,6 +22,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.client.event.RenderLivingEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
@@ -40,18 +41,22 @@ public final class PokemonCaseClient {
     private Packets.Heard confirmation, delayed;
     private long lastReplyId;
     private double sourceX,sourceZ;
+    private int sourceTick, lastDeerTick, deerFrames;
+    private double lastDeerX;
     private net.minecraft.world.phys.Vec3 trackedCaller;
 
     public PokemonCaseClient() {
         PokemonProbe.client=this::stage;
         NeoForge.EVENT_BUS.addListener(this::tick);
         NeoForge.EVENT_BUS.addListener(this::render);
+        NeoForge.EVENT_BUS.addListener(this::renderDeer);
     }
     private void stage(PokemonProbe.Message request) {
         if (request.stage()==PokemonProbe.SOURCE) {
             if (stage==null || stage.stage()!=PokemonProbe.FIRE || request.entity()!=stage.entity() || request.scenario()!=stage.scenario() || !c.accepts())
                 throw PokemonProbe.fail("Unmatched authenticated source observation");
             sourceX=request.sourceX(); sourceZ=request.sourceZ(); sourceKnown=true;
+            sourceTick=ticks;
             return;
         }
         if (request.stage()==PokemonProbe.VERIFIED_GUARD) {
@@ -65,6 +70,7 @@ public final class PokemonCaseClient {
         acknowledged=sent=uttered=recognized=aligned=saved=guardVerified=scopedGuardian=false;
         ticks=alignedTicks=0; capture=null;
         sourceKnown=false; trackedCaller=null;
+        deerFrames=0; lastDeerTick=-1; lastDeerX=Double.NaN;
         if (request.stage()==PokemonProbe.FIRE) {
             var speaker=caller ? mc.player : mc.level.players().stream().filter(p->p.getGameProfile().getName().equals("PokemonCaller")).findFirst().orElse(null);
             if (speaker!=null) trackedCaller=speaker.position();
@@ -151,7 +157,8 @@ public final class PokemonCaseClient {
         ticks++;
         if (ticks>900) throw PokemonProbe.fail("client timeout "+c+" stage="+stage.stage()+" caller="+caller+
                 " screen="+(mc.screen==null?"none":mc.screen.getClass().getSimpleName())+" acoustic="+acoustic+
-                " heard="+recognized+" facing="+aligned+" signed="+sent+" target="+mc.level.getEntity(stage.entity()));
+                " localRecognition="+recognized+" facing="+aligned+" sent="+sent+" serverConfirmed="+(confirmation!=null)+
+                " sourceReceived="+sourceKnown+" target="+mc.level.getEntity(stage.entity()));
         if (stage.stage()==PokemonProbe.BEFORE) {
             if (ticks==100 || ticks==300) System.out.println("POKEMON_CLIENT_TRACK "+c+" id="+stage.entity()+" entity="+mc.level.getEntity(stage.entity())+
                     " camera="+(mc.getCameraEntity()==mc.player)+" callerAt="+mc.player.position()+" arenaLoaded="+mc.level.hasChunkAt(new net.minecraft.core.BlockPos(0,104,8)));
@@ -216,9 +223,14 @@ public final class PokemonCaseClient {
             if (c.ordinaryEntity() && (ticks==2 || ticks==6 || ticks==12 || ticks==18 || ticks==30))
                 System.out.println("ENTITY_CLIENT_FACING "+c+" tick="+ticks+" sourceKnown="+sourceKnown+" source="+sourceX+","+sourceZ+
                         " trackedCaller="+trackedCaller+" mob="+entity.position()+" head="+entity.getYHeadRot()+" error="+(sourceKnown?Math.round(error):"unknown"));
-            if (sourceKnown && error<=30 && ++alignedTicks>=2) aligned=true;
+            if (c==PokemonCase.GLOBAL_PACK && (ticks==6 || ticks==18 || ticks==36))
+                System.out.println("POKEMON_BOXTAIL_CLIENT tick="+ticks+" caller="+caller+" requestSent="+sent+
+                        " sourceReceived="+sourceKnown+" heardRequest="+(confirmation==null ? 0 : confirmation.requestId())+
+                        " head="+Math.round(entity.getYHeadRot())+" headError="+(sourceKnown ? Math.round(error) : "unknown"));
+            if (c!=PokemonCase.WALKING_DEER && sourceKnown && error<=30 && ++alignedTicks>=2) aligned=true;
         }
         if ((caller && !sent) || (c.accepts() && !aligned) || ticks<5) return;
+        if (c==PokemonCase.WALKING_DEER && !saved) return;
         if (caller && expectedListener()!=null && confirmation==null) return;
         if (c==PokemonCase.LOPUNNY && caller && !Component.translatable("mobsear.speech.heard",
                 PokemonSpecies.getByIdentifier(c.species).getTranslatedName()).getString().equals(overlay()))
@@ -296,6 +308,30 @@ public final class PokemonCaseClient {
     private void reply(int code) {
         PacketDistributor.sendToServer(new PokemonProbe.Message(code,stage.scenario(),stage.entity()));
     }
+
+    // Inspect the interpolated angles of the actual Twilight Forest deer when its renderer drew it.
+    private void renderDeer(RenderLivingEvent.Post<?,?> event) {
+        if (c!=PokemonCase.WALKING_DEER || !sourceKnown || aligned || ticks-sourceTick>26
+                || !(event.getEntity() instanceof Mob deer) || deer.getId()!=stage.entity() || lastDeerTick==deer.tickCount) return;
+        lastDeerTick=deer.tickCount;
+        float part=event.getPartialTick();
+        double x=Mth.lerp(part,deer.xo,deer.getX()), z=Mth.lerp(part,deer.zo,deer.getZ());
+        double bearing=Math.toDegrees(Math.atan2(sourceZ-z,sourceX-x))-90;
+        float head=Mth.rotLerp(part,deer.yHeadRotO,deer.getYHeadRot());
+        float body=Mth.rotLerp(part,deer.yBodyRotO,deer.yBodyRot);
+        double error=Math.abs(Mth.wrapDegrees(head-bearing)), neck=Math.abs(Mth.wrapDegrees(head-body));
+        boolean movingAway=lastDeerX-x>.015;
+        lastDeerX=x;
+        deerFrames=movingAway && error<=30 && neck<=deer.getMaxHeadYRot()+1 ? deerFrames+1 : 0;
+        if (deerFrames>=2) {
+            aligned=true;
+            capture=caller?"caller-view":"viewer-view";
+            System.out.printf(java.util.Locale.ROOT,
+                    "ENTITY_DEER_RENDER role=%s headError=%.1f neck=%.1f movingAway=true frames=%d%n",
+                    caller?"caller":"viewer",error,neck,deerFrames);
+        }
+    }
+
     private void render(RenderFrameEvent.Post ignored) {
         if (capture==null) return;
         Path output=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT"),"evidence");

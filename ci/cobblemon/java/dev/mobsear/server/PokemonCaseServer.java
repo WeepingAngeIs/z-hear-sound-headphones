@@ -35,6 +35,7 @@ final class PokemonCaseServer {
     private final Set<UUID> arrivals = new HashSet<>(), acknowledgements = new HashSet<>();
     private ServerPlayer caller, viewer;
     private final NamedCases named=new NamedCases();
+    private WalkingDeer deerWalk;
     private Mob subject;
     private PokemonEntity witness;
     private EmptyPokeBallEntity ball;
@@ -44,6 +45,7 @@ final class PokemonCaseServer {
     private int index, phase, age, aligned;
     private boolean live, reacted, fired, captureLockSeen, pathSeen, witnessReacted, offlineChecked, arranged, keptRoute;
     private long firstCall, gap;
+    private long previousRequestTime;
     private double advance, nativeTravel;
     private BlockPos nativeDestination;
     private net.minecraft.world.level.pathfinder.Path interruptedRoute;
@@ -74,7 +76,7 @@ final class PokemonCaseServer {
                 world.setDayTime(1000);
                 world.setWeatherParameters(60000,0,false,false);
                 world.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false,world.getServer());
-                for (int x=-5;x<=42;x++) for (int z=-7;z<=8;z++)
+                for (int x=-20;x<=42;x++) for (int z=-7;z<=8;z++)
                     world.setBlockAndUpdate(new BlockPos(x,Y-1,Z+z),Blocks.STONE.defaultBlockState());
                 caller.setGameMode(GameType.SURVIVAL);
                 if (!solo) viewer.setGameMode(GameType.SPECTATOR);
@@ -90,7 +92,8 @@ final class PokemonCaseServer {
             soundOrigin=caller.position();
             if (c==PokemonCase.OFFLINE_OWNER) checkOfflineOwner();
             if (c.ordinaryEntity()) named.arrange(c,subject,caller);
-            if (c.accepts() || c==PokemonCase.COOLDOWN_HELD) prepareIdle(subject);
+            if (deerWalk!=null) deerWalk.atCall(caller);
+            else if (c.accepts() || c==PokemonCase.COOLDOWN_HELD) prepareIdle(subject);
             if (c==PokemonCase.APPROACH || c==PokemonCase.INTERRUPTED)
                 System.out.println("POKEMON_NATIVE_START "+c+" ground="+subject.onGround()+" navDone="+subject.getNavigation().isDone()+
                         " walkMemory="+subject.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)+" active="+subject.getBrain().getActiveNonCoreActivity());
@@ -127,6 +130,18 @@ final class PokemonCaseServer {
                 }
             }
             long now=p.serverLevel().getGameTime();
+            long requestTime=System.nanoTime();
+            if (c==PokemonCase.GLOBAL_PACK) {
+                var mob=(PokemonEntity)subject;
+                System.out.println("POKEMON_BOXTAIL_SERVER stage=request elapsedSincePriorMs="+
+                        (previousRequestTime==0 ? -1 : (requestTime-previousRequestTime)/1_000_000)+
+                        " subjectReacting="+PokemonReactions.isReacting(mob)+" key="+mob.getPokemon().getSpecies().getResourceIdentifier()+
+                        " distance="+mob.distanceTo(p)+" wild="+mob.getPokemon().isWild()+" sleeping="+mob.isSleeping()+
+                        " busy="+mob.isBusy()+" active="+mob.getBrain().getActiveNonCoreActivity()+" owner="+(mob.getOwnerUUID()!=null)+
+                        " battle="+mob.isBattling()+" beam="+mob.getBeamMode()+" phasing="+mob.getPhasingTargetId()+
+                        " mutedOrDeafened="+NearbyMics.inputBlocked(p)+" "+subjectState());
+            }
+            previousRequestTime=requestTime;
             if (c==PokemonCase.COOLDOWN_PRIME) firstCall=now;
             if (c.reusesSubject()) {
                 gap=now-firstCall;
@@ -146,6 +161,7 @@ final class PokemonCaseServer {
 
     private void prepare() {
         c = PokemonCase.values()[index];
+        deerWalk = null;
         var world = caller.serverLevel();
         var config=(ModConfigSpec)ModConfigs.getFileMap().get("mobsear-server.toml").getSpec();
         ModConfigSpec.DoubleValue chance=config.getValues().get("wildPokemonApproachChance");
@@ -247,14 +263,23 @@ final class PokemonCaseServer {
                     " present="+(caller.serverLevel().getEntity(subject.getId())==subject)+" distance="+subject.distanceTo(caller)+
                     " callerRiding="+caller.isPassenger()+" guardianFlight="+caller.getPersistentData().contains("uwu.guardian_flight")+" "+subjectState()+
                     (c.ordinaryEntity()?" "+NamedCases.nativeState(c,subject):""));
-            subject.moveTo(.5,Y,Z+.5,90,0);
-            subject.setYHeadRot(90); subject.yBodyRot=90;
-            idle(subject);
+            if (deerWalk==null) {
+                subject.moveTo(.5,Y,Z+.5,90,0);
+                subject.setYHeadRot(90); subject.yBodyRot=90;
+                idle(subject);
+            }
             if (witness!=null) {
                 witness.moveTo(25.5,Y,Z+.5,90,0);
                 prepareIdle(witness);
             }
             if (age<36 || acknowledgements.size()!=count) return;
+            if (c==PokemonCase.WALKING_DEER) {
+                if (deerWalk==null) deerWalk=new WalkingDeer((net.minecraft.world.entity.PathfinderMob)subject);
+                if (!deerWalk.started()) {
+                    if (age>120) throw PokemonProbe.fail("Deer did not begin its native stroll before the call");
+                    return;
+                }
+            }
             if (c==PokemonCase.COOLDOWN_EXPIRED && caller.serverLevel().getGameTime()-firstCall<110) return;
             if (c==PokemonCase.BATTLE) engageBattle();
             if (c==PokemonCase.CAPTURE) engageCapture();
@@ -264,6 +289,13 @@ final class PokemonCaseServer {
             return;
         }
         boolean active=c.ordinaryEntity() ? NamedMobReactions.isReacting(subject) : PokemonReactions.isReacting(subject);
+        if (c==PokemonCase.GLOBAL_PACK && fired && (age==8 || age==18 || age==36)) {
+            double yaw=Math.toDegrees(Math.atan2(soundOrigin.z-subject.getZ(),soundOrigin.x-subject.getX()))-90;
+            System.out.println("POKEMON_BOXTAIL_SERVER stage=pose tick="+age+" reacting="+active+" alignedTicks="+aligned+
+                    " headError="+Math.round(Math.abs(Mth.wrapDegrees(subject.getYHeadRot()-yaw)))+
+                    " sleep="+subject.isSleeping()+" active="+subject.getBrain().getActiveNonCoreActivity());
+        }
+        if (deerWalk!=null && fired) deerWalk.observe(active);
         if (witness!=null && PokemonReactions.isReacting(witness)) witnessReacted=true;
         if (!active && !fired && !arranged && c.controlled()) idle(subject);
         if (active && !c.accepts()) throw PokemonProbe.fail("Protected or wrong subject reacted: " + c);
@@ -303,6 +335,8 @@ final class PokemonCaseServer {
         if ((age==38 || age==65) && c.ordinaryEntity() && c.accepts() && (acknowledgements.size()!=count || aligned<2))
             System.out.println("ENTITY_FACING_WAIT "+c+" signed="+fired+" reacted="+reacted+" clientAcks="+acknowledgements.size()+
                     " activeTicks="+activeSamples+" aligned="+aligned+" headErrorByTick="+angleTrace+" "+subjectState()+" "+NamedCases.nativeState(c,subject));
+        if (deerWalk!=null && age==65 && acknowledgements.size()!=count)
+            throw PokemonProbe.fail("Moving deer never visibly faced the speaker in every rendered view: "+acknowledgements.size()+"/"+count);
         if (acknowledgements.size()!=count || !fired) return;
         if (c.accepts() && (!reacted || aligned<2)) {
             if (c.ordinaryEntity() && age>=65) throw PokemonProbe.fail(c+" accepted="+reacted+" activeTicks="+activeSamples+
@@ -326,6 +360,11 @@ final class PokemonCaseServer {
         }
         if (c==PokemonCase.INTERRUPTED && !released) return;
         if (age < (c.controlled()?45:27)) return;
+        if (deerWalk!=null) {
+            if (!deerWalk.verify()) return;
+            nativeTravel=deerWalk.travelDuring();
+            keptRoute=true;
+        }
         if (c==PokemonCase.PACK_FORM) {
             c.checkTrackedForm((PokemonEntity)subject,"Server after call");
             System.out.println("POKEMON_PACK_FORM_SERVER id="+c.species+" form=Pom-Pom aspect=pom-pom-style aligned="+aligned);

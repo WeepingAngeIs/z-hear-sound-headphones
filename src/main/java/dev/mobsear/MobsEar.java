@@ -49,6 +49,7 @@ public final class MobsEar {
     public static Consumer<MicPresence.Nearby> presence = packet -> {};
     public static Consumer<Boolean> hordeStatus = optedIn -> {};
     public static Consumer<Packets.Heard> callHeard = ack -> {};
+    public static Consumer<Packets.MobPose> mobPose = pose -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
     public static double wildPokemonApproachChance() { return pokemonApproachChance.getAsDouble(); }
@@ -104,6 +105,7 @@ public final class MobsEar {
 
     private void register(RegisterPayloadHandlersEvent event) {
         var reg = event.registrar("1").optional();
+        reg.playToClient(Packets.MobPose.TYPE, Packets.MobPose.CODEC, (packet, context) -> mobPose.accept(packet));
         reg.playToClient(Packets.Heard.TYPE, Packets.Heard.CODEC, (packet, context) -> callHeard.accept(packet));
         boolean hasSpecies = ModList.get().isLoaded("cobblemon");
         reg.playToServer(Packets.CallRequest.TYPE, Packets.CallRequest.CODEC, (request, context) -> {

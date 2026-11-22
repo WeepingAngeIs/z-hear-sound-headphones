@@ -63,6 +63,22 @@ public final class Packets {
         @Override public Type<Down> type() { return TYPE; }
     }
 
+    /** Transient model orientation for an already tracked mob. A zero lifetime releases the pose. */
+    public record MobPose(int entityId, byte yaw, int ticks) implements CustomPacketPayload {
+        public static final int MAX_TICKS = 7;
+        public static final Type<MobPose> TYPE = id("mob_pose");
+        public static final StreamCodec<FriendlyByteBuf, MobPose> CODEC = StreamCodec.of((buf, pose) -> {
+            buf.writeVarInt(pose.entityId);
+            buf.writeByte(pose.yaw);
+            buf.writeByte(pose.ticks);
+        }, buf -> {
+            var pose = new MobPose(buf.readVarInt(), buf.readByte(), buf.readUnsignedByte());
+            if (pose.ticks > MAX_TICKS || buf.isReadable()) throw new DecoderException("Invalid mob pose");
+            return pose;
+        });
+        @Override public Type<MobPose> type() { return TYPE; }
+    }
+
     private static ResourceLocation readCallId(FriendlyByteBuf buf) {
         String key = buf.readUtf(MAX_CALL_ID_LENGTH);
         ResourceLocation id = ResourceLocation.tryParse(key);

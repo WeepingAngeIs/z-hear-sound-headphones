@@ -1,6 +1,7 @@
 package dev.mobsear.server;
 
 import dev.mobsear.net.MobCallTypes;
+import dev.mobsear.net.Packets;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -29,6 +30,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Exact entity-type calls give a brief visual turn. Target, navigation and physical heading belong to the mob. */
 public final class NamedMobReactions {
     private static final int LOOK_TICKS = 20, COOLDOWN_TICKS = 60;
+    private static final int POSE_INTERVAL = 5;
     private static final Map<Mob, Glance> active = new IdentityHashMap<>();
     private static final Map<UUID, Long> cooldowns = new HashMap<>();
 
@@ -161,19 +163,35 @@ public final class NamedMobReactions {
             if (mob.isRemoved()) return true;
             if (mob.level() != level) return false;
             if (now >= glance.start + LOOK_TICKS || !eligibleCaller(glance.caller) || mob.level() != glance.caller.level()
-                    || mob.distanceToSqr(glance.caller) > glance.limit || !canGlance(mob)) return true;
-            turn(mob, glance, now);
+                    || mob.distanceToSqr(glance.caller) > glance.limit || !canGlance(mob)) {
+                syncPose(mob, level, 0, 0);
+                return true;
+            }
+            float yaw = turn(mob, glance, now);
+            int elapsed = (int) (now - glance.start);
+            if (elapsed % POSE_INTERVAL == 0) {
+                syncPose(mob, level, yaw, Math.min(Packets.MobPose.MAX_TICKS, LOOK_TICKS - elapsed));
+            }
             return false;
         });
     }
 
-    private static void turn(Mob mob, Glance glance, long now) {
+    private static void syncPose(Mob mob, ServerLevel level, float yaw, int ticks) {
+        if (mob.getTags().contains("cu_mimic")) return;
+        var pose = new Packets.MobPose(mob.getId(), (byte) Mth.floor(yaw * 256F / 360F), ticks);
+        for (var viewer : level.getChunkSource().chunkMap.getPlayersWatching(mob)) {
+            if (viewer.connection.hasChannel(Packets.MobPose.TYPE)) viewer.connection.send(pose);
+        }
+    }
+
+    private static float turn(Mob mob, Glance glance, long now) {
         Vec3 sound = glance.sound;
         float yaw = (float) Math.toDegrees(Math.atan2(sound.z - mob.getZ(), sound.x - mob.getX())) - 90;
         float ticks = (float) (now - glance.start + 1);
         mob.getLookControl().setLookAt(sound.x, sound.y, sound.z, 40, 35);
         mob.setYHeadRot(Mth.approachDegrees(glance.head, yaw, 40 * ticks));
         mob.yBodyRot = Mth.approachDegrees(glance.body, yaw, 30 * ticks);
+        return yaw;
     }
 
     private record Glance(ServerPlayer caller, Vec3 sound, double limit, long start, float head, float body) {}

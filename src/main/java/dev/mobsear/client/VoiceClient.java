@@ -75,6 +75,7 @@ public final class VoiceClient {
         MobsEar.presence = packet -> nearby.put(packet.speaker(), new Seen(packet, System.nanoTime()));
         MobsEar.hordeStatus = enabled -> horde = enabled;
         MobsEar.callHeard = VoiceClient::heard;
+        ClientMobPose.register();
     }
 
     public static boolean connected() { return instance != null && instance.session != null; }

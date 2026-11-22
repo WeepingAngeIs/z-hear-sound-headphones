@@ -13,7 +13,7 @@ enum PokemonCase {
     WALKING_PIKACHU("pikachu", 14), WALKING_EEVEE("eevee", 14), INTERRUPTED("eevee", 10),
     PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8), GLOBAL_PACK("boxtail", 8),
     NAMED_COW("minecraft:cow", 12), OTHER_NAME("minecraft:cow", 12), NAMED_FAR("minecraft:cow", 36),
-    NAMED_HOSTILE("minecraft:cave_spider", 22), FOREST_DEER("twilightforest:deer", 12),
+    NAMED_HOSTILE("minecraft:cave_spider", 22), FOREST_DEER("twilightforest:deer", 12), WALKING_DEER("twilightforest:deer", 12),
     OWL_GUARDIAN("uwudimension:blossom_warden", 12), VELVET_IDLE("uwudimension:velvet_vesper", 24),
     DUNGEON_MIMIC("minecraft:zombie", 20), ZOMBIE_CALL_MIMIC("minecraft:zombie", 20),
     ORDINARY_ZOMBIE("minecraft:zombie", 20), NAMED_ONLY_ZOMBIE("minecraft:zombie", 20),
@@ -30,7 +30,7 @@ enum PokemonCase {
         return switch (this) {
             case PIKACHU, EEVEE, LOPUNNY, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
                     WALKING_PIKACHU, WALKING_EEVEE, INTERRUPTED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK,
-                    NAMED_COW, NAMED_HOSTILE, FOREST_DEER, OWL_GUARDIAN, VELVET_IDLE, DUNGEON_MIMIC, ZOMBIE_CALL_MIMIC -> true;
+                    NAMED_COW, NAMED_HOSTILE, FOREST_DEER, WALKING_DEER, OWL_GUARDIAN, VELVET_IDLE, DUNGEON_MIMIC, ZOMBIE_CALL_MIMIC -> true;
             case LOPUNNY_FAR, FAR, WRONG, OWNER, OFFLINE_OWNER, BATTLE, CAPTURE, PASSIVE, COOLDOWN_HELD, OTHER_NAME, NAMED_FAR,
                     BROAD_COW, BOSS_CHARGING, BOSS_FIGHTING, NAGA_COMBAT, OWL_OFFENDER, VELVET_GUARD,
                     ORDINARY_ZOMBIE, NAMED_ONLY_ZOMBIE -> false;
