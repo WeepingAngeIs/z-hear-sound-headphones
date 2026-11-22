@@ -113,6 +113,8 @@ try {
 
     $modelDir = $env:MOBSEAR_LOCAL_WORD_MODEL
     $nearNames = @()
+    # Written equivalents of the short-call pronunciation variants in the English lexicon.
+    $spokenForms = @{'la punny'='lopunny'; 'lapunny'='lopunny'; 'lop bunny'='lopunny'}
     $compounds = @{}
     foreach ($label in $aliases.Keys) {
         $tokens = $label.Split(' ')
@@ -131,6 +133,13 @@ try {
         for ($i=0; $i -lt $tokens.Count; $i++) {
             for ($size=[Math]::Min(8,$tokens.Count-$i); $size -gt 0; $size--) {
                 $label = $tokens[$i..($i+$size-1)] -join ' '
+                if ($spokenForms.ContainsKey($label) -and $lexicon.Contains($spokenForms[$label])) {
+                    $label = $spokenForms[$label]
+                } elseif ($size -in @(2,3) -and -not $aliases.ContainsKey($label)) {
+                    # Dictation can split a custom species into complete words, e.g. Pika Chu.
+                    $joined = $label.Replace(' ','')
+                    if ($joined.Length -ge 6 -and $nearNames -contains $joined) { $label=$joined }
+                }
                 if (-not $aliases.ContainsKey($label) -or $aliases[$label] -eq 0 -or
                         $wordBreaks.ContainsKey($label) -or $confirm.ContainsKey($label)) { continue }
                 # Leave bare labels and incomplete longer names to the established command recognizer.
@@ -169,7 +178,7 @@ try {
         $start.WorkingDirectory = $modelDir
         # The pinned CLI disables its stdout segment callback for stdin unless an output basename
         # is set. No file-output format is enabled. The segment callback writes only into our pipe.
-        $start.Arguments = '-m tiny.en.bin -f - -of pipe-only -t 3 -nt -np -l en -bs 1 -bo 1 -nf -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
+        $start.Arguments = '-m tiny.en.bin -f - -of pipe-only -t 3 -nt -np -l en -bs 5 -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
         $start.UseShellExecute = $false
         $start.CreateNoWindow = $true
         $start.RedirectStandardInput = $start.RedirectStandardOutput = $start.RedirectStandardError = $true

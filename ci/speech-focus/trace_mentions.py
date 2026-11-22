@@ -44,7 +44,7 @@ def show(root):
         with wave.open(audio,"wb") as dest:
             dest.setparams((1,2,16000,0,"NONE","not compressed"))
             dest.writeframes(file.read_bytes())
-        for audio_ctx,beam in ((512,5),(0,5)):
+        for audio_ctx,beam in ((256,5),(384,5),(768,5),(1024,5),(0,5)):
             start=monotonic()
             output=subprocess.run([str(model/"whisper-cli.exe"),"-m",str(model/"tiny.en.bin"),"-f","-","-of","pipe-only",
                     "-t","3","-nt","-np","-l","en","-ac",str(audio_ctx),"-bs",str(beam),"--prompt",
