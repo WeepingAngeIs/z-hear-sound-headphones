@@ -1,4 +1,4 @@
-package dev.mobsear.server;
+package dev.mobsear.fixture;
 
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import net.minecraft.core.BlockPos;
@@ -10,7 +10,7 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.phys.Vec3;
 
 /** Measure the real creature's travel, orientation and rest on the running server. */
-final class CalledPokemonVisit {
+public final class CalledPokemonVisit {
     private final PokemonEntity mob;
     private final ServerPlayer caller;
     private final Vec3 initial;
@@ -20,30 +20,30 @@ final class CalledPokemonVisit {
     private boolean movedCaller, approached, resumed;
     private double beforeCall;
 
-    CalledPokemonVisit(PokemonEntity mob, ServerPlayer caller) {
+    public CalledPokemonVisit(PokemonEntity mob, ServerPlayer caller, int wanderBlocks) {
         this.mob = mob;
         this.caller = caller;
         initial = previous = mob.position();
-        wanderTarget = mob.blockPosition().offset(0,0,8);
+        wanderTarget = mob.blockPosition().offset(0,0,wanderBlocks);
         var nav = mob.getNavigation();
         var path = nav.createPath(wanderTarget, 0);
         if (path == null || !path.canReach() || !nav.moveTo(path,.8))
-            throw PokemonProbe.fail("Missing pre-call native wander");
+            throw new IllegalStateException("Missing pre-call native wander");
         mob.getBrain().setMemory(MemoryModuleType.WALK_TARGET,new WalkTarget(wanderTarget,.8F,0));
     }
 
-    boolean isWandering() {
+    public boolean isWandering() {
         var path = mob.getNavigation().getPath();
         beforeCall = mob.position().distanceTo(initial);
         previous = mob.position();
         return beforeCall >= .45 && !mob.getNavigation().isDone() && path != null && wanderTarget.equals(path.getTarget());
     }
 
-    boolean observe(boolean active, boolean moveCaller, int tick) {
+    public boolean observe(boolean active, boolean moveCaller, int tick) {
         var position = mob.position();
         var delta = position.subtract(previous);
         previous = position;
-        if (delta.length() > 1.4) throw PokemonProbe.fail("Pokémon jumped between positions " + delta);
+        if (delta.length() > 1.4) throw new IllegalStateException("Pokémon jumped between positions " + delta);
         double distance = mob.distanceTo(caller);
         double yaw = Math.toDegrees(Math.atan2(caller.getZ()-mob.getZ(),caller.getX()-mob.getX()))-90;
         double error = Math.abs(Mth.wrapDegrees(mob.getYHeadRot()-yaw));
@@ -52,7 +52,7 @@ final class CalledPokemonVisit {
                 stopped = delta.horizontalDistance() < .045 && error < 30 && mob.getNavigation().isDone() ? stopped+1 : 0;
                 bestStop = Math.max(stopped,bestStop);
                 if (position.x-initial.x > .9) {
-                    if (bestStop < 3) throw PokemonProbe.fail("Approach started without a visible stationary turn: " + bestStop);
+                    if (bestStop < 3) throw new IllegalStateException("Approach started without a visible stationary turn: " + bestStop);
                     approached = true;
                 }
             }
@@ -62,13 +62,13 @@ final class CalledPokemonVisit {
             }
             if (approached && distance<=2.55 && mob.getNavigation().isDone()) {
                 if (rested==null) { rested=position; arrivedAt=tick; }
-                if (rested.distanceTo(position)>.48) throw PokemonProbe.fail("Pokémon drifted away during its stay");
+                if (rested.distanceTo(position)>.48) throw new IllegalStateException("Pokémon drifted away during its stay");
                 nearTicks++;
-            } else if (rested!=null) throw PokemonProbe.fail("Pokémon left its caller before finishing the stay");
+            } else if (rested!=null) throw new IllegalStateException("Pokémon left its caller before finishing the stay");
         } else if (rested!=null) {
             if (releaseTick<0) {
                 if (tick-arrivedAt<40 || nearTicks<40 || distance>2.55 || rested.distanceTo(position)>.48)
-                    throw PokemonProbe.fail("Early release: held intervals="+nearTicks+" distance="+distance);
+                    throw new IllegalStateException("Early release: held intervals="+nearTicks+" distance="+distance);
                 releaseTick=tick;
             }
             if (position.distanceTo(rested)>.65) resumed=true;
@@ -82,4 +82,6 @@ final class CalledPokemonVisit {
                 mob.getPokemon().getSpecies().getResourceIdentifier(),beforeCall,bestStop,movedCaller,nearTicks,position.distanceTo(rested));
         return resumed;
     }
+
+    public boolean staying() { return nearTicks >= 15 && releaseTick < 0; }
 }

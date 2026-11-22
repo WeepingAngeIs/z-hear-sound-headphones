@@ -233,6 +233,7 @@ public final class PokemonCaseClient {
                         " head="+Math.round(entity.getYHeadRot())+" headError="+(sourceKnown ? Math.round(error) : "unknown"));
             if (c!=PokemonCase.WALKING_DEER && sourceKnown && error<=30 && ++alignedTicks>=2) aligned=true;
             if (c.walking() && sourceKnown) {
+                mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,entity.getEyePosition());
                 var player=caller ? mc.player : mc.level.players().stream()
                         .filter(p->p.getGameProfile().getName().equals("PokemonCaller")).findFirst().orElse(null);
                 if (player!=null) {

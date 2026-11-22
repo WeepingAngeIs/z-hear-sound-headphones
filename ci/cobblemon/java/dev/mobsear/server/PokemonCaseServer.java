@@ -1,5 +1,7 @@
 package dev.mobsear.server;
 
+import dev.mobsear.fixture.CalledPokemonVisit;
+
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
@@ -164,7 +166,11 @@ final class PokemonCaseServer {
         caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
         caller.setDeltaMovement(0,0,0);
         caller.hurtMarked=true;
-        if (viewer!=caller) viewer.teleportTo(world,3.5,Y+0.1,Z+5.5,148,9);
+        if (viewer!=caller) {
+            // A closer eligible player must not steal the walking Eevee from its moving caller.
+            viewer.setGameMode(c==PokemonCase.WALKING_EEVEE ? GameType.ADVENTURE : GameType.SPECTATOR);
+            viewer.teleportTo(world,3.5,Y+0.1,Z+5.5,148,9);
+        }
         if (c.ordinaryEntity()) {
             subject=named.spawn(c,caller);
         } else if (c == PokemonCase.PASSIVE) {
@@ -263,7 +269,7 @@ final class PokemonCaseServer {
             }
             if (age<36 || acknowledgements.size()!=count) return;
             if (c.walking()) {
-                if (visit==null) visit=new CalledPokemonVisit((PokemonEntity)subject,caller);
+                if (visit==null) visit=new CalledPokemonVisit((PokemonEntity)subject,caller,8);
                 if (!visit.isWandering()) {
                     if (age>180) throw PokemonProbe.fail("Native Pokémon did not walk before the call "+c);
                     return;

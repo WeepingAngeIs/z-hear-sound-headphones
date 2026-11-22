@@ -139,7 +139,9 @@ final class CobblemonCalls {
                 standAndFace(mob);
                 return now - arrived < STAY_TICKS;
             }
-            if (now >= deadline) return false;
+            BlockPos destination = caller.blockPosition();
+            if (now >= deadline || !mob.level().hasChunkAt(destination)
+                    || !mob.level().getWorldBorder().isWithinBounds(destination) || !mob.isWithinRestriction(destination)) return false;
             if (stage != Stage.WALK) {
                 stage = Stage.WALK;
                 lastProgress = now;
@@ -151,7 +153,7 @@ final class CobblemonCalls {
                 lastProgress = now;
             }
             if (now - lastProgress >= STUCK_TICKS) return false;
-            walk(mob, now);
+            walk(mob, now, destination);
             return true;
         }
 
@@ -176,16 +178,13 @@ final class CobblemonCalls {
             mob.setYHeadRot(Mth.approachDegrees(mob.getYHeadRot(), yaw, 45));
         }
 
-        private void walk(PokemonEntity mob, long now) {
+        private void walk(PokemonEntity mob, long now, BlockPos destination) {
             var brain = mob.getBrain();
             var nav = mob.getNavigation();
             brain.setMemory(MemoryModuleType.LOOK_TARGET, eyes);
             brain.setMemory(MemoryModuleType.WALK_TARGET, approach);
             if (now < nextPath) return;
             nextPath = now + 10;
-            BlockPos destination = caller.blockPosition();
-            if (!mob.level().hasChunkAt(destination) || !mob.level().getWorldBorder().isWithinBounds(destination)
-                    || !mob.isWithinRestriction(destination)) return;
             var current = nav.getPath();
             if (!nav.isDone() && current != null && current.getTarget().closerThan(destination, 2)) {
                 assignedPath = current;

@@ -1,4 +1,4 @@
-sourceSets.main.java.srcDirs('ci/cobblemon/java', 'ci/multiplayer/java')
+sourceSets.main.java.srcDirs('ci/cobblemon/java', 'ci/multiplayer/java', 'ci/shared-pokemon/java')
 sourceSets.main.java.exclude('dev/mobsear/smoke/**')
 sourceSets.main.resources.srcDir('ci/cobblemon/resources')
 def root = new File(providers.environmentVariable('MOBSEAR_POKEMON_ROOT').get())
