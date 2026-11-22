@@ -323,7 +323,7 @@ public final class VoiceClient {
             audio = new VoiceAudio(this::capture, problem::set, preferences::microphone, preferences::speaker);
         }
 
-        // Only the frames that enter the transmission queue are eligible for recognition.
+        // Keep the local word continuous while requiring some voiced audio to enter proximity chat.
         private synchronized void capture(byte[] frame) {
             if ((!held && !monitoring) || prefs.muted() || prefs.deafened()) return;
             lastMeter = System.nanoTime();
