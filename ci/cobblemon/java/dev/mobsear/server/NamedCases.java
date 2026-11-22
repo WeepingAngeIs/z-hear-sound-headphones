@@ -111,6 +111,14 @@ final class NamedCases {
         if (companion!=null) { companion.discard(); companion=null; }
         if (offender!=null) { offender.discard(); offender=null; }
     }
+    static String nativeState(PokemonCase c,Mob subject) {
+        return switch (c) {
+            case OWL_GUARDIAN, OWL_OFFENDER -> "offender="+read(subject,"offender")+" chasing="+read(subject,"chasing")+
+                    " gripping="+read(subject,"gripping")+" throwing="+read(subject,"throwing");
+            case VELVET_IDLE, VELVET_GUARD -> "guard="+read(subject,"guarding")+" folding="+read(subject,"folding")+" casting="+read(subject,"casting");
+            default -> "sleep="+subject.isSleeping()+" invulnerable="+subject.isInvulnerable()+" riding="+subject.isPassenger()+" vehicle="+subject.isVehicle();
+        };
+    }
     private static Object read(Mob subject,String name) {
         try { return subject.getClass().getMethod(name).invoke(subject); }
         catch (ReflectiveOperationException e) { throw PokemonProbe.fail("Missing actual "+subject.getType()+" state "+name); }

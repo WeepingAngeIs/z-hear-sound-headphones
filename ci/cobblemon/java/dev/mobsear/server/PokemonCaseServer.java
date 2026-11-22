@@ -106,6 +106,12 @@ final class PokemonCaseServer {
         }
         if (m.stage() == PokemonProbe.FIRE && p == caller && phase == PokemonProbe.FIRE && !fired) {
             fired = true;
+            if (!arranged) soundOrigin=caller.position();
+            if (c.accepts()) {
+                var source=new PokemonProbe.Message(PokemonProbe.SOURCE,index,subject.getId(),soundOrigin.x,soundOrigin.z);
+                PacketDistributor.sendToPlayer(caller,source);
+                if (viewer!=caller) PacketDistributor.sendToPlayer(viewer,source);
+            }
             if (c==PokemonCase.APPROACH || c==PokemonCase.INTERRUPTED) {
                 initialPath=subject.getNavigation().getPath();
                 initialWalk=subject.getBrain().getMemory(MemoryModuleType.WALK_TARGET).orElse(null);
@@ -239,7 +245,8 @@ final class PokemonCaseServer {
             if (subject.isRemoved()) throw PokemonProbe.fail("Native subject disappeared before call "+c+" reason="+subject.getRemovalReason()+" "+subjectState());
             if (age==100 || age==300) System.out.println("POKEMON_SERVER_TRACK "+c+" id="+subject.getId()+
                     " present="+(caller.serverLevel().getEntity(subject.getId())==subject)+" distance="+subject.distanceTo(caller)+
-                    " callerRiding="+caller.isPassenger()+" guardianFlight="+caller.getPersistentData().contains("uwu.guardian_flight")+" "+subjectState());
+                    " callerRiding="+caller.isPassenger()+" guardianFlight="+caller.getPersistentData().contains("uwu.guardian_flight")+" "+subjectState()+
+                    (c.ordinaryEntity()?" "+NamedCases.nativeState(c,subject):""));
             subject.moveTo(.5,Y,Z+.5,90,0);
             subject.setYHeadRot(90); subject.yBodyRot=90;
             idle(subject);
@@ -293,6 +300,9 @@ final class PokemonCaseServer {
             released=!active && (nav.isDone() || nav.getPath()!=interruptedRoute);
             if (!released && age-interruptionTick>=2) throw PokemonProbe.fail("Hearing kept control during a real capture");
         }
+        if ((age==38 || age==65) && c.ordinaryEntity() && c.accepts() && (acknowledgements.size()!=count || aligned<2))
+            System.out.println("ENTITY_FACING_WAIT "+c+" signed="+fired+" reacted="+reacted+" clientAcks="+acknowledgements.size()+
+                    " activeTicks="+activeSamples+" aligned="+aligned+" headErrorByTick="+angleTrace+" "+subjectState()+" "+NamedCases.nativeState(c,subject));
         if (acknowledgements.size()!=count || !fired) return;
         if (c.accepts() && (!reacted || aligned<2)) {
             if (c.ordinaryEntity() && age>=65) throw PokemonProbe.fail(c+" accepted="+reacted+" activeTicks="+activeSamples+

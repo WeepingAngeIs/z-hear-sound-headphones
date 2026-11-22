@@ -11,13 +11,11 @@ enum PokemonCase {
     WALKING_PIKACHU("pikachu", 14), WALKING_EEVEE("eevee", 14), INTERRUPTED("eevee", 10),
     PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8), GLOBAL_PACK("boxtail", 8),
     NAMED_COW("minecraft:cow", 12), OTHER_NAME("minecraft:cow", 12), NAMED_FAR("minecraft:cow", 36),
-    NAMED_HOSTILE("minecraft:cave_spider", 22), BROAD_COW("minecraft:cow", 22),
-    BOSS_CHARGING("minecraft:wither", 22), BOSS_FIGHTING("minecraft:wither", 22),
-    FOREST_DEER("twilightforest:deer", 12), NAGA_COMBAT("twilightforest:naga", 22),
-    OWL_GUARDIAN("uwudimension:blossom_warden", 12),
-    VELVET_IDLE("uwudimension:velvet_vesper", 24), VELVET_GUARD("uwudimension:velvet_vesper", 18),
+    NAMED_HOSTILE("minecraft:cave_spider", 22), FOREST_DEER("twilightforest:deer", 12),
+    OWL_GUARDIAN("uwudimension:blossom_warden", 12), VELVET_IDLE("uwudimension:velvet_vesper", 24),
     DUNGEON_MIMIC("minecraft:zombie", 20), ORDINARY_ZOMBIE("minecraft:zombie", 20), NAMED_ONLY_ZOMBIE("minecraft:zombie", 20),
-    OWL_OFFENDER("uwudimension:blossom_warden", 22);
+    BROAD_COW("minecraft:cow", 22), BOSS_CHARGING("minecraft:wither", 22), BOSS_FIGHTING("minecraft:wither", 22),
+    NAGA_COMBAT("twilightforest:naga", 22), VELVET_GUARD("uwudimension:velvet_vesper", 18), OWL_OFFENDER("uwudimension:blossom_warden", 22);
 
     final ResourceLocation species;
     final int distance;

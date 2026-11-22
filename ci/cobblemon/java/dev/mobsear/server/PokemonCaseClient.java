@@ -34,6 +34,9 @@ public final class PokemonCaseClient {
     private PokemonCase c;
     private String capture, waiting;
     private boolean saved, guardVerified, scopedGuardian;
+    private boolean sourceKnown;
+    private double sourceX,sourceZ;
+    private net.minecraft.world.phys.Vec3 trackedCaller;
 
     public PokemonCaseClient() {
         PokemonProbe.client=this::stage;
@@ -41,6 +44,12 @@ public final class PokemonCaseClient {
         NeoForge.EVENT_BUS.addListener(this::render);
     }
     private void stage(PokemonProbe.Message request) {
+        if (request.stage()==PokemonProbe.SOURCE) {
+            if (stage==null || stage.stage()!=PokemonProbe.FIRE || request.entity()!=stage.entity() || request.scenario()!=stage.scenario() || !c.accepts())
+                throw PokemonProbe.fail("Unmatched authenticated source observation");
+            sourceX=request.sourceX(); sourceZ=request.sourceZ(); sourceKnown=true;
+            return;
+        }
         if (request.stage()==PokemonProbe.VERIFIED_GUARD) {
             if (stage==null || request.entity()!=stage.entity() || request.scenario()!=stage.scenario() || !c.guardPicture())
                 throw PokemonProbe.fail("Unmatched protected-state acknowledgment");
@@ -51,6 +60,11 @@ public final class PokemonCaseClient {
         c=PokemonCase.values()[request.scenario()];
         acknowledged=sent=uttered=recognized=aligned=saved=guardVerified=scopedGuardian=false;
         ticks=alignedTicks=0; capture=null;
+        sourceKnown=false; trackedCaller=null;
+        if (request.stage()==PokemonProbe.FIRE) {
+            var speaker=caller ? mc.player : mc.level.players().stream().filter(p->p.getGameProfile().getName().equals("PokemonCaller")).findFirst().orElse(null);
+            if (speaker!=null) trackedCaller=speaker.position();
+        }
         if (acoustic && request.stage()==PokemonProbe.BEFORE) {
             if (!armed) {
                 KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
@@ -153,8 +167,12 @@ public final class PokemonCaseClient {
             } else if (!(entity instanceof PokemonEntity pokemon) || !pokemon.getPokemon().getSpecies().getResourceIdentifier().equals(c.species)) {
                 throw PokemonProbe.fail("Client received wrong tracked Pokémon "+c);
             }
-            double yaw=Math.toDegrees(Math.atan2(8.5-entity.getZ(), c.distance+.5-entity.getX()))-90;
-            if (Math.abs(Mth.wrapDegrees(entity.getYHeadRot()-yaw))<=30 && ++alignedTicks>=2) aligned=true;
+            double yaw=Math.toDegrees(Math.atan2(sourceZ-entity.getZ(), sourceX-entity.getX()))-90;
+            double error=Math.abs(Mth.wrapDegrees(entity.getYHeadRot()-yaw));
+            if (c.ordinaryEntity() && (ticks==2 || ticks==6 || ticks==12 || ticks==18 || ticks==30))
+                System.out.println("ENTITY_CLIENT_FACING "+c+" tick="+ticks+" sourceKnown="+sourceKnown+" source="+sourceX+","+sourceZ+
+                        " trackedCaller="+trackedCaller+" mob="+entity.position()+" head="+entity.getYHeadRot()+" error="+(sourceKnown?Math.round(error):"unknown"));
+            if (sourceKnown && error<=30 && ++alignedTicks>=2) aligned=true;
         }
         if ((caller && !sent) || (c.accepts() && !aligned) || ticks<5) return;
         if (c.guardPicture() && !guardVerified) return;

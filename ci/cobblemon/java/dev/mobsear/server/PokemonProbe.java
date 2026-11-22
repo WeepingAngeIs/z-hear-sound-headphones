@@ -13,13 +13,18 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 /** CI-only ordering/control. Species identity is transmitted separately on the real mod connection. */
 @Mod("mobsear")
 public final class PokemonProbe {
-    static final int HELLO=0, BEFORE=1, FIRE=2, SEEN=3, ARRANGE=4, VERIFIED_GUARD=5;
+    static final int HELLO=0, BEFORE=1, FIRE=2, SEEN=3, ARRANGE=4, VERIFIED_GUARD=5, SOURCE=6;
     static Consumer<Message> client;
-    public record Message(int stage, int scenario, int entity) implements CustomPacketPayload {
+    public record Message(int stage, int scenario, int entity, double sourceX, double sourceZ) implements CustomPacketPayload {
+        Message(int stage,int scenario,int entity) { this(stage,scenario,entity,0,0); }
         static final Type<Message> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath("mobsear","ci_pokemon"));
         static final StreamCodec<FriendlyByteBuf,Message> CODEC = StreamCodec.of((buf, m) -> {
             buf.writeByte(m.stage); buf.writeByte(m.scenario); buf.writeVarInt(m.entity);
-        }, buf -> new Message(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readVarInt()));
+            if (m.stage==SOURCE) { buf.writeDouble(m.sourceX); buf.writeDouble(m.sourceZ); }
+        }, buf -> {
+            int stage=buf.readUnsignedByte(), scenario=buf.readUnsignedByte(), entity=buf.readVarInt();
+            return stage==SOURCE ? new Message(stage,scenario,entity,buf.readDouble(),buf.readDouble()) : new Message(stage,scenario,entity);
+        });
         @Override public Type<Message> type() { return TYPE; }
     }
     public PokemonProbe(IEventBus bus) {
