@@ -6,6 +6,8 @@ def failures(rows):
     long_speech=defaultdict(list)
     for row in rows:
         label=row["phrase"]
+        if label=="pikachu" and row["profile"]=="pack" and row["fixture"].startswith("voice-0-") and row["actual"]!=row["expected"]:
+            wrong.append((row["fixture"],row["mode"],row["actual"]))
         if label not in ("sentence-long","sentence-long-creeper"):
             if (label.startswith("sentence-") or label=="low-money") and row["actual"]!=row["expected"]:
                 wrong.append((row["fixture"],row["mode"],row["actual"]))

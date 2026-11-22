@@ -120,6 +120,14 @@ public final class VoiceAudioFixture {
         gate.reset();
         gate.accept(constant(0), false, 50, false, false, output, endings::incrementAndGet);
         check(sent.get() == 31 && gate.level() == 0, "push-to-talk passes silence while its meter stays quiet");
+        var decoded = new java.util.concurrent.atomic.AtomicInteger();
+        var words = new SpeechCues.Utterances(clip -> decoded.incrementAndGet());
+        gate.reset();
+        for (int i=0; i<30; i++)
+            gate.capture(constant(300), true, 0, false, wire -> { throw new AssertionError("Quiet frame transmitted"); },
+                    words::accept, () -> {});
+        words.finish();
+        check(decoded.get()==0, "Below-threshold speech cannot emit a local call without transmitted voice");
     }
 
     private static void exerciseSyntheticDevices() throws InterruptedException {

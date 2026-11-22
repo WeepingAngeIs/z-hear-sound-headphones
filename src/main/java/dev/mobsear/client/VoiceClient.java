@@ -353,19 +353,15 @@ public final class VoiceClient {
         private synchronized void capture(byte[] frame) {
             if ((!held && !monitoring) || prefs.muted() || prefs.deafened()) return;
             lastMeter = System.nanoTime();
-            gate.accept(frame, automatic && !monitoring, prefs.sensitivity(), prefs.noiseSuppression(),
-                    recognition && !monitoring, (pcm, original) -> {
-                if (monitoring || !held) return;
+            gate.capture(frame, automatic && !monitoring, prefs.sensitivity(), prefs.noiseSuppression(), pcm -> {
+                if (monitoring || !held) return false;
                 boolean enabled = prefs.pitchEnabled();
                 int cents = enabled ? prefs.pitchCents() : 0;
                 int reverb = enabled ? prefs.reverbAmount() : 0;
                 boolean queued = effects.route(pcm, cents, reverb, frames::offer);
-                if (recognition) speech.acceptFrame(original, queued);
                 if (queued && VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
-            }, () -> {
-                effects.reset();
-                speech.endUtterance();
-            });
+                return queued;
+            }, recognition && !monitoring ? speech::acceptFrame : null, effects::reset);
         }
 
         synchronized boolean speaking() {

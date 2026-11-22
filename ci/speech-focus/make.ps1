@@ -10,6 +10,7 @@ if ($voices.Count -lt 1) { throw 'Missing US English test voice' }
 $words=@(
     @('enderman','Enderman','ENDERMAN'),@('call-enderman','call Enderman','ENDERMAN'),
     @('lopunny','Lopunny','cobblemon:lopunny'),@('call-lopunny','call Lopunny','cobblemon:lopunny'),
+    @('pikachu','Pikachu','cobblemon:pikachu'),
     @('lop-bunny','Lop Bunny','cobblemon:lopunny'),@('ender-man','Ender Man','ENDERMAN'),
     @('lop-schwa','<phoneme alphabet="ipa" ph="&#x2C8;l&#x251;p&#x259;ni">Lopunny</phoneme>','cobblemon:lopunny'),
     @('low-punny','<phoneme alphabet="ipa" ph="&#x2C8;lo&#x28A;p&#x28C;ni">Lopunny</phoneme>','cobblemon:lopunny'),

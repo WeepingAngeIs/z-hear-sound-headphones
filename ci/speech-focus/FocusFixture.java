@@ -53,7 +53,7 @@ public final class FocusFixture {
             }
             for (String row : Files.readAllLines(dir.resolve("manifest.tsv"))) {
                 var f=row.split("\\t",-1);
-                if (mentions && !f[2].startsWith("sentence-") && !List.of("enderman","lopunny","ordinary-chat","low-money").contains(f[2])) continue;
+                if (mentions && !f[2].startsWith("sentence-") && !List.of("enderman","lopunny","pikachu","ordinary-chat","low-money").contains(f[2])) continue;
                 byte[] pcm=Files.readAllBytes(dir.resolve(f[0]+".pcm"));
                 for (boolean automatic : new boolean[]{false,true}) {
                     var clips=new ArrayList<byte[]>();
@@ -61,13 +61,20 @@ public final class FocusFixture {
                     var gate=new CaptureGate();
                     for (int pos=0;pos<pcm.length;pos+=FRAME) {
                         byte[] frame=Arrays.copyOfRange(pcm,pos,pos+FRAME);
-                        gate.accept(frame,automatic,50,true,true,(wire,original)->segments.accept(original),segments::finish);
+                        FixtureCapture.accept(gate,segments,frame,automatic);
                     }
                     if (!automatic) segments.finish();
                     else if (f[3].equals("tight-release")) {
                         // Open mic hears the silence after the player stops. PTT releases immediately.
-                        for (int n=0;n<34;n++) gate.accept(new byte[FRAME],true,50,true,true,
-                                (wire,original)->segments.accept(original),segments::finish);
+                        for (int n=0;n<34;n++) FixtureCapture.accept(gate,segments,new byte[FRAME],true);
+                    }
+                    if (f[3].equals("pack")) {
+                        var source=voicedFrames(List.of(pcm));
+                        var actual=voicedFrames(clips);
+                        boolean intact=java.util.Arrays.deepEquals(source.toArray(),actual.toArray());
+                        System.out.println("PIKACHU_CAPTURE "+args[1]+" "+f[1]+" automatic="+automatic+
+                                " sourceFrames="+source.size()+" analyzed="+actual.size()+" identical="+intact);
+                        if (!args[1].equals("baseline") && !intact) throw new AssertionError("Lost an original Pikachu frame");
                     }
                     var replies=new ArrayList<String>();
                     long maxMillis = 0;
@@ -88,6 +95,16 @@ public final class FocusFixture {
             }
         } finally { helper.destroyForcibly(); }
         Files.write(dir.resolve(args[1]+".tsv"),rows);
+    }
+
+    private static List<byte[]> voicedFrames(List<byte[]> clips) {
+        var frames = new ArrayList<byte[]>();
+        byte[] silent = new byte[FRAME];
+        for (byte[] clip : clips) for (int pos=0; pos<clip.length; pos+=FRAME) {
+            byte[] frame=Arrays.copyOfRange(clip,pos,pos+FRAME);
+            if (!Arrays.equals(frame,silent)) frames.add(frame);
+        }
+        return frames;
     }
 
     private static String id(SpeechGrammar grammar,int result) {

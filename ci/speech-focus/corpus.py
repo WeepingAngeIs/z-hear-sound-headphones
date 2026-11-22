@@ -12,6 +12,11 @@ def main(root):
         name, voice, phrase, rate, expected = line.split('\t')
         source = array('h')
         source.frombytes((root / (name + '.raw')).read_bytes())
+        if phrase=='pikachu' and rate=='0':
+            # Same raw level, 60ms lead and 560ms tail as the full pack's Java Sound input.
+            key = name+'-pack'
+            (root/(key+'.pcm')).write_bytes(bytes(640*3)+source.tobytes()+bytes(640*28))
+            rows.append((key, voice, phrase, 'pack', expected))
         peak = max(map(abs, source))
         if not peak:
             raise ValueError('Empty synthesized speech')

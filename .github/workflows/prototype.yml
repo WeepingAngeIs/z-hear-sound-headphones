@@ -155,7 +155,7 @@ jobs:
           ./ci/speech-focus/make.ps1 $fixture.FullName
           python ci/speech-focus/corpus.py $fixture.FullName
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          javac --release 21 --source-path src/main/java -d ci-classes ci/speech-focus/FocusFixture.java
+          javac --release 21 --source-path src/main/java -d ci-classes ci/speech-focus/FocusFixture.java ci/speech-focus/current/FixtureCapture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           java -cp 'ci-classes;src/main/resources;build/generated/offline-speech' dev.mobsear.client.FocusFixture $fixture.FullName mentions
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -199,7 +199,8 @@ jobs:
             $sources = if ($variant -eq 'baseline') { 'speech-baseline/src/main' } else { 'src/main' }
             $classes = Join-Path $fixtureRoot $variant
             New-Item -ItemType Directory -Path $classes | Out-Null
-            javac --release 21 --source-path "$sources/java" -d $classes ci/speech-focus/FocusFixture.java
+            $capture = if ($variant -eq 'baseline') { 'baseline' } else { 'current' }
+            javac --release 21 --source-path "$sources/java" -d $classes ci/speech-focus/FocusFixture.java "ci/speech-focus/$capture/FixtureCapture.java"
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
             java -cp "$classes;$sources/resources;build/generated/offline-speech" dev.mobsear.client.FocusFixture $fixtureRoot $variant
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
