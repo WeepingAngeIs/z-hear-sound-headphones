@@ -69,6 +69,12 @@ final class IntegratedCalls {
             level.getServer().setDifficulty(Difficulty.NORMAL,true);
             level.setWeatherParameters(60000,0,false,false);
             level.setDayTime(1000);
+            if (notices != null) {
+                // Equipping the test chestplate can post a native chat announcement over the HUD.
+                // Isolate the disposable framebuffer measurement without altering the game's chat renderer.
+                level.getGameRules().getRule(net.minecraft.world.level.GameRules.RULE_ANNOUNCE_ADVANCEMENTS)
+                        .set(false, level.getServer());
+            }
             for (int x=-5;x<=38;x++) for (int z=-5;z<=5;z++)
                 level.setBlockAndUpdate(new BlockPos(X+x,Y-1,Z+z),Blocks.STONE.defaultBlockState());
             owner.setGameMode(GameType.SURVIVAL);

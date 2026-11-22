@@ -33,7 +33,11 @@ public final class FocusFixture {
                 || !id(grammar, grammar.code("lopunny")).equals("cobblemon:lopunny")) throw new AssertionError("Incorrect names");
         var rows = new ArrayList<String>();
         rows.add("fixture\tvoice\tphrase\tprofile\tmode\texpected\tactual\tsegments");
-        Process helper = SpeechCues.launch();
+        boolean probe = args[1].equals("candidate-probe");
+        Process helper = probe ? new ProcessBuilder(Path.of(System.getenv("SystemRoot"), "System32",
+                "WindowsPowerShell", "v1.0", "powershell.exe").toString(), "-NoLogo", "-NoProfile",
+                "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", dir.resolve("probe.ps1").toString())
+                .redirectError(ProcessBuilder.Redirect.INHERIT).start() : SpeechCues.launch();
         helper.onExit().orTimeout(210,TimeUnit.SECONDS).exceptionally(e -> {helper.destroyForcibly(); return null;});
         try (var input=new DataInputStream(helper.getInputStream()); var output=new DataOutputStream(helper.getOutputStream())) {
             grammar.writeTo(output);
@@ -57,6 +61,8 @@ public final class FocusFixture {
                     }
                     var replies=new ArrayList<String>();
                     for (var clip : clips) {
+                        if (probe) System.err.println("PROBE_INPUT " + f[0] + " "
+                                + (automatic ? "activation" : "ptt") + " bytes=" + clip.length);
                         output.writeInt(Integer.reverseBytes(clip.length));
                         output.write(clip);
                         output.flush();

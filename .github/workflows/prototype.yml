@@ -156,6 +156,10 @@ jobs:
             java -cp "$classes;$sources/resources" dev.mobsear.client.FocusFixture $fixtureRoot $variant
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
+          python ci/speech-focus/probe.py src/main/resources/dev/mobsear/client/recognize.ps1 $fixtureRoot
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          java -cp "$classes;$sources/resources" dev.mobsear.client.FocusFixture $fixtureRoot candidate-probe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/speech-focus/compare.py $fixtureRoot
   integrated:
     name: Single-player world and local connection on NeoForge 21.1.249

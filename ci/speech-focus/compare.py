@@ -33,6 +33,8 @@ for target in ('ENDERMAN', 'cobblemon:lopunny'):
     new = sum(a['expected'] == a['actual'] == target for a in after)
     print('FOCUS_ACCEPTANCE', target, 'baseline='+str(old), 'candidate='+str(new))
     assert new >= old, 'Previously reliable name regressed: ' + target
+    if target == 'cobblemon:lopunny' and any(b['expected'] == target != b['actual'] for b in before):
+        assert new > old, 'No measurable pronunciation improvement for Lopunny'
     for mode in ('ptt', 'activation'):
         rows = [a for a in after if a['expected'] == target and a['mode'] == mode]
         assert sum(a['actual'] == target for a in rows) >= len(rows) // 2, (target, mode)
