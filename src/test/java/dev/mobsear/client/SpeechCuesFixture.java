@@ -360,6 +360,7 @@ public final class SpeechCuesFixture {
         try (var source = SpeechCues.class.getResourceAsStream("recognize.ps1")) {
             require(source != null, "Missing speech helper resource");
             String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
+            helper = helper.replace("$engine.LoadGrammar($calls)", "$engine.MaxAlternates = 8\n    $engine.LoadGrammar($calls)");
             String recognize = "$result = $engine.Recognize()";
             helper = helper.replace(recognize, recognize + """
 
@@ -369,8 +370,30 @@ public final class SpeechCuesFixture {
                             $id = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
                             [Console]::Error.WriteLine(('SAPI callGrammar={0} confidence={1:F3} aliasId={2}' -f
                                 ($result.Grammar.Name -eq 'mob call'), $result.Confidence, $id))
+                            $alternates = foreach ($alt in $result.Alternates) {
+                                $name = $alt.Text.ToLowerInvariant() -replace '^hey ', ''
+                                $altId = if ($aliases.ContainsKey($name)) { $aliases[$name] } else { 0 }
+                                ('{0}/{1:F3}' -f $altId, $alt.Confidence)
+                            }
+                            [Console]::Error.WriteLine(('SAPI alternative IDs/scores ' + ($alternates -join ',')))
                         }
                     """);
+            String cleanup = "$engine.SetInputToNull()\n            $stream.Dispose()\n            [Array]::Clear";
+            helper = helper.replace("\r\n", "\n").replace(cleanup, """
+                    $engine.SetInputToNull()
+                    $stream.Position = 0
+                    $calls.Enabled = $false
+                    try {
+                        $engine.SetInputToAudioStream($stream, $format)
+                        $native = $engine.Recognize()
+                        $known = if ($null -eq $native) { '' } else { $native.Text.ToLowerInvariant() -replace '^hey ', '' }
+                        $nativeId = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
+                        [Console]::Error.WriteLine(('SAPI native dictation registryId={0} confidence={1:F3}' -f $nativeId, $native.Confidence))
+                    } finally {
+                        $engine.SetInputToNull()
+                        $calls.Enabled = $true
+                    }
+                    """ + cleanup);
             helper = helper.replace("    exit 1", """
                         [Console]::Error.WriteLine(('SAPI helper error line={0} type={1} hresult={2}' -f
                             $_.InvocationInfo.ScriptLineNumber, $_.Exception.GetType().Name, $_.Exception.HResult))

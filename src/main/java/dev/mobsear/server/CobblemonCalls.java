@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.ToIntFunction;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -15,6 +16,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.behavior.BlockPosTracker;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
+import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
@@ -75,6 +77,7 @@ final class CobblemonCalls {
                 && !pokemon.isFainted() && !mob.isBusy() && !mob.isBattling() && !mob.isBattleClone()
                 && !mob.isEvolving() && mob.getBeamMode() == 0 && mob.getPhasingTargetId() == -1 && !mob.getQueuedToDespawn()
                 && mob.getTarget() == null && mob.getLastHurtByMob() == null
+                && brain.getActiveNonCoreActivity().orElse(Activity.IDLE) == Activity.IDLE
                 && !brain.hasMemoryValue(MemoryModuleType.ATTACK_TARGET)
                 && !brain.hasMemoryValue(MemoryModuleType.AVOID_TARGET)
                 && !brain.hasMemoryValue(MemoryModuleType.IS_PANICKING)
@@ -102,7 +105,7 @@ final class CobblemonCalls {
             if (Math.abs(node.getY() - from.y) > 1.25 || from.distanceToSqr(Vec3.atBottomCenterOf(node)) > 25
                     || !mob.level().hasChunkAt(node) || !mob.level().getWorldBorder().isWithinBounds(node)
                     || !mob.isWithinRestriction(node) || !mob.level().getFluidState(node).isEmpty()
-                    || !mob.level().getBlockState(node.below()).isFaceSturdy(mob.level(), node.below(), net.minecraft.core.Direction.UP)) {
+                    || !mob.level().getBlockState(node.below()).isFaceSturdy(mob.level(), node.below(), Direction.UP)) {
                 return null;
             }
         }

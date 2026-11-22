@@ -95,7 +95,7 @@
   "mobsear.speech.recognized": "Recognized locally · %s",
   "mobsear.speech.recognized_mode": "Recognized locally · %s · Use Survival or Adventure for mob reactions",
   "mobsear.speech.starting": "Starting local mob calls…",
-  "mobsear.speech.ready": "Mob calls ready • Hold your talk key and name a mob",
+  "mobsear.speech.ready": "Mob calls ready • Say a name while transmitting",
   "mobsear.speech.unavailable": "Mob calls need an installed English Windows speech recognizer",
   "mobsear.problem.mic": "Couldn’t open the selected microphone • Release and press your talk key to retry",
   "mobsear.problem.output": "Couldn’t open the selected audio output"

@@ -8,6 +8,7 @@ version = '0.3.0'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 repositories {
+    mavenCentral()
     exclusiveContent {
         forRepository { maven { url = uri('https://api.modrinth.com/maven') } }
         filter { includeModule('maven.modrinth', 'cobblemon') }
@@ -17,6 +18,8 @@ repositories {
 dependencies {
     // Optional API only. Standalone clients and dedicated servers do not load Cobblemon classes.
     compileOnly('maven.modrinth:cobblemon:xsVHrAsY') { transitive = false }
+    // Cobblemon's Java-callable registry listener also has Kotlin function overloads.
+    compileOnly('org.jetbrains.kotlin:kotlin-stdlib:2.4.0') { transitive = false }
 }
 
 if (providers.gradleProperty('voiceGameTests').isPresent()) {

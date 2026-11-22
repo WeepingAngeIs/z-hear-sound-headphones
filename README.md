@@ -29,6 +29,14 @@ Calm Endermen, spiders and cave spiders can pause for up to 18 game ticks (about
 
 After first enabling recognition on Windows, edit `config/mobsear-aliases.properties` to add local aliases. For example, `skeleton=bone walker,bones`. Use up to four comma-separated English aliases per supported name, each one to three words. Toggle mob calls off and on after editing. Built-in names retain their meaning and a standalone “hey” stays silent. Supported names beyond the table include pillager, ghast, phantom, silverfish, endermite, shulker, vindicator, evoker, vex, ravager, hoglin, zoglin, piglin brute, warden and wither.
 
+## Calling wild Cobblemon
+
+With Cobblemon on the client and server, enable **Local Mob Calls** and say a nearby wild Pokémon’s species name, such as **Pikachu** or **Eevee**. Use push-to-talk or voice activation, then leave a short pause. The private action bar confirms the species the local recognizer heard. The same configured voice radius and Survival or Adventure requirement apply.
+
+A calm wild Pokémon looks toward the sound. A land Pokémon with room to walk has a **20% chance** to approach up to four blocks using ordinary pathfinding. Each Pokémon has a five-second cooldown. Server owners can set `wildPokemonApproachChance` between `0.0` and `1.0`. Setting it to `0.0` keeps the glance alone. Battles, capture interactions and owned Pokémon keep their normal behavior.
+
+The vocabulary comes from Cobblemon’s synced species registry, including names supplied by datapacks. English desktop recognition uses canonical species names and English display names when the game uses English. Localized labels still appear in the private feedback. Duplicate spoken names are skipped, and existing mob names retain their meanings. For the two Nidoran species, say **Nidoran female** or **Nidoran male**. Only the matched species identifier goes to the server.
+
 ## Server and privacy
 
 Quiet horror is a separate server option. Set `hordeEnabled = true` in the server configuration to offer it. Each player then opts in from the voice menu for that connection. Death, a dimension change, disconnecting, Peaceful difficulty, or switching to creative or spectator ends participation.
