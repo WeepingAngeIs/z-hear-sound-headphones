@@ -12,7 +12,10 @@ enum PokemonCase {
     PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8), GLOBAL_PACK("boxtail", 8),
     NAMED_COW("minecraft:cow", 12), OTHER_NAME("minecraft:cow", 12), NAMED_FAR("minecraft:cow", 36),
     NAMED_HOSTILE("minecraft:cave_spider", 22), BROAD_COW("minecraft:cow", 22),
-    BOSS_CHARGING("minecraft:wither", 22), BOSS_FIGHTING("minecraft:wither", 22);
+    BOSS_CHARGING("minecraft:wither", 22), BOSS_FIGHTING("minecraft:wither", 22),
+    FOREST_DEER("twilightforest:deer", 12), NAGA_COMBAT("twilightforest:naga", 22),
+    OWL_GUARDIAN("uwudimension:blossom_warden", 12), OWL_OFFENDER("uwudimension:blossom_warden", 22),
+    VELVET_IDLE("uwudimension:velvet_vesper", 24), VELVET_GUARD("uwudimension:velvet_vesper", 18);
 
     final ResourceLocation species;
     final int distance;
@@ -20,8 +23,18 @@ enum PokemonCase {
         this.species = ResourceLocation.parse(name.contains(":") ? name : "cobblemon:" + name);
         this.distance = distance;
     }
-    boolean accepts() { return ordinal() <= NEAR_EDGE.ordinal() || this == BLOCKED || this == COOLDOWN_PRIME || this == COOLDOWN_EXPIRED || walking() || this == INTERRUPTED || this == PACK_FORM || this == PACK_CUSTOM || this == GLOBAL_PACK || this==NAMED_COW || this==NAMED_HOSTILE; }
+    boolean accepts() {
+        return switch (this) {
+            case PIKACHU, EEVEE, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
+                    WALKING_PIKACHU, WALKING_EEVEE, INTERRUPTED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK,
+                    NAMED_COW, NAMED_HOSTILE, FOREST_DEER, OWL_GUARDIAN, VELVET_IDLE -> true;
+            case FAR, WRONG, OWNER, OFFLINE_OWNER, BATTLE, CAPTURE, PASSIVE, COOLDOWN_HELD, OTHER_NAME, NAMED_FAR,
+                    BROAD_COW, BOSS_CHARGING, BOSS_FIGHTING, NAGA_COMBAT, OWL_OFFENDER, VELVET_GUARD -> false;
+        };
+    }
     boolean ordinaryEntity() { return ordinal()>=NAMED_COW.ordinal(); }
+    boolean guardPicture() { return this==BOSS_CHARGING || this==NAGA_COMBAT || this==OWL_OFFENDER || this==VELVET_GUARD; }
+    boolean beforePicture() { return this==PIKACHU || this==NAMED_COW || this==FOREST_DEER || this==OWL_GUARDIAN || this==VELVET_IDLE; }
     boolean walking() { return this==WALKING_PIKACHU || this==WALKING_EEVEE; }
     boolean controlled() { return this == LOOK || this == APPROACH || this == BLOCKED; }
     boolean reusesSubject() { return this == COOLDOWN_HELD || this == COOLDOWN_EXPIRED; }

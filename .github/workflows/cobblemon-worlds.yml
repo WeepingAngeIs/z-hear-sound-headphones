@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MOBSEAR_POKEMON_PACK: '1'
+      MOBSEAR_ENTITY_PACK: '1'
     timeout-minutes: 44
     strategy:
       fail-fast: false

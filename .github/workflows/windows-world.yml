@@ -24,6 +24,8 @@ jobs:
     env:
       MOBSEAR_INTEGRATED: '1'
       MOBSEAR_POKEMON_ACOUSTIC: ${{ matrix.profile == 'with-Cobblemon' && '1' || '0' }}
+      MOBSEAR_POKEMON_PACK: ${{ matrix.profile == 'with-Cobblemon' && '1' || '0' }}
+      MOBSEAR_OWL_ACOUSTIC: ${{ matrix.profile == 'with-Cobblemon' && '1' || '0' }}
       GALLIUM_DRIVER: llvmpipe
       LP_NUM_THREADS: '2'
       PYTHONUTF8: '1'

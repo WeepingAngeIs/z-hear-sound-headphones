@@ -220,15 +220,18 @@ public final class SpeechCuesFixture {
                 synthesize("the garden is beautiful"), synthesize("my little buddy"), new byte[16000],
                 synthesize("Lunavee"), synthesize("hey Lunavee"), synthesize("Boxtail"), synthesize("Mikueon"),
                 synthesize("cow"), synthesize("iron golem"), synthesize("Owl Guardian"), synthesize("oo woo guardian"),
-                synthesize("you woo guardian"), synthesize("blossom warden"), synthesize("Velvet Vesper"), synthesize("guardian")};
+                synthesize("you woo guardian"), synthesize("blossom warden"), synthesize("Velvet Vesper"), synthesize("guardian"),
+                synthesize("call cow"), synthesize("call Owl Guardian"), synthesize("call oo woo guardian"),
+                synthesize("call Mikueon"), synthesize("call"), synthesize("call pokemon"), synthesize("call the garden is beautiful")};
         int spectreon = grammar.code("spectreon");
         int spectrier = grammar.code("spectrier");
         // For a bare close pair, exact or abstained is valid; qualified calls must return the one correct ID.
         int[][] expected = {{grammar.code("pikachu")}, {grammar.code("ditto")}, {grammar.code("eevee")}, {grammar.code("dungeon")},
                 {spectreon, 0}, {spectrier, 0}, {spectreon}, {spectrier}, {Cue.SPIDER.ordinal() + 1}, {0}, {0}, {0}, {0}, {0}, {0},
-                {grammar.code("lunavee")}, {grammar.code("lunavee")}, {grammar.code("boxtail")}, {grammar.code("mikueon")},
-                {grammar.code("cow")}, {grammar.code("iron golem")}, {grammar.code("owl guardian")}, {grammar.code("owl guardian")},
-                {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("velvet vesper")}, {Cue.GUARDIAN.ordinal() + 1}};
+                {grammar.code("lunavee")}, {grammar.code("lunavee")}, {grammar.code("boxtail")}, {grammar.code("mikueon"), 0},
+                {grammar.code("cow"), 0}, {grammar.code("iron golem")}, {grammar.code("owl guardian"), 0}, {grammar.code("owl guardian"), 0},
+                {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("velvet vesper")}, {Cue.GUARDIAN.ordinal() + 1},
+                {grammar.code("cow")}, {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("mikueon")}, {0}, {0}, {0}};
         require("cobblemon:boxtail".equals(vocabulary.get("boxtail")) && "cobblemon:mikueon".equals(vocabulary.get("mikueon")),
                 "Global species pack display names");
         long started = System.nanoTime();
@@ -237,6 +240,12 @@ public final class SpeechCuesFixture {
         for (int i = 0; i < result.length; i++) {
             int decision = result[i];
             if (Arrays.stream(expected[i]).noneMatch(allowed -> allowed == decision)) {
+                for (int j=0; j<result.length; j++) {
+                    int index = j;
+                    grammar.dispatch(result[j], c -> System.out.println("SYNTH_DECISION " + index + " mob=" + c),
+                            s -> System.out.println("SYNTH_DECISION " + index + " species=" + s),
+                            e -> System.out.println("SYNTH_DECISION " + index + " entity=" + e));
+                }
                 diagnoseSyntheticDecisions(clips, grammar);
                 throw new AssertionError("Full English catalog decisions " + Arrays.toString(result)
                         + " allowed " + Arrays.deepToString(expected));
@@ -246,16 +255,18 @@ public final class SpeechCuesFixture {
                 + " bareSpectreon=" + result[4] + " bareSpectrier=" + result[5]
                 + " qualifiedSpectreon=" + result[6] + " qualifiedSpectrier=" + result[7]);
         System.out.println("MOBSEAR_LUNAVEE_SPEECH_PASS bare=" + result[15] + " greeting=" + result[16] + " registry=cobblemon:lunavee");
-        System.out.println("MOBSEAR_GLOBAL_PACK_SPEECH_PASS boxtail=" + result[17] + " mikueon=" + result[18]);
+        System.out.println("MOBSEAR_GLOBAL_PACK_SPEECH_PASS boxtail=" + result[17] + " bareMikueon=" + result[18]
+                + " explicitMikueon=" + result[30]);
         var exactEntities = new ArrayList<String>();
-        for (int i = 19; i <= 25; i++) {
-            require(grammar.dispatch(result[i], c -> { throw new AssertionError("Unexpected classic cue"); },
+        for (int index : new int[]{27, 20, 28, 29, 23, 24, 25}) {
+            require(grammar.dispatch(result[index], c -> { throw new AssertionError("Unexpected classic cue"); },
                     id -> { throw new AssertionError("Unexpected Pokemon species"); }, exactEntities::add), "Invalid entity code");
         }
         require(exactEntities.equals(List.of("minecraft:cow", "minecraft:iron_golem", "uwudimension:blossom_warden",
                 "uwudimension:blossom_warden", "uwudimension:blossom_warden", "uwudimension:blossom_warden",
                 "uwudimension:velvet_vesper")), "Specific synthetic entity-call outcomes " + exactEntities);
-        System.out.println("MOBSEAR_REGISTERED_ENTITY_SPEECH_PASS " + exactEntities + " vanillaGuardian=" + result[26]);
+        System.out.println("MOBSEAR_REGISTERED_ENTITY_SPEECH_PASS " + exactEntities + " vanillaGuardian=" + result[26]
+                + " bareCow=" + result[19] + " bareOwlGuardian=" + result[21] + " bareOoWooGuardian=" + result[22]);
         var ids = new ArrayBlockingQueue<String>(4);
         var mobs = new ArrayBlockingQueue<Cue>(4);
         var entityIds = new ArrayBlockingQueue<String>(4);
@@ -273,8 +284,9 @@ public final class SpeechCuesFixture {
             speech.endUtterance();
             require("cobblemon:pikachu".equals(ids.poll(8, TimeUnit.SECONDS)), "End-to-end species callback");
             require(mobs.isEmpty(), "Species emitted an extra vanilla cue");
-            for (int pos = 0; pos < clips[22].length; pos += FRAME)
-                speech.acceptFrame(Arrays.copyOfRange(clips[22], pos, pos + FRAME));
+            byte[] guardian = result[22] == grammar.code("owl guardian") ? clips[22] : clips[29];
+            for (int pos = 0; pos < guardian.length; pos += FRAME)
+                speech.acceptFrame(Arrays.copyOfRange(guardian, pos, pos + FRAME));
             speech.endUtterance();
             require("uwudimension:blossom_warden".equals(entityIds.poll(8, TimeUnit.SECONDS)) && ids.isEmpty() && mobs.isEmpty(),
                     "End-to-end UwU Guardian must emit only its registered entity ID");
@@ -472,12 +484,12 @@ public final class SpeechCuesFixture {
 
                         if ($null -eq $result) { [Console]::Error.WriteLine('SAPI no match') }
                         else {
-                            $known = $result.Text.ToLowerInvariant() -replace '^hey ', ''
+                            $known = $result.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
                             $id = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
                             [Console]::Error.WriteLine(('SAPI callGrammar={0} confidence={1:F3} aliasId={2}' -f
                                 ($result.Grammar.Name -eq 'mob call'), $result.Confidence, $id))
                             $alternates = foreach ($alt in $result.Alternates) {
-                                $name = $alt.Text.ToLowerInvariant() -replace '^hey ', ''
+                                $name = $alt.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
                                 $altId = if ($aliases.ContainsKey($name)) { $aliases[$name] } else { 0 }
                                 ('{0}/{1:F3}' -f $altId, $alt.Confidence)
                             }
@@ -492,12 +504,25 @@ public final class SpeechCuesFixture {
                     try {
                         $engine.SetInputToAudioStream($stream, $format)
                         $native = $engine.Recognize()
-                        $known = if ($null -eq $native) { '' } else { $native.Text.ToLowerInvariant() -replace '^hey ', '' }
+                        $known = if ($null -eq $native) { '' } else { $native.Text.ToLowerInvariant() -replace '^(hey|call) ', '' }
                         $nativeId = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
-                        [Console]::Error.WriteLine(('SAPI native dictation registryId={0} confidence={1:F3}' -f $nativeId, $native.Confidence))
+                        [Console]::Error.WriteLine(('SAPI native dictation registryId={0} confidence={1:F3} guardianToken={2} nWords={3}' -f
+                            $nativeId, $native.Confidence, ($known -match '\\bguardian\\b'), $known.Split(' ').Count))
                     } finally {
                         $engine.SetInputToNull()
                         $calls.Enabled = $true
+                    }
+                    $stream.Position = 0
+                    $background.Enabled = $false
+                    try {
+                        $engine.SetInputToAudioStream($stream, $format)
+                        $forced = $engine.Recognize()
+                        $known = if ($null -eq $forced) { '' } else { $forced.Text.ToLowerInvariant() -replace '^(hey|call) ', '' }
+                        $forcedId = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
+                        [Console]::Error.WriteLine(('SAPI command-only registryId={0} confidence={1:F3}' -f $forcedId, $forced.Confidence))
+                    } finally {
+                        $engine.SetInputToNull()
+                        $background.Enabled = $true
                     }
                     """ + cleanup);
             helper = helper.replace("    exit 1", """

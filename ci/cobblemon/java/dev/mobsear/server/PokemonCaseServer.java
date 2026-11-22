@@ -82,7 +82,7 @@ final class PokemonCaseServer {
         if (m.stage()==PokemonProbe.ARRANGE && p==caller && phase==PokemonProbe.FIRE && !arranged) {
             arranged=true;
             if (c==PokemonCase.OFFLINE_OWNER) checkOfflineOwner();
-            if (c.ordinaryEntity()) named.arrange(c,subject);
+            if (c.ordinaryEntity()) named.arrange(c,subject,caller);
             if (c.accepts() || c==PokemonCase.COOLDOWN_HELD) prepareIdle(subject);
             if (witness!=null) {
                 prepareIdle(witness);
@@ -96,7 +96,14 @@ final class PokemonCaseServer {
         }
         if (m.stage() == PokemonProbe.FIRE && p == caller && phase == PokemonProbe.FIRE && !fired) {
             fired = true;
-            if (c.ordinaryEntity()) named.afterWire(c,subject,caller);
+            if (c.ordinaryEntity()) {
+                named.afterWire(c,subject,caller);
+                if (c.guardPicture()) {
+                    var confirmation=new PokemonProbe.Message(PokemonProbe.VERIFIED_GUARD,index,subject.getId());
+                    PacketDistributor.sendToPlayer(caller,confirmation);
+                    if (viewer!=caller) PacketDistributor.sendToPlayer(viewer,confirmation);
+                }
+            }
             long now=p.serverLevel().getGameTime();
             if (c==PokemonCase.COOLDOWN_PRIME) firstCall=now;
             if (c.reusesSubject()) {
@@ -283,7 +290,12 @@ final class PokemonCaseServer {
         if (c==PokemonCase.BLOCKED) wall(false);
         if (c!=PokemonCase.COOLDOWN_PRIME && c!=PokemonCase.COOLDOWN_HELD) subject.discard();
         if (ownedStore!=null) { ownedStore.remove(owned); ownedStore=null; owned=null; }
-        int limit="1".equals(System.getenv("MOBSEAR_POKEMON_ACOUSTIC")) ? 2
+        boolean acoustic="1".equals(System.getenv("MOBSEAR_POKEMON_ACOUSTIC"));
+        if (acoustic && c==PokemonCase.EEVEE && "1".equals(System.getenv("MOBSEAR_OWL_ACOUSTIC"))) {
+            index=PokemonCase.OWL_GUARDIAN.ordinal();
+            prepare(); return;
+        }
+        int limit=acoustic ? 2
                 : "1".equals(System.getenv("MOBSEAR_POKEMON_PACK")) ? PokemonCase.values().length : PokemonCase.PACK_FORM.ordinal();
         if (++index<limit) prepare();
         else {

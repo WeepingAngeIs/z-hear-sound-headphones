@@ -81,7 +81,10 @@ def run(mode):
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
         expected.extend(["walking_pikachu-after", "walking_eevee-after", "interrupted-after"])
         if env.get("MOBSEAR_POKEMON_PACK") == "1":
-            expected.extend(["pack_form-after", "pack_custom-after", "global_pack-after", "named_cow-after", "named_hostile-after"])
+            expected.extend(["pack_form-after", "pack_custom-after", "global_pack-after", "named_cow-before", "named_cow-after",
+                             "named_hostile-after", "forest_deer-before", "forest_deer-after", "boss_charging-protected", "naga_combat-protected",
+                             "owl_guardian-before", "owl_guardian-after", "owl_offender-protected", "velvet_idle-before",
+                             "velvet_idle-after", "velvet_guard-protected"])
         for view in expected:
             if not (landed/f"{mode}-{view}.png").is_file(): raise RuntimeError("Missing actual in-game capture " + view)
     except BaseException:

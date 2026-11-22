@@ -30,10 +30,11 @@ try {
         if ($parts[1] -eq '1') { $confirm.Add($parts[2], $true) }
         $words.Add($parts[2])
         $words.Add('hey ' + $parts[2])
+        $words.Add('call ' + $parts[2])
     }
     $phrases = [System.Speech.Recognition.Choices]::new()
     # Explicit rejection phrases give greetings and generic collective calls a harmless match.
-    foreach ($ignored in @('hey', 'pokemon', 'hey pokemon', 'all pokemon', 'every pokemon')) {
+    foreach ($ignored in @('hey', 'call', 'pokemon', 'hey pokemon', 'call pokemon', 'all pokemon', 'every pokemon')) {
         if (-not $aliases.ContainsKey($ignored)) { $words.Add($ignored) }
     }
     $phrases.Add($words.ToArray())
@@ -84,10 +85,14 @@ try {
                 } finally {
                     $background.Enabled = $true
                 }
-                $minConfidence = 0.72
+                $minConfidence = if ($aliases.Count -gt 256) { 0.90 } else { 0.72 }
             }
             if ($null -ne $result -and $result.Grammar.Name -eq 'mob call' -and $result.Confidence -ge $minConfidence) {
                 $phrase = $result.Text.ToLowerInvariant()
+                if ($phrase.StartsWith('call ')) {
+                    $phrase = $phrase.Substring(5)
+                    if ($result.Confidence -lt 0.82) { $phrase = '' }
+                }
                 if ($phrase.StartsWith('hey ')) { $phrase = $phrase.Substring(4) }
                 if ($aliases.ContainsKey($phrase)) {
                     $candidate = $aliases[$phrase]
@@ -105,7 +110,7 @@ try {
                             $engine.SetInputToAudioStream($stream, $format)
                             $second = $engine.Recognize()
                             if ($null -ne $second -and $second.Confidence -ge 0.58) {
-                                $key = $second.Text.ToLowerInvariant() -replace '^hey ', ''
+                                $key = $second.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
                                 if ($aliases.ContainsKey($key) -and $aliases[$key] -eq $candidate) { $decision = $candidate }
                             }
                         } finally {

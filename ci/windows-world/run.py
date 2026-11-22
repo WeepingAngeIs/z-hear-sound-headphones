@@ -28,6 +28,10 @@ if pokemon:
     subprocess.run([sys.executable, "ci/cobblemon/stage.py", str(server/"mods"), str(client/"mods")], check=True)
     upstream, = (server/"mods").glob("Cobblemon-neoforge-*.jar")
     subprocess.run([sys.executable, "ci/cobblemon/datapack.py", str(upstream), str(server/world/"datapacks")], check=True)
+    if os.getenv("MOBSEAR_POKEMON_PACK") == "1":
+        sys.path.insert(0, str(Path("ci/cobblemon").resolve()))
+        from public_species import stage as stage_public_species
+        stage_public_species(world_root=root)
 property_name = "-PcobblemonFixture" if pokemon else "-PvoiceMultiplayer"
 subprocess.run(["cmd", "/d", "/c", "gradlew.bat", "--no-daemon", "--max-workers=2", property_name,
                 "classes", f"prepare{server_run}Run", f"prepare{client_run}Run", f"create{server_run}LaunchScript",

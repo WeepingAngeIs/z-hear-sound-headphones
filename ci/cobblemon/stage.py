@@ -1,11 +1,14 @@
 """Stage checksum-matched public TEST dependencies into disposable Actions directories."""
-from hashlib import file_digest
+from hashlib import file_digest, sha256
+from io import BytesIO
 import os
 from pathlib import Path
 from shutil import copyfile, copyfileobj
 import sys
+import tarfile
 from tempfile import NamedTemporaryFile
 from urllib.request import urlopen
+from zipfile import ZipFile
 
 
 FILES = (
@@ -35,6 +38,37 @@ MEGA_FILES = (
      "de6ed336bd80154b7241a7b3276694befc1c94550add8bcdfe7f82e5172fd13d"),
 )
 
+OWL_JAR = "UwU-Dimension-1.21.1-1.5.0-beta.13-combined-rc.2-playtest.9-integrated.1.jar"
+OWL_INPUTS = ("https://nightly.link/WeepingAngeIs/z-UwU_dm/actions/runs/44973577287/"
+              "cumulative-ci-inputs-eb534710706ec9c495d1e84071715e7f9d87d640.zip")
+OWL_FILES = (
+    (OWL_JAR, OWL_INPUTS, "0e865bbe4cf695144b70889138d82ad36ed8288a019bcb0e6b8b4851a6f1a04f"),
+    ("lootr-neoforge-1.21.1-1.11.38.125.jar",
+     "https://edge.forgecdn.net/files/8811/105/lootr-neoforge-1.21.1-1.11.38.125.jar",
+     "091878598fa5cb51cd304bf9324afe46420d328b6f77a9ba38acc15e26945e9e"),
+    ("another_furniture-neoforge-4.0.2.jar",
+     "https://edge.forgecdn.net/files/7355/747/another_furniture-neoforge-4.0.2.jar",
+     "c61a66c73bcc5147d9983dc72c485493a612d2dbc078fcb86e2024155e34b7dd"),
+)
+TWILIGHT = (
+    "twilightforest-1.21.1-4.8.3345-universal.jar",
+    "https://edge.forgecdn.net/files/7797/302/twilightforest-1.21.1-4.8.3345-universal.jar",
+    "493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35",
+)
+
+
+def copy_guardian_baseline(source, output):
+    # This publicly accessible test archive includes the exact previous production baseline.
+    # Read only the known member, verifying the outer published archive and the inner JAR.
+    data = source.read(16_981_919)
+    assert len(data) == 16_981_918 and sha256(data).hexdigest() == "7f619ad21a052277cc410f9f138ac7868acf35ae4117efbdfb7c31c03ea0f744"
+    with ZipFile(BytesIO(data)) as archive, archive.open("cumulative-inputs.tar.gz") as compressed:
+        with tarfile.open(fileobj=compressed, mode="r:gz") as tar:
+            member = tar.getmember("build/cumulative/input/integrated-baseline.jar")
+            assert member.isfile() and member.size == 6_365_448
+            with tar.extractfile(member) as jar:
+                copyfileobj(jar, output)
+
 
 def main():
     if os.environ.get("GITHUB_ACTIONS") != "true" or len(sys.argv) < 2:
@@ -44,12 +78,19 @@ def main():
         directory.mkdir(parents=True, exist_ok=True)
     dest = destinations[0]
     files = FILES + MEGA_FILES if os.getenv("MOBSEAR_POKEMON_PACK") == "1" else FILES
+    if os.getenv("MOBSEAR_ENTITY_PACK") == "1":
+        files += OWL_FILES + (TWILIGHT,)
+    elif os.getenv("MOBSEAR_OWL_ACOUSTIC") == "1":
+        files += OWL_FILES
     for name, url, sha in files:
         with NamedTemporaryFile(dir=dest, delete=False) as handle:
             temp = Path(handle.name)
         try:
             with urlopen(url, timeout=120) as source, temp.open("wb") as out:
-                copyfileobj(source, out)
+                if name == OWL_JAR:
+                    copy_guardian_baseline(source, out)
+                else:
+                    copyfileobj(source, out)
             with temp.open("rb") as data:
                 if file_digest(data, "sha256").hexdigest() != sha:
                     raise ValueError(f"Checksum mismatch: {name}")

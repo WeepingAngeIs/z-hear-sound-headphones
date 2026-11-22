@@ -64,6 +64,14 @@ def stage(world_root=None, vocabulary=None):
             # Nine public raw definitions match TEST; Corvislight is a public identity-equivalent fixture.
             for name, blob, _ in definitions.values():
                 write(pack, name, blob)
+            # Inkyeon, Mawonna and Substitute reference abilities registered through
+            # Mega Showdown's normal reload-time ability data loader.
+            abilities = [name for name in jar.namelist()
+                         if name.startswith("data/") and "/mega_showdown/showdown/abilities/" in name and name.endswith(".js")]
+            assert {Path(name).stem for name in abilities} == {
+                "substitute", "futakuchionna", "futakuchionnaplayer", "futakuchisgrasp", "inkylove", "taintedcharm"}
+            for name in abilities:
+                write(pack, name, jar.read(name))
             assets = world_root / "lunavee-resources"
             render_files = sorted(n for n in jar.namelist() if
                                   n.startswith(("assets/lunavee/bedrock/", "assets/lunavee/textures/"))

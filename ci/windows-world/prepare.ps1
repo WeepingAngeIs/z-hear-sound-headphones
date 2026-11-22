@@ -11,6 +11,7 @@ $voice.SelectVoice($english.VoiceInfo.Name)
 $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 $index = 0
 $words = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { @('Pikachu', 'Eevee') } else { @('Enderman', 'spider', 'mob', 'mobs') }
+if ($env:MOBSEAR_OWL_ACOUSTIC -eq '1') { $words += @('oo woo guardian', 'call oo woo guardian') }
 foreach ($word in $words) {
     $stream = New-Object System.IO.MemoryStream
     $voice.SetOutputToAudioStream($stream, $format)
@@ -20,6 +21,8 @@ foreach ($word in $words) {
     $data = [byte[]]::new(640 * 3 + $pcm.Length + 640 * 28)
     [Array]::Copy($pcm, 0, $data, 640 * 3, $pcm.Length)
     $stem = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { $word.ToLowerInvariant() } else { [string]$index }
+    if ($word -eq 'oo woo guardian') { $stem = 'owl-guardian' }
+    if ($word -eq 'call oo woo guardian') { $stem = 'owl-guardian-explicit' }
     [IO.File]::WriteAllBytes((Join-Path $audioDir "$stem.pcm"), $data)
     $index++
     $stream.Dispose()

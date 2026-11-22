@@ -1,6 +1,6 @@
 # Mobs Hear U
 
-A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge 21.1.249 or later in the 21.1 series. Nearby players can hear your voice. If you enable local mob calls, nearby hostiles can also react to short spoken names.
+A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge 21.1.249 or later in the 21.1 series. Nearby players can hear your voice. Enabling local mob calls also lets you call nearby Minecraft mobs, modded creatures and wild Cobblemon by name.
 
 ## Controls
 
@@ -23,11 +23,17 @@ A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge
 | creeper, witch, blaze, breeze and other supported hostile names | The matching eligible mob looks toward the speaker. |
 | hey | No mob cue. |
 
-Passive mobs ignore calls. Creative players can talk to other players. Mob calls require an eligible survival or adventure speaker. A zombie can pause for ten game ticks at most once per forty ticks.
+Passive mobs can hear their individual type names. The broad **mob** and **mobs** calls apply to hostiles. Creative players can talk to other players. Mob calls require an eligible Survival or Adventure speaker. A zombie can pause for ten game ticks at most once per forty ticks.
 
 Calm Endermen, spiders and cave spiders can pause for up to 18 game ticks (about 0.9 seconds) and then resume walking. Each can react once every 40 ticks. With the default server setting, their hearing range extends through 32 blocks in the same dimension.
 
 After first enabling recognition on Windows, edit `config/mobsear-aliases.properties` to add local aliases. For example, `skeleton=bone walker,bones`. Use up to four comma-separated English aliases per supported name, each one to three words. Toggle mob calls off and on after editing. Built-in names retain their meaning and a standalone “hey” stays silent. Supported names beyond the table include pillager, ghast, phantom, silverfish, endermite, shulker, vindicator, evoker, vex, ravager, hoglin, zoglin, piglin brute, warden and wither.
+
+## Calling vanilla and modded mobs
+
+The client reads English mob names from Minecraft’s entity registry and includes the type’s registry spelling with underscores spoken as spaces. Say its name or **call** followed by the full name. A matching, calm mob within the voice radius can turn toward the caller. Its navigation, combat target and attack phases remain under its own AI. Some bosses have scripted poses or models that cannot display a head turn in every state. Items, projectiles, players and armor stands are outside the mob vocabulary.
+
+In **UwU Dimension**, the Guardian’s English name is **Owl Guardian**. The girl and male variants both use `uwudimension:blossom_warden`. The mod also accepts the name **UwU Guardian**. **Velvet Vesper** is a separate boss. **Guardian** alone keeps the Minecraft underwater guardian call. Other pack examples include **Twilight Lich**, **Ender Guardian**, **Ancient Remnant** and **Valkyrie Queen**. The private recognition message shows the mob type selected by the recognizer.
 
 ## Calling wild Cobblemon
 

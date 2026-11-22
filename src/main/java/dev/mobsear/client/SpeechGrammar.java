@@ -43,7 +43,7 @@ final class SpeechGrammar {
     private record Registered(boolean entity, String id) {}
 
     static boolean reserved(String phrase) {
-        return RESERVED.contains(phrase) || phrase.startsWith("hey ");
+        return RESERVED.contains(phrase) || phrase.startsWith("hey ") || phrase.equals("call") || phrase.startsWith("call ");
     }
 
     /** Input labels come exclusively from a species registry. Duplicate names are unusable for both species. */
@@ -101,6 +101,7 @@ final class SpeechGrammar {
                 add(unique, ambiguous, phrase, owner);
                 if (entity && UWU.matcher(phrase).find()) {
                     add(unique, ambiguous, UWU.matcher(phrase).replaceAll("oo woo"), owner);
+                    add(unique, ambiguous, UWU.matcher(phrase).replaceAll("ooh woo"), owner);
                     add(unique, ambiguous, UWU.matcher(phrase).replaceAll("you woo"), owner);
                 }
             }

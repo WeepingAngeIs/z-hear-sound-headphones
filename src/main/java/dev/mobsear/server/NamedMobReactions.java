@@ -84,7 +84,15 @@ public final class NamedMobReactions {
         @Override protected Predicate<Mob> computeValue(Class<?> clazz) {
             return switch (clazz.getName()) {
                 case "dev.uwu.dimension.BlossomWarden" -> idleWhenClear(clazz, "offender", "chasing", "gripping", "throwing");
-                case "dev.uwu.dimension.VelvetVesper" -> idleWhenClear(clazz, "guarding", "folding", "casting");
+                case "dev.uwu.dimension.VelvetVesper" -> {
+                    var phaseIdle = idleWhenClear(clazz, "guarding", "folding", "casting");
+                    // The Mirror Court can aim at a participant even during an open phase,
+                    // and does not expose that focus through Mob.getTarget().
+                    yield mob -> phaseIdle.test(mob) && mob.level().players().stream().noneMatch(player ->
+                            player.isAlive() && !player.isCreative() && !player.isSpectator()
+                                    && mob.distanceToSqr(player) < 400 && Math.abs(player.getY() - mob.getY()) < 9
+                                    && mob.hasLineOfSight(player));
+                }
                 default -> mob -> true;
             };
         }

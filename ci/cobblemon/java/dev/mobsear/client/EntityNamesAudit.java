@@ -21,6 +21,9 @@ public final class EntityNamesAudit {
         }
         for (String required:new String[]{"minecraft:cow","minecraft:cave_spider","minecraft:wither","minecraft:ender_dragon"})
             if (!entries.containsKey(required)) throw new IllegalStateException("Missing living type "+required);
+        if ("1".equals(System.getenv("MOBSEAR_ENTITY_PACK")) &&
+                (!entries.containsKey("twilightforest:deer") || !entries.containsKey("twilightforest:naga")))
+            throw new IllegalStateException("Missing the loaded Twilight Forest mob names");
         for (String excluded:new String[]{"minecraft:item","minecraft:arrow","minecraft:armor_stand","minecraft:player","cobblemon:pokemon"})
             if (entries.containsKey(excluded)) throw new IllegalStateException("Unexpected generic call "+excluded);
         var owl=MobCallTypes.OWL_GUARDIAN;
@@ -30,9 +33,22 @@ public final class EntityNamesAudit {
         rows.add("id\tlabels");
         entries.forEach((id,labels)->rows.add(id+"\t"+String.join("|",labels)));
         try {
-            var dir=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT"),"catalogs");
+            var root=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT"));
+            var dir=root.resolve("catalogs");
             Files.createDirectories(dir);
             Files.write(dir.resolve("entity-"+side+".tsv"),rows);
+            var species=new CobblemonNames().snapshot();
+            int verified=0;
+            for (var line:Files.readAllLines(root.resolve("test-species.tsv"))) {
+                var fields=line.split("\t",-1);
+                var labels=species.get(fields[0]);
+                var display=CobblemonNames.display(ResourceLocation.parse(fields[0]));
+                if (labels==null || !labels.contains(fields[1]) || !labels.contains(fields[2])
+                        || display==null || !fields[2].equals(display.getString()))
+                    throw new IllegalStateException("Wrong live English label for "+fields[0]+": expected="+fields[2]+" actual="+labels);
+                verified++;
+            }
+            System.out.println("POKEMON_REGISTRY_PASS endpoint="+side+" englishLabels="+verified);
         } catch (IOException ex) { throw new IllegalStateException("Cannot save real entity names",ex); }
         long modded=entries.keySet().stream().map(ResourceLocation::parse).filter(id->!id.getNamespace().equals("minecraft")).count();
         System.out.println("ENTITY_REGISTRY_PASS endpoint="+side+" eligible="+entries.size()+" modded="+modded);

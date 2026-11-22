@@ -33,7 +33,7 @@ public final class PokemonCaseClient {
     private PokemonProbe.Message stage;
     private PokemonCase c;
     private String capture, waiting;
-    private boolean saved;
+    private boolean saved, guardVerified, scopedGuardian;
 
     public PokemonCaseClient() {
         PokemonProbe.client=this::stage;
@@ -41,9 +41,15 @@ public final class PokemonCaseClient {
         NeoForge.EVENT_BUS.addListener(this::render);
     }
     private void stage(PokemonProbe.Message request) {
+        if (request.stage()==PokemonProbe.VERIFIED_GUARD) {
+            if (stage==null || request.entity()!=stage.entity() || request.scenario()!=stage.scenario() || !c.guardPicture())
+                throw PokemonProbe.fail("Unmatched protected-state acknowledgment");
+            guardVerified=true;
+            return;
+        }
         stage=request;
         c=PokemonCase.values()[request.scenario()];
-        acknowledged=sent=uttered=recognized=aligned=saved=false;
+        acknowledged=sent=uttered=recognized=aligned=saved=guardVerified=scopedGuardian=false;
         ticks=alignedTicks=0; capture=null;
         if (acoustic && request.stage()==PokemonProbe.BEFORE) {
             if (!armed) {
@@ -51,7 +57,7 @@ public final class PokemonCaseClient {
                 armed=true;
             }
             VoiceClient.setVoiceActivated(c==PokemonCase.EEVEE);
-            KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V), c==PokemonCase.PIKACHU);
+            KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V), c!=PokemonCase.EEVEE);
         }
     }
     private void tick(ClientTickEvent.Post ignored) {
@@ -91,7 +97,7 @@ public final class PokemonCaseClient {
             if (ticks<4 || mc.level.getEntity(stage.entity())==null) return;
             if (c==PokemonCase.PACK_FORM) c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client before call");
             if (acoustic && c==PokemonCase.PIKACHU && !recognizerReady()) return;
-            if ((solo || !caller) && c==PokemonCase.PIKACHU && !saved) {
+            if ((solo || !caller) && c.beforePicture() && !saved) {
                 if (ticks<35 || mc.screen!=null || mc.getOverlay()!=null) return;
                 capture="before"; return;
             }
@@ -100,15 +106,22 @@ public final class PokemonCaseClient {
         }
         if (caller && !sent) {
             if (acoustic) {
+                if (c==PokemonCase.OWL_GUARDIAN && ticks>=180 && !scopedGuardian && uttered && FixtureSound.finishedPhrase()) {
+                    scopedGuardian=true;
+                    uttered=false;
+                    KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V),true);
+                }
                 if (!uttered) {
                     try {
-                        FixtureSound.say(Files.readAllBytes(Path.of(System.getenv("MOBSEAR_POKEMON_PCM"),c.spoken().getPath()+".pcm")));
+                        String clip=c==PokemonCase.OWL_GUARDIAN ? (scopedGuardian ? "owl-guardian-explicit" : "owl-guardian") : c.spoken().getPath();
+                        FixtureSound.say(Files.readAllBytes(Path.of(System.getenv("MOBSEAR_POKEMON_PCM"),clip+".pcm")));
                     } catch (Exception ex) { throw PokemonProbe.fail("Missing stock synthetic PCM "+c); }
                     uttered=true;
                 }
                 if (FixtureSound.finishedPhrase()) KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V),false);
-                var species=PokemonSpecies.getByIdentifier(c.spoken());
-                String expected=Component.translatable("mobsear.speech.recognized",species.getTranslatedName()).getString();
+                Component label=c.ordinaryEntity() ? net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.get(c.spoken()).getDescription()
+                        : PokemonSpecies.getByIdentifier(c.spoken()).getTranslatedName();
+                String expected=Component.translatable("mobsear.speech.recognized",label).getString();
                 recognized |= expected.equals(overlay());
                 if (recognized) { reply(PokemonProbe.FIRE); sent=true; }
             } else {
@@ -134,6 +147,8 @@ public final class PokemonCaseClient {
             if (Math.abs(Mth.wrapDegrees(entity.getYHeadRot()-yaw))<=30 && ++alignedTicks>=2) aligned=true;
         }
         if ((caller && !sent) || (c.accepts() && !aligned) || ticks<5) return;
+        if (c.guardPicture() && !guardVerified) return;
+        if ((solo || !caller) && c.guardPicture() && !saved) { capture="protected"; return; }
         if (c==PokemonCase.PACK_FORM) {
             c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client after call");
             if (!saved && capture==null) System.out.println("POKEMON_PACK_FORM_CLIENT id="+c.species+
@@ -142,7 +157,8 @@ public final class PokemonCaseClient {
         if ((solo || !caller) && c.accepts() && !saved) { capture="after"; return; }
         reply(PokemonProbe.SEEN); acknowledged=true;
         if (acoustic) System.out.println("POKEMON_REAL_SPEECH "+c+" canonical=true client-facing="+aligned+
-                " mode="+(c==PokemonCase.EEVEE?"voice-activation":"push-to-talk"));
+                " mode="+(c==PokemonCase.EEVEE?"voice-activation":"push-to-talk")+
+                (c==PokemonCase.OWL_GUARDIAN ? " syntheticVariant="+(scopedGuardian?"explicit-call":"bare-name") : ""));
     }
     private void waitFor(String reason) {
         if (!reason.equals(waiting)) System.out.println("POKEMON_CLIENT_WAIT " + reason);
