@@ -187,7 +187,12 @@ def run():
                         count=2 if earlier else 13 if os.environ.get("MOBSEAR_TEST_FEEDBACK")=="1" else 11 if os.environ.get("MOBSEAR_EXTRA_NAMES")=="1" else 6
                         if os.environ.get("MOBSEAR_TEST_VISIT")=="1":
                             count+=3
+                        if os.environ.get("MOBSEAR_TEST_SENTENCES")=="1":
+                            count+=7
                         assert len(observations)==count
+                        if os.getenv("MOBSEAR_TEST_SENTENCES")=="1":
+                            from check_debug import verify
+                            verify(game/"logs/latest.log")
                         if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
                             assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)
                             print("ACOUSTIC_REFERENCE installed 0.3.1 observed",message.split(" ",1)[1],flush=True)

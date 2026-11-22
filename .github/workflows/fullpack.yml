@@ -126,11 +126,13 @@ jobs:
           pin = Path('ci/fullpack/candidate.json')
           feedback = False
           visit = False
+          sentences = False
           if os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
               item = json.loads(pin.read_text(encoding='utf8'))
               build, digest = str(item['run']), item['sha256']
               feedback = item.get('testFeedback',False)
               visit = item.get('testVisit',False)
+              sentences = item.get('testSentences',False)
           if os.environ['MOBSEAR_EARLIER']=='1' or os.environ['MOBSEAR_INSTALLED_REFERENCE']=='1':
               build, digest = '', ''
           if build or digest:
@@ -139,6 +141,7 @@ jobs:
               print('MOBSEAR_CANDIDATE_RUN='+build,'MOBSEAR_CANDIDATE_SHA256='+digest,'MOBSEAR_TRACK_STARTUP='+('1' if build else '0'),'MOBSEAR_EXTRA_NAMES='+('1' if build else '0'),sep='\n',file=f)
               print('MOBSEAR_TEST_FEEDBACK='+('1' if build and feedback else '0'),file=f)
               print('MOBSEAR_TEST_VISIT='+('1' if build and visit else '0'),file=f)
+              print('MOBSEAR_TEST_SENTENCES='+('1' if build and sentences else '0'),file=f)
           with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as f:
               print('build='+build,file=f)
       - name: Retrieve the exact packaged candidate from its production build

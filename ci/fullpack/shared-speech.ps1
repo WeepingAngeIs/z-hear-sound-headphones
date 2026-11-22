@@ -35,6 +35,15 @@ foreach ($pair in @(@('ender-unstressed','enderman-alternate'),@('low-punny','lo
     [IO.File]::WriteAllBytes((Join-Path $Destination ($pair[1]+'.pcm')),$padded)
     Write-Output ("Generated " + $pair[1] + " with " + $row.Voice)
 }
+foreach ($phrase in @('sentence-lopunny-end','sentence-lopunny-middle','sentence-pikachu-middle',
+        'sentence-enderman-end','sentence-partial-mob','sentence-ordinary')) {
+    $row = $manifest | Where-Object { $_.Phrase -eq $phrase -and $_.Rate -eq '0' } | Select-Object -First 1
+    if ($null -eq $row) { throw "Missing synthetic sentence $phrase" }
+    $raw = [IO.File]::ReadAllBytes((Join-Path $variants ($row.File+'.raw')))
+    $padded = [byte[]]::new(640 * 31 + $raw.Length)
+    [Array]::Copy($raw,0,$padded,640 * 3,$raw.Length)
+    [IO.File]::WriteAllBytes((Join-Path $Destination ($phrase+'.pcm')),$padded)
+}
 $silence = [byte[]]::new(32000)
 [IO.File]::WriteAllBytes((Join-Path $Destination 'silence.pcm'), $silence)
 $fan = [byte[]]::new(32000 + 6400)

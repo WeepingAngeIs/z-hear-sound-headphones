@@ -49,13 +49,14 @@ public final class PackProbe {
         Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
-        boolean spokenName() { return !Set.of("hold-on", "fan", "silence").contains(recording); }
+        boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary").contains(recording); }
         String expectedName() { return recording.equals("pikachu") ? "Pikachu" : name; }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
     private final boolean measuredDecisions = "1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"));
     private final boolean testFeedback = "1".equals(System.getenv("MOBSEAR_TEST_FEEDBACK"));
     private final boolean testVisit = "1".equals(System.getenv("MOBSEAR_TEST_VISIT"));
+    private final boolean testSentences = "1".equals(System.getenv("MOBSEAR_TEST_SENTENCES"));
     private final Trial[] tests = trials();
 
     private Trial[] trials() {
@@ -76,6 +77,15 @@ public final class PackProbe {
                 cases.add(new Trial("Lopunny",16,false,false,false,"pikachu"));
                 cases.add(new Trial("Lopunny",16,false,false,false,"hold-on",false));
             }
+        }
+        if (testSentences) {
+            cases.add(new Trial("Lopunny",16,false,true,true,"sentence-lopunny-end"));
+            cases.add(new Trial("Pikachu",12,false,true,false,"sentence-pikachu-middle"));
+            cases.add(new Trial("Enderman",24,false,true,true,"sentence-enderman-end"));
+            cases.add(new Trial("Lopunny",40,false,false,true,"sentence-lopunny-end"));
+            cases.add(new Trial("Pikachu",12,false,false,false,"sentence-partial-mob"));
+            cases.add(new Trial("Pikachu",12,false,false,true,"sentence-ordinary"));
+            cases.add(new Trial("Lopunny",16,false,true,true,"sentence-lopunny-middle"));
         }
         if (testVisit) {
             cases.add(new Trial("Pikachu",12,false,true,true));
@@ -329,6 +339,11 @@ public final class PackProbe {
                 if (earlier) {
                     if (!mc.getConnection().hasChannel(Packets.Call.TYPE)) throw new IllegalStateException("Missing original call channel");
                 } else CurrentNotices.install(this);
+                if (testSentences) {
+                    if (VoiceClient.options().callDebugLog()) throw new IllegalStateException("Debug logging defaulted on");
+                    System.out.println("ACOUSTIC_DEBUG_WINDOW enabled=true freshDefaultOff=true");
+                    VoiceClient.options().setCallDebugLog(true);
+                }
                 hooked=true;
             }
             if (!mc.isWindowActive() || mc.isPaused() || mc.screen!=null) {
@@ -405,7 +420,16 @@ public final class PackProbe {
                 double yaw=Math.toDegrees(Math.atan2(mc.player.getZ()-mob.getZ(),mc.player.getX()-mob.getX()))-90;
                 double err=Math.abs(Mth.wrapDegrees(mob.getYHeadRot()-yaw));
                 if (!o.started) {
-                    if (o.seenAt==0) o.seenAt=System.nanoTime();
+                    if (o.seenAt==0) {
+                        o.seenAt=System.nanoTime();
+                        if (testSentences) {
+                            boolean log = !o.test.recording.equals("lopunny-alternate");
+                            if (log != VoiceClient.options().callDebugLog()) {
+                                System.out.println("ACOUSTIC_DEBUG_WINDOW enabled="+log+" trial="+o.number);
+                                VoiceClient.options().setCallDebugLog(log);
+                            }
+                        }
+                    }
                     if (err>60) o.facedAway=true;
                     if (testFeedback) VoiceClient.options().setRecognitionDiagnostics(o.test.detail);
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
@@ -494,6 +518,7 @@ public final class PackProbe {
                 boolean detailOk=!o.test.detail ? !o.privateText : switch(o.test.recording) {
                     case "hold-on" -> o.guess;
                     case "fan" -> o.noMatch;
+                    case "sentence-partial-mob", "sentence-ordinary" -> o.noMatch || o.guess;
                     case "silence" -> o.waiting && !o.listening && !o.checking;
                     default -> o.recognized;
                 };
