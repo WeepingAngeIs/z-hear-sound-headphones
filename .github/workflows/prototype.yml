@@ -143,6 +143,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python ci/cobblemon/public_species.py --vocabulary build/speech-species.tsv
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $fixture = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'sentence-fixture')
           ./ci/speech-focus/make.ps1 $fixture.FullName
           python ci/speech-focus/corpus.py $fixture.FullName
