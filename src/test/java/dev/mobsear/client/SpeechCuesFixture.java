@@ -143,11 +143,25 @@ public final class SpeechCuesFixture {
                 && "cobblemon:nidoranm".equals(resolved.get("nidoran male")), "Gendered display names");
         var grammar = new SpeechGrammar(null, resolved);
         require(grammar.code("zombie") == Cue.ZOMBIE.ordinal() + 1, "Species displaced vanilla cue");
+        require(grammar.code("pack zombie") > Cue.values().length, "Registry-qualified colliding name unavailable");
         require(grammar.code("flabebe") > Cue.values().length, "Accent-insensitive English name");
         for (String word : List.of("nidoran", "pokemon", "all pokemon", "everyone", "hey", "hey there",
                 "x:3|boom", "a", "ab", "extra", "my nickname", "cobblemon species hello name"))
             require(grammar.code(word) == 0, "Ambiguous, unknown or unsupported label admitted");
         require(!grammar.dispatch(65535, c -> {}, id -> {}), "Invalid helper index");
+        var mixed = SpeechGrammar.registries(Map.of("cobblemon:orb", List.of("Orb")),
+                Map.of("cobblemon:pokemon", List.of("All creatures", "Pokemon"), "pack:orb", List.of("Orb"),
+                       "other:shade", List.of("Shade"), "pack:shade", List.of("Shade")));
+        var typed = new SpeechGrammar(null, mixed);
+        require(typed.code("all creatures") == 0 && typed.code("orb") == 0 && typed.code("shade") == 0,
+                "Generic Pokemon entity or ambiguous cross-kind name admitted");
+        var speciesReply = new ArrayList<String>();
+        var entityReply = new ArrayList<String>();
+        for (String phrase : List.of("pokemon orb", "creature orb", "other shade", "pack shade")) {
+            require(typed.dispatch(typed.code(phrase), c -> {}, speciesReply::add, entityReply::add), "Typed registry decision");
+        }
+        require(speciesReply.equals(List.of("cobblemon:orb"))
+                && entityReply.equals(List.of("pack:orb", "other:shade", "pack:shade")), "Wrong kind or qualified ID");
         var boundary = new LinkedHashMap<String, List<String>>();
         for (int i = 0; i < 4097; i++) boundary.put("test:" + i, List.of("species " + i));
         require(SpeechGrammar.speciesPhrases(boundary).isEmpty(), "Oversize catalog partially admitted");
@@ -162,16 +176,26 @@ public final class SpeechCuesFixture {
             require(fields.length == 3, "Pinned species fixture format");
             require(names.put(fields[0], List.of(fields[1], fields[2])) == null, "Duplicate registry ID");
         }
-        require(names.size() == 1037, "Expected Cobblemon, Extra Eeveelutions and the matching public Lunavee entry");
+        require(names.size() == 1119, "Expected the complete registry count reported by the TEST installation");
         long begin = System.nanoTime();
-        var vocabulary = SpeechGrammar.speciesPhrases(names);
-        var grammar = new SpeechGrammar(aliasFile, vocabulary);
-        require(new java.util.HashSet<>(vocabulary.values()).size() == names.size(), "Missing pinned English species");
+        var entities = new LinkedHashMap<String, List<String>>();
+        entities.put("minecraft:cow", List.of("Cow"));
+        entities.put("minecraft:iron_golem", List.of("Iron Golem"));
+        entities.put("minecraft:guardian", List.of("Guardian"));
+        entities.put("cobblemon:pokemon", List.of("Pokémon", "Pokemon"));
+        entities.put("uwudimension:blossom_warden", List.of("Owl Guardian", "Blossom Warden", "UwU Guardian"));
+        entities.put("uwudimension:velvet_vesper", List.of("Velvet Vesper"));
+        var registries = SpeechGrammar.registries(names, entities);
+        var vocabulary = registries.species();
+        var grammar = new SpeechGrammar(aliasFile, registries);
+        verifyAllRegistryLabels(names, vocabulary, grammar);
         require("cobblemon:spectreonee".equals(vocabulary.get("spectreon")), "Add-on display name and registry ID differ");
         require("cobblemon:lunavee".equals(vocabulary.get("lunavee")), "TEST-matched public Lunavee registry/display name");
+        require(grammar.code("guardian") == Cue.GUARDIAN.ordinal() + 1 && grammar.code("minecraft guardian") > Cue.values().length,
+                "Classic guardian and exact registered guardian must remain distinct");
         var guarded = grammar.needsConfirmation();
         long guardedSpecies = guarded.stream().map(vocabulary::get).distinct().count();
-        require(guardedSpecies == 12 && guarded.containsAll(List.of("spectreon", "spectrier")), "Pinned spelling-neighbor groups");
+        require(guarded.containsAll(List.of("spectreon", "spectrier")), "Pinned spelling-neighbor group");
         require(!guarded.contains("eevee") && !guarded.contains("nidoran female") && !guarded.contains("nidoran male"),
                 "Unrelated or gender-explicit species suppressed");
         require(grammar.code("spectreon ending o n") == grammar.code("spectreon")
@@ -194,13 +218,19 @@ public final class SpeechCuesFixture {
                 synthesize("Spectreon ending O N"), synthesize("Spectrier ending E R"), synthesize("spider"),
                 synthesize("hey"), synthesize("pokemon"), synthesize("all pokemon"),
                 synthesize("the garden is beautiful"), synthesize("my little buddy"), new byte[16000],
-                synthesize("Lunavee"), synthesize("hey Lunavee")};
+                synthesize("Lunavee"), synthesize("hey Lunavee"), synthesize("Boxtail"), synthesize("Mikueon"),
+                synthesize("cow"), synthesize("iron golem"), synthesize("Owl Guardian"), synthesize("oo woo guardian"),
+                synthesize("you woo guardian"), synthesize("blossom warden"), synthesize("Velvet Vesper"), synthesize("guardian")};
         int spectreon = grammar.code("spectreon");
         int spectrier = grammar.code("spectrier");
         // For a bare close pair, exact or abstained is valid; qualified calls must return the one correct ID.
         int[][] expected = {{grammar.code("pikachu")}, {grammar.code("ditto")}, {grammar.code("eevee")}, {grammar.code("dungeon")},
                 {spectreon, 0}, {spectrier, 0}, {spectreon}, {spectrier}, {Cue.SPIDER.ordinal() + 1}, {0}, {0}, {0}, {0}, {0}, {0},
-                {grammar.code("lunavee")}, {grammar.code("lunavee")}};
+                {grammar.code("lunavee")}, {grammar.code("lunavee")}, {grammar.code("boxtail")}, {grammar.code("mikueon")},
+                {grammar.code("cow")}, {grammar.code("iron golem")}, {grammar.code("owl guardian")}, {grammar.code("owl guardian")},
+                {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("velvet vesper")}, {Cue.GUARDIAN.ordinal() + 1}};
+        require("cobblemon:boxtail".equals(vocabulary.get("boxtail")) && "cobblemon:mikueon".equals(vocabulary.get("mikueon")),
+                "Global species pack display names");
         long started = System.nanoTime();
         int[] result = decisions(SpeechCues.launch(), grammar, clips);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
@@ -216,10 +246,21 @@ public final class SpeechCuesFixture {
                 + " bareSpectreon=" + result[4] + " bareSpectrier=" + result[5]
                 + " qualifiedSpectreon=" + result[6] + " qualifiedSpectrier=" + result[7]);
         System.out.println("MOBSEAR_LUNAVEE_SPEECH_PASS bare=" + result[15] + " greeting=" + result[16] + " registry=cobblemon:lunavee");
+        System.out.println("MOBSEAR_GLOBAL_PACK_SPEECH_PASS boxtail=" + result[17] + " mikueon=" + result[18]);
+        var exactEntities = new ArrayList<String>();
+        for (int i = 19; i <= 25; i++) {
+            require(grammar.dispatch(result[i], c -> { throw new AssertionError("Unexpected classic cue"); },
+                    id -> { throw new AssertionError("Unexpected Pokemon species"); }, exactEntities::add), "Invalid entity code");
+        }
+        require(exactEntities.equals(List.of("minecraft:cow", "minecraft:iron_golem", "uwudimension:blossom_warden",
+                "uwudimension:blossom_warden", "uwudimension:blossom_warden", "uwudimension:blossom_warden",
+                "uwudimension:velvet_vesper")), "Specific synthetic entity-call outcomes " + exactEntities);
+        System.out.println("MOBSEAR_REGISTERED_ENTITY_SPEECH_PASS " + exactEntities + " vanillaGuardian=" + result[26]);
         var ids = new ArrayBlockingQueue<String>(4);
         var mobs = new ArrayBlockingQueue<Cue>(4);
-        try (var speech = new SpeechCues(mobs::add, ids::add, aliasFile, names)) {
-            speech.refreshSpecies(names);
+        var entityIds = new ArrayBlockingQueue<String>(4);
+        try (var speech = new SpeechCues(mobs::add, ids::add, entityIds::add, aliasFile, names, entities)) {
+            speech.refreshCatalog(names, entities);
             require(speech.status() == SpeechCues.Status.OFF, "Catalog refresh enabled recognition");
             started = System.nanoTime();
             speech.setEnabled(true);
@@ -232,7 +273,12 @@ public final class SpeechCuesFixture {
             speech.endUtterance();
             require("cobblemon:pikachu".equals(ids.poll(8, TimeUnit.SECONDS)), "End-to-end species callback");
             require(mobs.isEmpty(), "Species emitted an extra vanilla cue");
-            speech.refreshSpecies(Map.of());
+            for (int pos = 0; pos < clips[22].length; pos += FRAME)
+                speech.acceptFrame(Arrays.copyOfRange(clips[22], pos, pos + FRAME));
+            speech.endUtterance();
+            require("uwudimension:blossom_warden".equals(entityIds.poll(8, TimeUnit.SECONDS)) && ids.isEmpty() && mobs.isEmpty(),
+                    "End-to-end UwU Guardian must emit only its registered entity ID");
+            speech.refreshCatalog(Map.of(), Map.of());
             awaitReady(speech);
             require(ids.isEmpty(), "Removed registry produced a stale callback");
             String proof = System.getenv("MOBSEAR_SPECIES_PROOF");
@@ -241,6 +287,44 @@ public final class SpeechCuesFixture {
                     + names.size() + " normalizedNames=" + vocabulary.size() + " grammarBytes=" + encoded.size()
                     + " javaBuildMs=" + buildMillis + " SAPIReadyMs=" + readyMillis + " startupAnd" + clips.length + "ClipsMs=" + elapsedMillis);
         }
+    }
+
+    private static void verifyAllRegistryLabels(Map<String, List<String>> names,
+            Map<String, String> vocabulary, SpeechGrammar grammar) {
+        var covered = new java.util.HashSet<String>();
+        var excluded = new ArrayList<String>();
+        int distinctLabels = 0;
+        int matchedLabels = 0;
+        for (var entry : names.entrySet()) {
+            String id = entry.getKey();
+            for (String label : new java.util.LinkedHashSet<>(entry.getValue())) {
+                distinctLabels++;
+                // Resolve one label alone to distinguish malformed labels from cross-species collisions.
+                var single = SpeechGrammar.speciesPhrases(Map.of(id, List.of(label)));
+                if (single.isEmpty()) {
+                    excluded.add(id + " [" + label + "] unsupported");
+                    continue;
+                }
+                String phrase = single.keySet().iterator().next();
+                if (!id.equals(vocabulary.get(phrase))) {
+                    excluded.add(id + " [" + label + "] ambiguous");
+                    continue;
+                }
+                if (grammar.code(phrase) <= Cue.values().length) {
+                    excluded.add(id + " [" + label + "] reserved vanilla call");
+                    continue;
+                }
+                covered.add(id);
+                matchedLabels++;
+            }
+        }
+        for (String line : excluded) System.out.println("MOBSEAR_REGISTRY_LABEL_EXCEPTION " + line);
+        var missing = new java.util.TreeSet<>(names.keySet());
+        missing.removeAll(covered);
+        System.out.println("MOBSEAR_REGISTRY_LABEL_COVERAGE ids=" + names.size() + " coveredIds=" + covered.size()
+                + " distinctCanonicalAndDisplayLabels=" + distinctLabels + " matchedLabels=" + matchedLabels
+                + " excludedLabels=" + excluded.size() + " missingIds=" + missing);
+        require(missing.isEmpty(), "Species with no matching canonical or English display name: " + missing);
     }
 
     private static void awaitReady(SpeechCues speech) throws InterruptedException {

@@ -22,9 +22,12 @@ import java.util.regex.Pattern;
 final class SpeechGrammar {
     private static final int MAX_SPECIES = 4096;
     private static final int MAX_NAMES_PER_SPECIES = 2;
+    private static final int MAX_NAMES_PER_ENTITY = 6;
     private static final int MAX_ID_LENGTH = 128;
     private static final Pattern ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
     private static final Pattern PHRASE = Pattern.compile("[a-z]{1,24}(?: [a-z]{1,24}){0,3}");
+    private static final Pattern ENTITY_PHRASE = Pattern.compile("[a-z]{1,24}(?: [a-z]{1,24}){0,7}");
+    private static final Pattern UWU = Pattern.compile("\\buwu\\b");
     private static final Pattern MARKS = Pattern.compile("\\p{M}+");
     private static final Pattern SPACES = Pattern.compile(" +");
     private static final String[] DIGITS = {"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"};
@@ -33,9 +36,11 @@ final class SpeechGrammar {
             "mob", "mobs", "wild pokemon", "all mobs");
 
     private final Map<String, Integer> phrases;
-    private final List<String> speciesByIndex;
+    private final List<Registered> registeredByIndex;
     private final Set<String> needsConfirmation;
     private static final Cue[] MOBS = Cue.values();
+    record Registries(Map<String, String> species, Map<String, String> entities, Set<String> neutral) {}
+    private record Registered(boolean entity, String id) {}
 
     static boolean reserved(String phrase) {
         return RESERVED.contains(phrase) || phrase.startsWith("hey ");
@@ -43,24 +48,76 @@ final class SpeechGrammar {
 
     /** Input labels come exclusively from a species registry. Duplicate names are unusable for both species. */
     static Map<String, String> speciesPhrases(Map<String, List<String>> catalog) {
-        if (catalog.size() > MAX_SPECIES) return Map.of();
-        var unique = new TreeMap<String, String>();
-        var ambiguous = new HashSet<String>();
-        catalog.forEach((id, names) -> {
-            if (id == null || id.length() > MAX_ID_LENGTH || !ID.matcher(id).matches() || names == null) return;
-            for (int i = 0; i < Math.min(names.size(), MAX_NAMES_PER_SPECIES); i++) {
-                String phrase = spokenName(names.get(i));
-                if (phrase.isEmpty()) continue;
-                String other = unique.putIfAbsent(phrase, id);
-                if (other != null && !other.equals(id)) ambiguous.add(phrase);
-            }
-        });
-        ambiguous.forEach(unique::remove);
-        return Map.copyOf(unique);
+        return registries(catalog, Map.of()).species();
     }
 
-    private static String spokenName(String label) {
-        if (label == null || label.length() > 64) return "";
+    static Registries registries(Map<String, List<String>> species, Map<String, List<String>> entities) {
+        var unique = new TreeMap<String, Registered>();
+        var ambiguous = new TreeMap<String, Set<Registered>>();
+        addLabels(species, false, unique, ambiguous);
+        addLabels(entities, true, unique, ambiguous);
+        var qualified = new TreeMap<String, Registered>();
+        var duplicateQualifiers = new TreeMap<String, Set<Registered>>();
+        var classicNames = MobLexicon.phrases(null).keySet();
+        unique.forEach((phrase, owner) -> {
+            if (classicNames.contains(phrase)) qualify(qualified, duplicateQualifiers, phrase, owner);
+        });
+        ambiguous.forEach((phrase, owners) -> {
+            unique.remove(phrase);
+            for (Registered owner : owners) {
+                qualify(qualified, duplicateQualifiers, phrase, owner);
+                if (owners.stream().anyMatch(other -> other.entity != owner.entity)) {
+                    add(qualified, duplicateQualifiers, (owner.entity ? "creature " : "pokemon ") + phrase, owner);
+                }
+            }
+        });
+        qualified.forEach((phrase, owner) -> add(unique, duplicateQualifiers, phrase, owner));
+        var neutral = new HashSet<>(ambiguous.keySet());
+        neutral.addAll(duplicateQualifiers.keySet());
+        neutral.forEach(unique::remove);
+        var speciesNames = new TreeMap<String, String>();
+        var entityNames = new TreeMap<String, String>();
+        unique.forEach((phrase, owner) -> (owner.entity ? entityNames : speciesNames).put(phrase, owner.id));
+        return new Registries(Map.copyOf(speciesNames), Map.copyOf(entityNames), Set.copyOf(neutral));
+    }
+
+    private static void qualify(Map<String, Registered> qualified, Map<String, Set<Registered>> duplicateQualifiers,
+                                String phrase, Registered owner) {
+        String namespace = owner.id.substring(0, owner.id.indexOf(':')).replace('_', ' ').replace('.', ' ');
+        String specific = spokenName(namespace + " " + phrase, true);
+        if (!specific.isEmpty()) add(qualified, duplicateQualifiers, specific, owner);
+    }
+
+    private static void addLabels(Map<String, List<String>> catalog, boolean entity,
+                                  Map<String, Registered> unique, Map<String, Set<Registered>> ambiguous) {
+        if (catalog.size() > MAX_SPECIES) return;
+        catalog.forEach((id, names) -> {
+            if (id == null || id.length() > MAX_ID_LENGTH || !ID.matcher(id).matches() || names == null) return;
+            if (entity && id.equals("cobblemon:pokemon")) return;
+            var owner = new Registered(entity, id);
+            for (int i = 0; i < Math.min(names.size(), entity ? MAX_NAMES_PER_ENTITY : MAX_NAMES_PER_SPECIES); i++) {
+                String phrase = spokenName(names.get(i), entity);
+                if (phrase.isEmpty()) continue;
+                add(unique, ambiguous, phrase, owner);
+                if (entity && UWU.matcher(phrase).find()) {
+                    add(unique, ambiguous, UWU.matcher(phrase).replaceAll("oo woo"), owner);
+                    add(unique, ambiguous, UWU.matcher(phrase).replaceAll("you woo"), owner);
+                }
+            }
+        });
+    }
+
+    private static void add(Map<String, Registered> unique, Map<String, Set<Registered>> ambiguous, String phrase, Registered owner) {
+        Registered other = unique.putIfAbsent(phrase, owner);
+        if (other != null && !other.equals(owner)) {
+            var owners = ambiguous.computeIfAbsent(phrase, ignored -> new HashSet<>());
+            owners.add(other);
+            owners.add(owner);
+        }
+    }
+
+    private static String spokenName(String label, boolean entity) {
+        if (label == null || label.length() > (entity ? 80 : 64)) return "";
         String plain = MARKS.matcher(Normalizer.normalize(label, Normalizer.Form.NFD)).replaceAll("")
                 .toLowerCase(Locale.ROOT).replace("♀", " female ").replace("♂", " male ")
                 .replace("'", "").replace("’", "");
@@ -77,20 +134,28 @@ final class SpeechGrammar {
             else words.append(c);
         }
         String phrase = SPACES.matcher(words).replaceAll(" ").strip();
-        if (phrase.length() < 3 || phrase.length() > 54 || !PHRASE.matcher(phrase).matches()
+        if (phrase.length() < 3 || phrase.length() > (entity ? 80 : 54) || !(entity ? ENTITY_PHRASE : PHRASE).matcher(phrase).matches()
                 || reserved(phrase)) return "";
         return phrase;
     }
 
     SpeechGrammar(Path aliases, Map<String, String> speciesPhrases) {
+        this(aliases, new Registries(speciesPhrases, Map.of(), Set.of()));
+    }
+
+    SpeechGrammar(Path aliases, Registries registries) {
         var entries = new LinkedHashMap<String, Integer>();
         MobLexicon.phrases(aliases).forEach((name, cue) -> entries.put(name, cue.ordinal() + 1));
-        var ids = new ArrayList<String>();
-        var codes = new TreeMap<String, Integer>();
+        registries.neutral.forEach(phrase -> entries.putIfAbsent(phrase, 0));
+        var ids = new ArrayList<Registered>();
+        var codes = new java.util.HashMap<Registered, Integer>();
         var groups = new TreeMap<String, List<String>>();
-        new TreeMap<>(speciesPhrases).forEach((phrase, id) -> {
+        var vocabulary = new TreeMap<String, Registered>();
+        registries.species.forEach((phrase, id) -> vocabulary.put(phrase, new Registered(false, id)));
+        registries.entities.forEach((phrase, id) -> vocabulary.put(phrase, new Registered(true, id)));
+        vocabulary.forEach((phrase, target) -> {
             if (entries.containsKey(phrase)) return; // Vanilla calls and explicit local mob aliases keep precedence.
-            int code = codes.computeIfAbsent(id, key -> {
+            int code = codes.computeIfAbsent(target, key -> {
                 ids.add(key);
                 return MOBS.length + ids.size();
             });
@@ -115,7 +180,7 @@ final class SpeechGrammar {
         }
         needsConfirmation = Set.copyOf(confirm);
         phrases = Collections.unmodifiableMap(entries);
-        speciesByIndex = List.copyOf(ids);
+        registeredByIndex = List.copyOf(ids);
     }
 
     /** Only equal-length, single-word labels sharing at least six leading letters can form a group. */
@@ -138,9 +203,15 @@ final class SpeechGrammar {
     }
 
     boolean dispatch(int code, Consumer<Cue> mob, Consumer<String> species) {
-        if (code < 0 || code > MOBS.length + speciesByIndex.size()) return false;
-        if (code > MOBS.length) species.accept(speciesByIndex.get(code - MOBS.length - 1));
-        else if (code > 0) mob.accept(MOBS[code - 1]);
+        return dispatch(code, mob, species, id -> {});
+    }
+
+    boolean dispatch(int code, Consumer<Cue> mob, Consumer<String> species, Consumer<String> entity) {
+        if (code < 0 || code > MOBS.length + registeredByIndex.size()) return false;
+        if (code > MOBS.length) {
+            var registered = registeredByIndex.get(code - MOBS.length - 1);
+            (registered.entity ? entity : species).accept(registered.id);
+        } else if (code > 0) mob.accept(MOBS[code - 1]);
         return true;
     }
 

@@ -37,13 +37,15 @@ public final class MobReactions {
                 if (calm(mob)) listenGoal(mob).hear(speaker.getEyePosition());
                 continue;
             }
+            if (!(mob instanceof Zombie zombie)) {
+                NamedMobReactions.glanceIfCalm(speaker, mob, distanceLimit);
+                continue;
+            }
             mob.lookAt(speaker, 45.0F, 45.0F);
             mob.getLookControl().setLookAt(speaker, 45.0F, 45.0F);
-            if (mob instanceof Zombie zombie) {
-                listenGoal(zombie).hear(speaker.getEyePosition());
-                if (zombie.getTarget() != speaker && zombie.isWithinRestriction(speaker.blockPosition())) {
-                    zombie.setTarget(speaker);
-                }
+            listenGoal(zombie).hear(speaker.getEyePosition());
+            if (zombie.getTarget() != speaker && zombie.isWithinRestriction(speaker.blockPosition())) {
+                zombie.setTarget(speaker);
             }
         }
     }

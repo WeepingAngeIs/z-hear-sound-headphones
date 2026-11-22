@@ -35,6 +35,8 @@ final class CobblemonCalls {
 
     private CobblemonCalls() {}
 
+    static boolean isPokemon(Mob mob) { return mob instanceof PokemonEntity; }
+
     static void register() {
         NeoForge.EVENT_BUS.addListener(CobblemonCalls::tick);
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {

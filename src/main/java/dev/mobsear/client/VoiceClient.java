@@ -8,6 +8,8 @@ import dev.mobsear.net.MicState;
 import dev.mobsear.net.Packets;
 import dev.mobsear.net.VoiceSignal;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -181,8 +183,7 @@ public final class VoiceClient {
             session.suspendInput();
             session.monitor(testMic);
         }
-        if (recognition && focused && !inputBlocked && current.hasChannel(Packets.SpeciesCall.TYPE)
-                && ModList.get().isLoaded("cobblemon")) session.refreshSpecies();
+        if (recognition && focused && !inputBlocked) session.refreshCatalog(current);
         if (session.recognition != recognition) session.enableRecognition(recognition);
         if (focused && !inputBlocked) {
             session.setHeld(held, activation);
@@ -245,8 +246,13 @@ public final class VoiceClient {
         final SpeechCues speech = new SpeechCues(mob -> cue.set(new Packets.Call(mob)), id -> {
             ResourceLocation species = ResourceLocation.tryParse(id);
             if (species != null) cue.set(new Packets.SpeciesCall(species));
-        }, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"), java.util.Map.of());
+        }, id -> {
+            ResourceLocation type = ResourceLocation.tryParse(id);
+            if (type != null) cue.set(new Packets.EntityCall(type));
+        }, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"), Map.of(), Map.of());
         CobblemonNames names;
+        final EntityCallNames mobNames = new EntityCallNames();
+        Map<String, List<String>> knownSpecies = Map.of(), knownEntities = Map.of();
         final VoiceAudio audio;
         volatile boolean held;
         boolean automatic;
@@ -326,9 +332,18 @@ public final class VoiceClient {
             frames.clear();
         }
 
-        void refreshSpecies() {
-            if (names == null) names = new CobblemonNames();
-            names.refresh(speech);
+        void refreshCatalog(ClientPacketListener link) {
+            Map<String, List<String>> species = Map.of();
+            if (link.hasChannel(Packets.SpeciesCall.TYPE) && ModList.get().isLoaded("cobblemon")) {
+                if (names == null) names = new CobblemonNames();
+                species = names.snapshot();
+            }
+            Map<String, List<String>> entities = link.hasChannel(Packets.EntityCall.TYPE) ? mobNames.snapshot() : Map.of();
+            if (species != knownSpecies || entities != knownEntities) {
+                speech.refreshCatalog(species, entities);
+                knownSpecies = species;
+                knownEntities = entities;
+            }
         }
 
         synchronized void enableRecognition(boolean enable) {
@@ -350,6 +365,10 @@ public final class VoiceClient {
             if (ready instanceof Packets.SpeciesCall call) {
                 if (names == null || !link.hasChannel(Packets.SpeciesCall.TYPE)) return;
                 name = CobblemonNames.display(call.species());
+                if (name == null) return;
+            } else if (ready instanceof Packets.EntityCall call) {
+                if (!link.hasChannel(Packets.EntityCall.TYPE)) return;
+                name = EntityCallNames.display(call.entityType());
                 if (name == null) return;
             } else {
                 Cue mob = ((Packets.Call)ready).cue();

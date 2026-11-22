@@ -67,12 +67,16 @@ public final class PokemonCaseClient {
             }
             var connection=mc.getConnection();
             if (!connection.hasChannel(Packets.SpeciesCall.TYPE)) throw PokemonProbe.fail("Missing negotiated species channel");
+            if (!connection.hasChannel(Packets.EntityCall.TYPE)) throw PokemonProbe.fail("Missing negotiated mob name channel");
             for (var check:PokemonCase.requiredRegistryEntries())
                 if (PokemonSpecies.getByIdentifier(check.species)==null) {
                     waitFor("synced species " + check.species); return;
                 }
             solo=connection.getConnection().isMemoryConnection();
             caller=solo || mc.getUser().getName().equals("PokemonCaller");
+            String side=solo ? "home-client" : caller ? "caller-client" : "viewer-client";
+            PokemonRegistryAudit.check(side);
+            dev.mobsear.client.EntityNamesAudit.check(side);
             mc.options.fov().set(caller ? 30 : 45);
             hello=true;
             PacketDistributor.sendToServer(new PokemonProbe.Message(PokemonProbe.HELLO,0,0));
@@ -113,13 +117,19 @@ public final class PokemonCaseClient {
                 for (int i=0;i<320;i++) { int v=(i%20-10)*650; pcm[i*2]=(byte)v; pcm[i*2+1]=(byte)(v>>8); }
                 reply(PokemonProbe.ARRANGE);
                 PacketDistributor.sendToServer(new Packets.Up(pcm));
-                PacketDistributor.sendToServer(new Packets.SpeciesCall(c.spoken()));
+                if (c==PokemonCase.BROAD_COW) PacketDistributor.sendToServer(new Packets.Call(dev.mobsear.net.Cue.MOBS));
+                else if (c.ordinaryEntity()) PacketDistributor.sendToServer(new Packets.EntityCall(c.spoken()));
+                else PacketDistributor.sendToServer(new Packets.SpeciesCall(c.spoken()));
                 reply(PokemonProbe.FIRE); sent=true;
             }
         }
-        if (c.accepts() && mc.level.getEntity(stage.entity()) instanceof PokemonEntity entity) {
-            if (!entity.getPokemon().getSpecies().getResourceIdentifier().equals(c.species))
-                throw PokemonProbe.fail("Client received wrong tracked species "+c);
+        if (c.accepts() && mc.level.getEntity(stage.entity()) instanceof Mob entity) {
+            if (c.ordinaryEntity()) {
+                var id=net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+                if (!id.equals(c.species)) throw PokemonProbe.fail("Wrong tracked entity type "+id+" for "+c);
+            } else if (!(entity instanceof PokemonEntity pokemon) || !pokemon.getPokemon().getSpecies().getResourceIdentifier().equals(c.species)) {
+                throw PokemonProbe.fail("Client received wrong tracked Pokémon "+c);
+            }
             double yaw=Math.toDegrees(Math.atan2(8.5-entity.getZ(), c.distance+.5-entity.getX()))-90;
             if (Math.abs(Mth.wrapDegrees(entity.getYHeadRot()-yaw))<=30 && ++alignedTicks>=2) aligned=true;
         }

@@ -80,7 +80,8 @@ def run(mode):
         expected = ["pikachu-before", "pikachu-after", "eevee-after", "look-after", "approach-after", "addon-after",
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
         expected.extend(["walking_pikachu-after", "walking_eevee-after", "interrupted-after"])
-        if env.get("MOBSEAR_POKEMON_PACK") == "1": expected.extend(["pack_form-after", "pack_custom-after"])
+        if env.get("MOBSEAR_POKEMON_PACK") == "1":
+            expected.extend(["pack_form-after", "pack_custom-after", "global_pack-after", "named_cow-after", "named_hostile-after"])
         for view in expected:
             if not (landed/f"{mode}-{view}.png").is_file(): raise RuntimeError("Missing actual in-game capture " + view)
     except BaseException:
@@ -95,9 +96,11 @@ def run(mode):
             if proc.poll() is None: os.killpg(proc.pid, signal.SIGTERM)
         dest=Path("build/pokemon-evidence"); dest.mkdir(parents=True,exist_ok=True)
         for p in (root/"evidence").glob("*.png"): shutil.copy2(p,dest/p.name)
+        if (root/"catalogs").is_dir():
+            shutil.copytree(root/"catalogs",Path("build/pokemon-catalogs"),dirs_exist_ok=True)
         for log in root.glob("*.console"):
             for line in log.read_text(errors="replace").splitlines():
-                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","MOBSEAR_POKEMON_")): print(line[:450])
+                if any(k in line for k in ("POKEMON_CASE_PASS","ENTITY_NAME_CASE_PASS","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
 
 
 if __name__ == "__main__":

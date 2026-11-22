@@ -52,6 +52,10 @@ public final class ServerVoice {
         if (acceptCall(speaker)) PokemonReactions.hear(speaker, species, radius);
     }
 
+    public static void entityCue(ServerPlayer speaker, ResourceLocation entityType, double radius) {
+        if (acceptCall(speaker)) NamedMobReactions.hear(speaker, entityType, radius);
+    }
+
     public static void forget(ServerPlayer player) {
         sessions.remove(player);
         NearbyMics.forget(player);

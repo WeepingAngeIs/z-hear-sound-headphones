@@ -16,7 +16,7 @@ try {
 
     $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
     $size = $reader.ReadInt32()
-    if ($size -le 0 -or $size -gt 1048576) { exit 3 }
+    if ($size -le 0 -or $size -gt 8388608) { exit 3 }
     $vocabulary = $reader.ReadBytes($size)
     if ($vocabulary.Length -ne $size) { exit 3 }
     $aliases = @{}

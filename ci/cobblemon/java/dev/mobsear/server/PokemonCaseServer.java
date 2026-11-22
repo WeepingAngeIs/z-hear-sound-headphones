@@ -34,6 +34,7 @@ final class PokemonCaseServer {
     private static final int Y=104, Z=8;
     private final Set<UUID> arrivals = new HashSet<>(), acknowledgements = new HashSet<>();
     private ServerPlayer caller, viewer;
+    private final NamedCases named=new NamedCases();
     private Mob subject;
     private PokemonEntity witness;
     private EmptyPokeBallEntity ball;
@@ -61,6 +62,7 @@ final class PokemonCaseServer {
             if (arrivals.size() == (solo ? 1 : 2)) {
                 if (caller == null || viewer == null) throw PokemonProbe.fail("Missing genuine participants");
                 var world = caller.serverLevel();
+                PokemonRegistryAudit.check("server");
                 for (var id : PokemonCase.requiredRegistryEntries())
                     if (PokemonSpecies.getByIdentifier(id.species) == null) throw PokemonProbe.fail("Missing registry " + id.species);
                 world.setDayTime(1000);
@@ -80,6 +82,7 @@ final class PokemonCaseServer {
         if (m.stage()==PokemonProbe.ARRANGE && p==caller && phase==PokemonProbe.FIRE && !arranged) {
             arranged=true;
             if (c==PokemonCase.OFFLINE_OWNER) checkOfflineOwner();
+            if (c.ordinaryEntity()) named.arrange(c,subject);
             if (c.accepts() || c==PokemonCase.COOLDOWN_HELD) prepareIdle(subject);
             if (witness!=null) {
                 prepareIdle(witness);
@@ -93,6 +96,7 @@ final class PokemonCaseServer {
         }
         if (m.stage() == PokemonProbe.FIRE && p == caller && phase == PokemonProbe.FIRE && !fired) {
             fired = true;
+            if (c.ordinaryEntity()) named.afterWire(c,subject,caller);
             long now=p.serverLevel().getGameTime();
             if (c==PokemonCase.COOLDOWN_PRIME) firstCall=now;
             if (c.reusesSubject()) {
@@ -118,12 +122,14 @@ final class PokemonCaseServer {
         ModConfigSpec.DoubleValue chance=config.getValues().get("wildPokemonApproachChance");
         chance.set(switch (c) {
             case APPROACH, BLOCKED, WALKING_PIKACHU, WALKING_EEVEE, INTERRUPTED -> 1d;
-            case LOOK, COOLDOWN_PRIME, COOLDOWN_HELD, COOLDOWN_EXPIRED, PACK_FORM, PACK_CUSTOM -> 0d;
+            case LOOK, COOLDOWN_PRIME, COOLDOWN_HELD, COOLDOWN_EXPIRED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK -> 0d;
             default -> .20d;
         });
         caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
         if (viewer!=caller) viewer.teleportTo(world,3.5,Y+0.1,Z+5.5,148,9);
-        if (c == PokemonCase.PASSIVE) {
+        if (c.ordinaryEntity()) {
+            subject=named.spawn(c,caller);
+        } else if (c == PokemonCase.PASSIVE) {
             subject=EntityType.COW.create(world);
         } else if (!c.reusesSubject()) {
             var entity = PokemonProperties.Companion.parse(c==PokemonCase.PACK_FORM
@@ -217,13 +223,13 @@ final class PokemonCaseServer {
             age=0; acknowledgements.clear(); announce();
             return;
         }
-        boolean active=PokemonReactions.isReacting(subject);
+        boolean active=c.ordinaryEntity() ? NamedMobReactions.isReacting(subject) : PokemonReactions.isReacting(subject);
         if (witness!=null && PokemonReactions.isReacting(witness)) witnessReacted=true;
         if (!active && !fired && !arranged && c.controlled()) idle(subject);
         if (active && !c.accepts()) throw PokemonProbe.fail("Protected or wrong subject reacted: " + c);
         if (active) {
             reacted=true;
-            pathSeen |= CobblemonCalls.hasResponsePath(subject);
+            if (!c.ordinaryEntity()) pathSeen |= CobblemonCalls.hasResponsePath(subject);
             if (c.walking()) {
                 var existing=subject.getNavigation().getPath();
                 keptRoute |= existing!=null && nativeDestination.equals(existing.getTarget());
@@ -272,6 +278,7 @@ final class PokemonCaseServer {
             battle.stop();
         }
         if (ball!=null) { ball.discard(); ball=null; }
+        if (c.ordinaryEntity()) named.finish(c,subject,reacted,aligned);
         if (witness!=null) { witness.discard(); witness=null; }
         if (c==PokemonCase.BLOCKED) wall(false);
         if (c!=PokemonCase.COOLDOWN_PRIME && c!=PokemonCase.COOLDOWN_HELD) subject.discard();

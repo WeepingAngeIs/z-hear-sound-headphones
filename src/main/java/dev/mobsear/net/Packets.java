@@ -9,6 +9,7 @@ import net.minecraft.resources.ResourceLocation;
 
 public final class Packets {
     public static final int FRAME_BYTES = 640;
+    public static final int MAX_CALL_ID_LENGTH = 128;
 
     private Packets() {}
 
@@ -62,17 +63,28 @@ public final class Packets {
         @Override public Type<Down> type() { return TYPE; }
     }
 
+    private static ResourceLocation readCallId(FriendlyByteBuf buf) {
+        String key = buf.readUtf(MAX_CALL_ID_LENGTH);
+        ResourceLocation id = ResourceLocation.tryParse(key);
+        if (id == null || id.getPath().isEmpty() || !key.equals(id.toString()) || buf.isReadable())
+            throw new DecoderException("Invalid call identifier");
+        return id;
+    }
+
+    public record EntityCall(ResourceLocation entityType) implements CustomPacketPayload {
+        public static final Type<EntityCall> TYPE = id("entity_call");
+        public static final StreamCodec<FriendlyByteBuf, EntityCall> CODEC = StreamCodec.of(
+                (buf, packet) -> buf.writeUtf(packet.entityType.toString(), MAX_CALL_ID_LENGTH),
+                buf -> new EntityCall(readCallId(buf)));
+        @Override public Type<EntityCall> type() { return TYPE; }
+    }
+
     public record SpeciesCall(ResourceLocation species) implements CustomPacketPayload {
-        public static final int MAX_ID_LENGTH = 128;
+        public static final int MAX_ID_LENGTH = MAX_CALL_ID_LENGTH;
         public static final Type<SpeciesCall> TYPE = id("species_call");
         public static final StreamCodec<FriendlyByteBuf, SpeciesCall> CODEC = StreamCodec.of(
-                (buf, packet) -> buf.writeUtf(packet.species.toString(), MAX_ID_LENGTH), buf -> {
-                    String key = buf.readUtf(MAX_ID_LENGTH);
-                    ResourceLocation species = ResourceLocation.tryParse(key);
-                    if (species == null || species.getPath().isEmpty() || !key.equals(species.toString()) || buf.isReadable())
-                        throw new DecoderException("Invalid species identifier");
-                    return new SpeciesCall(species);
-                });
+                (buf, packet) -> buf.writeUtf(packet.species.toString(), MAX_ID_LENGTH),
+                buf -> new SpeciesCall(readCallId(buf)));
         @Override public Type<SpeciesCall> type() { return TYPE; }
     }
 

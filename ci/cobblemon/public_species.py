@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from urllib.request import urlopen
 from zipfile import ZipFile
+from global_species import collect, species_rows
+from speech_names import extract
 
 
 URL = "https://edge.forgecdn.net/files/9554/625/Unyielding-1.1.8.jar"
@@ -45,16 +47,22 @@ def stage(world_root=None, vocabulary=None):
         assert sha256(language).hexdigest() == "a77544d8f4c472e2745c031aefb18a5237b89357f3cfff467fac80e7052ba5c3"
         canonical, label = json.loads(data[SPECIES])["name"], json.loads(language)[LABEL]
         assert (canonical, label) == ("Lunavee", "Lunavee")
-        if vocabulary is not None:
-            lines = vocabulary.read_text(encoding="utf8").splitlines()
-            assert not any(line.split("\t", 1)[0] == ID for line in lines)
-            lines.append("\t".join((ID, canonical, label)))
-            vocabulary.write_text("\n".join(sorted(lines)) + "\n", encoding="utf8")
+        definitions, custom = species_rows(jar)
+        assert len(custom) == 10 and custom[ID] == (canonical, label)
+        # The public 1.1.8 pack misspells the filename as covislight. Its English
+        # species.name/translation already say Corvislight. TEST corrected that ID.
+        old_path, old_data, name = definitions.pop("cobblemon:covislight")
+        assert custom.pop("cobblemon:covislight") == ("Corvislight", "Corvislight")
+        definitions["cobblemon:corvislight"] = (old_path.replace("covislight.json", "corvislight.json"), old_data, name)
+        custom["cobblemon:corvislight"] = (name, name)
         if world_root is not None:
             pack = world_root / "server/PokemonFixture/datapacks/pack-lunavee"
             write(pack, "pack.mcmeta", json.dumps({"pack": {"pack_format": 48,
                 "description": "Lunavee data from public Unyielding 1.1.8"}}).encode())
             for name, blob in data.items():
+                write(pack, name, blob)
+            # Nine public raw definitions match TEST; Corvislight is a public identity-equivalent fixture.
+            for name, blob, _ in definitions.values():
                 write(pack, name, blob)
             assets = world_root / "lunavee-resources"
             render_files = sorted(n for n in jar.namelist() if
@@ -66,10 +74,28 @@ def stage(world_root=None, vocabulary=None):
                 digest.update(name.encode() + b"\0" + sha256(blob).digest())
                 write(assets, name, blob)
             assert len(render_files) == 22 and digest.hexdigest() == VISUAL_SHA
-            write(assets, ENGLISH, json.dumps({LABEL: label}).encode())
+            for lang_path in (ENGLISH, "assets/unyielding/lang/en_us.json"):
+                lang = json.loads(jar.read(lang_path))
+                labels = {k: v for k, v in lang.items() if ".species." in k and k.endswith(".name")}
+                write(assets, lang_path, json.dumps(labels).encode())
             for filename in ("CREDITS.txt", "LICENSE-Cobblemon-Eevee.txt"):
                 entry = "META-INF/licenses/imported-pokemon/lunavee/" + filename
                 write(assets, entry, jar.read(entry))
+    if world_root is not None:
+        vocabulary = world_root / "test-species.tsv"
+        extract(world_root / "server/mods", vocabulary)
+    global_rows = collect(world_root)
+    lines = vocabulary.read_text(encoding="utf8").splitlines()
+    existing = {line.partition("\t")[0] for line in lines}
+    assert len(existing) == 1036
+    assert not (existing & custom.keys() or existing & global_rows.keys() or custom.keys() & global_rows.keys())
+    lines.extend("\t".join((key, *names)) for key, names in {**custom, **global_rows}.items())
+    assert len(lines) == 1119
+    catalog = ("\n".join(sorted(lines)) + "\n").encode()
+    # Digest of TEST's read-only effective canonical IDs, registry names and English labels.
+    assert sha256(catalog).hexdigest() == "f9635d5514968552418aade2b8e5330424b0215cd2f749c3dbdac184fd37260f"
+    vocabulary.write_bytes(catalog)
+    print("TEST_SPECIES_CATALOG 1119 canonical identifiers and English labels", flush=True)
     print(f"PACK_SPECIES_DATA {ID} sha256={DATA[SPECIES]} public=Unyielding-1.1.8 data-only", flush=True)
 
 

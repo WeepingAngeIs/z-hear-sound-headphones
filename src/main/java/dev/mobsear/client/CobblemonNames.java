@@ -20,11 +20,12 @@ final class CobblemonNames {
     }
     private long revision = -1;
     private Language language;
+    private Map<String, List<String>> entries = Map.of();
 
-    void refresh(SpeechCues recognizer) {
+    Map<String, List<String>> snapshot() {
         long current = registryRevision.get();
         Language selected = Language.getInstance();
-        if (revision == current && selected == language) return;
+        if (revision == current && selected == language) return entries;
         boolean english = Minecraft.getInstance().getLanguageManager().getSelected().startsWith("en_");
         var names = new HashMap<String,List<String>>();
         for (var species : PokemonSpecies.getSpecies()) {
@@ -34,9 +35,10 @@ final class CobblemonNames {
             String localized = english && selected.has(species.getTranslationKey()) ? species.getTranslatedName().getString() : canonical;
             names.put(id, canonical.equals(localized) ? List.of(canonical) : List.of(canonical, localized));
         }
-        recognizer.refreshSpecies(Map.copyOf(names));
+        entries = Map.copyOf(names);
         revision = current;
         language = selected;
+        return entries;
     }
 
     static Component display(ResourceLocation id) {

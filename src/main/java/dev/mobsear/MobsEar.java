@@ -4,6 +4,7 @@ import dev.mobsear.net.Packets;
 import dev.mobsear.net.MicPresence;
 import dev.mobsear.server.NearbyMics;
 import dev.mobsear.server.HordeMode;
+import dev.mobsear.server.NamedMobReactions;
 import dev.mobsear.server.PokemonReactions;
 import dev.mobsear.server.ServerVoice;
 import java.util.WeakHashMap;
@@ -57,6 +58,7 @@ public final class MobsEar {
 
     public MobsEar(IEventBus bus, ModContainer container) {
         PokemonReactions.register();
+        NamedMobReactions.register();
         container.registerConfig(ModConfig.Type.SERVER, SERVER_CONFIG);
         bus.addListener(this::register);
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) -> {
@@ -101,6 +103,10 @@ public final class MobsEar {
 
     private void register(RegisterPayloadHandlersEvent event) {
         var reg = event.registrar("1").optional();
+        reg.playToServer(Packets.EntityCall.TYPE, Packets.EntityCall.CODEC, (packet, context) -> {
+            if (context.player() instanceof ServerPlayer player)
+                ServerVoice.entityCue(player, packet.entityType(), radius.getAsInt());
+        });
         if (ModList.get().isLoaded("cobblemon")) {
             reg.playToServer(Packets.SpeciesCall.TYPE, Packets.SpeciesCall.CODEC, (packet, context) -> {
                 if (context.player() instanceof ServerPlayer player)

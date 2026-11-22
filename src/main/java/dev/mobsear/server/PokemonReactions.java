@@ -29,4 +29,8 @@ public final class PokemonReactions {
     static boolean isReacting(Mob mob) {
         return ModList.get().isLoaded("cobblemon") && CobblemonCalls.isReacting(mob);
     }
+
+    static boolean isPokemon(Mob mob) {
+        return ModList.get().isLoaded("cobblemon") && CobblemonCalls.isPokemon(mob);
+    }
 }

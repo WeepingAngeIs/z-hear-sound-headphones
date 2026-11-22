@@ -26,8 +26,10 @@ public final class SpeechCues implements AutoCloseable {
     private static final long MAX_AGE_NANOS = TimeUnit.SECONDS.toNanos(4);
     private final Consumer<Cue> listener;
     private final Consumer<String> speciesListener;
+    private final Consumer<String> entityListener;
     private final Path aliasFile;
-    private Map<String, String> speciesPhrases;
+    private SpeechGrammar.Registries catalogs;
+    private Map<String, List<String>> entitySource = Map.of();
     private Session session;
     private Status status = Status.OFF;
     private boolean closed;
@@ -42,18 +44,35 @@ public final class SpeechCues implements AutoCloseable {
 
     public SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Path aliasFile,
                       Map<String, List<String>> speciesDisplayNames) {
+        this(listener, speciesListener, id -> {}, aliasFile, speciesDisplayNames, Map.of());
+    }
+
+    public SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Consumer<String> entityListener,
+                      Path aliasFile, Map<String, List<String>> speciesDisplayNames, Map<String, List<String>> entityDisplayNames) {
         this.listener = Objects.requireNonNull(listener);
         this.speciesListener = Objects.requireNonNull(speciesListener);
+        this.entityListener = Objects.requireNonNull(entityListener);
         this.aliasFile = aliasFile;
-        this.speciesPhrases = SpeechGrammar.speciesPhrases(speciesDisplayNames);
+        refreshCatalog(speciesDisplayNames, entityDisplayNames);
     }
 
     /** English desktop SAPI uses the registry's English canonical/display names, never an entity nickname. */
     public synchronized void refreshSpecies(Map<String, List<String>> speciesDisplayNames) {
+        refreshCatalog(speciesDisplayNames, entitySource);
+    }
+
+    public synchronized void refreshCatalog(Map<String, List<String>> speciesDisplayNames, Map<String, List<String>> entityDisplayNames) {
         if (closed) return;
-        var updated = SpeechGrammar.speciesPhrases(speciesDisplayNames);
-        if (speciesPhrases.equals(updated)) return;
-        speciesPhrases = updated;
+        if (entityDisplayNames != entitySource) {
+            var snapshot = new java.util.HashMap<String, List<String>>();
+            if (entityDisplayNames.size() <= 4096) entityDisplayNames.forEach((key, labels) -> {
+                if (key != null && labels != null) snapshot.put(key, labels.stream().limit(6).filter(Objects::nonNull).toList());
+            });
+            entitySource = Map.copyOf(snapshot);
+        }
+        var updated = SpeechGrammar.registries(speciesDisplayNames, entitySource);
+        if (updated.equals(catalogs)) return;
+        catalogs = updated;
         if (session != null) {
             setEnabled(false);
             setEnabled(true);
@@ -132,7 +151,7 @@ public final class SpeechCues implements AutoCloseable {
     }
 
     private final class Session {
-        private final Map<String, String> species = speciesPhrases;
+        private final SpeechGrammar.Registries registry = catalogs;
         private final ArrayBlockingQueue<Clip> pending = new ArrayBlockingQueue<>(1);
         private final Utterances utterances = new Utterances(this::submit);
         private final Thread worker = Thread.ofPlatform().daemon().name("Mob's Ear speech")
@@ -160,7 +179,7 @@ public final class SpeechCues implements AutoCloseable {
         private void run() {
             Process child = null;
             try {
-                var grammar = new SpeechGrammar(aliasFile, species);
+                var grammar = new SpeechGrammar(aliasFile, registry);
                 child = launch();
                 synchronized (SpeechCues.this) {
                     if (session != this) return;
@@ -179,7 +198,7 @@ public final class SpeechCues implements AutoCloseable {
                             if (!clip.fresh()) continue;
                             int decision = exchange(child, input, output, grammar, clip);
                             synchronized (SpeechCues.this) {
-                                if (session == this && clip.fresh() && !grammar.dispatch(decision, listener, speciesListener))
+                                if (session == this && clip.fresh() && !grammar.dispatch(decision, listener, speciesListener, entityListener))
                                     throw new IOException("Invalid speech helper reply");
                             }
                         } finally {
