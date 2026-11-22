@@ -49,9 +49,12 @@ public final class SmokeClient {
         var mc = Minecraft.getInstance();
         var connection = mc.getConnection();
         if (ready || mc.player == null || mc.level == null || connection == null) return;
-        if (!connection.hasChannel(Packets.Up.TYPE) || !connection.hasChannel(SmokeControl.Barrier.TYPE)) {
+        if (!connection.hasChannel(Packets.Up.TYPE) || !connection.hasChannel(SmokeControl.Barrier.TYPE)
+                || !connection.hasChannel(Packets.CallRequest.TYPE) || !connection.hasChannel(Packets.Heard.TYPE)) {
             throw SmokeControl.failure("missing negotiated payload channel");
         }
+        if (connection.hasChannel(Packets.SpeciesCall.TYPE))
+            throw SmokeControl.failure("Standalone server advertised the optional Cobblemon species channel");
         sender = SmokeControl.SPEAKER.equals(mc.getUser().getName());
         if (!sender && !SmokeControl.LISTENER.equals(mc.getUser().getName())) {
             throw SmokeControl.failure("unexpected offline username");

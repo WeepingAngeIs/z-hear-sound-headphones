@@ -19,7 +19,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -56,6 +55,8 @@ public final class VoiceClient {
     private MicPresence.Controls advertised;
     private int sinceAdvertised;
     private boolean waitForRelease;
+    // Monotonic across device changes, dimensions, and reconnects in this client process.
+    private long lastRequestId, pendingRequestId, pendingInputRevision;
 
     public VoiceClient(IEventBus bus, ModContainer container) {
         instance = this;
@@ -79,7 +80,10 @@ public final class VoiceClient {
     public static boolean connected() { return instance != null && instance.session != null; }
     public static void heard(Packets.Heard ack) {
         var mc = Minecraft.getInstance();
-        if (!connected() || !instance.recognition || options().muted() || options().deafened()
+        if (!connected() || ack.requestId() != instance.pendingRequestId || instance.pendingRequestId == 0) return;
+        instance.pendingRequestId = 0;
+        if (!instance.recognition || instance.pendingInputRevision != options().inputRevision()
+                || options().muted() || options().deafened()
                 || instance.connection != mc.getConnection() || mc.player == null || !mc.player.isAlive()
                 || mc.player.isSpectator() || mc.player.isCreative() || instance.session.level != mc.level) return;
         Component name;
@@ -91,6 +95,28 @@ public final class VoiceClient {
         }
         if (name != null) MobCallNotice.confirm(Component.translatable("mobsear.speech.heard", name));
     }
+
+    static void sendCall(ClientPacketListener link, Packets.MobCall call) {
+        if (link.hasChannel(Packets.CallRequest.TYPE) && link.hasChannel(Packets.Heard.TYPE)) {
+            long requestId = ++instance.lastRequestId;
+            instance.pendingRequestId = requestId;
+            instance.pendingInputRevision = options().inputRevision();
+            PacketDistributor.sendToServer(new Packets.CallRequest(requestId, call));
+        } else {
+            instance.pendingRequestId = 0;
+            PacketDistributor.sendToServer(call);
+        }
+    }
+
+    static void setRecognition(boolean enabled) {
+        instance.recognition = enabled;
+        if (!enabled) {
+            instance.pendingRequestId = 0;
+            MobCallNotice.clearMatch();
+            if (instance.session != null && instance.session.recognition) instance.session.enableRecognition(false);
+        }
+    }
+
     public static VoicePreferences options() { return instance.preferences; }
     public static boolean voiceActivated() { return connected() && instance.activation; }
     public static void setVoiceActivated(boolean enabled) {
@@ -153,7 +179,7 @@ public final class VoiceClient {
         var link = mc.getConnection();
         boolean available = mc.player != null && link != null && link.hasChannel(Packets.Call.TYPE);
         return new VoiceSettingsScreen(parent, preferences, () -> recognition,
-                available ? enabled -> recognition = enabled : null,
+                available ? VoiceClient::setRecognition : null,
                 uuid -> session != null && session.activity.speaking(uuid, System.nanoTime()));
     }
 
@@ -173,7 +199,7 @@ public final class VoiceClient {
         boolean usable = current != null && mc.level != null && mc.player != null && mc.player.isAlive()
                 && !mc.player.isSpectator() && current.hasChannel(Packets.Up.TYPE);
         while (toggle.consumeClick()) {
-            if (usable && focused) recognition = !recognition;
+            if (usable && focused) setRecognition(!recognition);
         }
         while (mute.consumeClick()) if (usable && focused) {
             preferences.setMuted(!preferences.muted());
@@ -191,10 +217,12 @@ public final class VoiceClient {
         publishControls(current);
         if (!(mc.screen instanceof VoiceSettingsScreen) || !mc.isWindowActive()) testMic = false;
         boolean inputBlocked = preferences.muted() || preferences.deafened();
-        if (inputBlocked) {
-            testMic = false;
+        if (inputBlocked || session.creative != mc.player.isCreative()) {
+            pendingRequestId = 0;
             MobCallNotice.clearMatch();
+            session.creative = mc.player.isCreative();
         }
+        if (inputBlocked) testMic = false;
         if (!talk.isDown()) waitForRelease = false;
         boolean held = focused && !inputBlocked && (activation || (talk.isDown() && !waitForRelease));
         if (!focused || inputBlocked) {
@@ -233,6 +261,7 @@ public final class VoiceClient {
     }
 
     private void closeSession() {
+        pendingRequestId = 0;
         MobCallNotice.clear();
         if (session != null) {
             session.close();
@@ -261,7 +290,7 @@ public final class VoiceClient {
         final ArrayBlockingQueue<byte[]> frames = new ArrayBlockingQueue<>(12);
         final CaptureGate gate = new CaptureGate();
         final OutgoingPitch pitch = new OutgoingPitch();
-        final AtomicReference<CustomPacketPayload> cue = new AtomicReference<>();
+        final AtomicReference<Packets.MobCall> cue = new AtomicReference<>();
         final AtomicReference<VoiceAudio.Problem> problem = new AtomicReference<>();
         final SpeechCues speech = new SpeechCues(mob -> cue.set(new Packets.Call(mob)), id -> {
             ResourceLocation species = ResourceLocation.tryParse(id);
@@ -280,6 +309,7 @@ public final class VoiceClient {
         long lastSpeaking;
         long lastMeter;
         boolean recognition;
+        boolean creative;
         boolean suspended;
         SpeechCues.Status previous = SpeechCues.Status.OFF;
 
@@ -381,8 +411,9 @@ public final class VoiceClient {
             for (int i = 0; i < 12 && (frame = frames.poll()) != null; i++) {
                 PacketDistributor.sendToServer(new Packets.Up(frame));
             }
-            CustomPacketPayload ready = cue.getAndSet(null);
+            Packets.MobCall ready = cue.getAndSet(null);
             if (ready == null || !recognition) return;
+            instance.pendingRequestId = 0;
             MobCallNotice.clearMatch();
             var mc = Minecraft.getInstance();
             Component name;
@@ -409,7 +440,7 @@ public final class VoiceClient {
             }
             if (prefs.recognitionDiagnostics())
                 MobCallNotice.diagnose(Component.translatable("mobsear.speech.recognized", name));
-            PacketDistributor.sendToServer(ready);
+            sendCall(link, ready);
         }
 
         void reportStatus(Minecraft mc) {

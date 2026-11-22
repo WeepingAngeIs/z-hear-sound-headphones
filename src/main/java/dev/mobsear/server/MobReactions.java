@@ -1,7 +1,6 @@
 package dev.mobsear.server;
 
 import dev.mobsear.net.Cue;
-import dev.mobsear.net.MobCallTypes;
 import java.util.EnumSet;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -17,7 +16,6 @@ import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
 
 public final class MobReactions {
     private MobReactions() {}
@@ -43,9 +41,7 @@ public final class MobReactions {
             if (reactToSpeaker(mob, speaker, distanceLimit)
                     && (nearest == null || mob.distanceToSqr(speaker) < nearest.distanceToSqr(speaker))) nearest = mob;
         }
-        if (nearest == null) return null;
-        if (nearest.getTags().contains("cu_mimic") && ModList.get().isLoaded("cumimic")) return MobCallTypes.DUNGEON_MIMIC;
-        return BuiltInRegistries.ENTITY_TYPE.getKey(nearest.getType());
+        return nearest == null ? null : NamedMobReactions.listenerName(nearest);
     }
 
     private static boolean reactToSpeaker(Mob mob, ServerPlayer speaker, double distanceLimit) {
@@ -80,7 +76,7 @@ public final class MobReactions {
     }
 
     private static boolean calm(Mob mob) {
-        return mob.getTarget() == null && (!(mob instanceof EnderMan enderman)
+        return !mob.isPassenger() && !mob.isVehicle() && mob.getTarget() == null && (!(mob instanceof EnderMan enderman)
                 || (!enderman.hasBeenStaredAt() && !enderman.isCreepy() && !enderman.isAngry()));
     }
 

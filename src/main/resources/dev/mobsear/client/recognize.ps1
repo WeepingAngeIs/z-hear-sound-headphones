@@ -102,6 +102,55 @@ try {
         }
     }
 
+    function Get-QuietBuffer([byte[]]$source) {
+        $samples = [int16[]]::new($source.Length / 2)
+        try {
+            [Buffer]::BlockCopy($source, 0, $samples, 0, $source.Length)
+            [int]$peak = 0
+            foreach ($sample in $samples) { $peak = [Math]::Max($peak, [Math]::Abs([int]$sample)) }
+            if ($peak -lt 3000) { return $null }
+            $gain = 2300.0 / $peak
+            for ($i = 0; $i -lt $samples.Length; $i++) { $samples[$i] = [int16]($samples[$i] * $gain) }
+            $bytes = [byte[]]::new($source.Length)
+            [Buffer]::BlockCopy($samples, 0, $bytes, 0, $bytes.Length)
+            return ,$bytes
+        } finally {
+            [Array]::Clear($samples, 0, $samples.Length)
+        }
+    }
+
+    function Confirm-LevelMatch([string]$proposed, [string]$utterance, [byte[]]$source, $elapsed) {
+        $quiet = Get-QuietBuffer $source
+        if ($null -eq $quiet) { return $false }
+        $quietStream = [System.IO.MemoryStream]::new($quiet, $false)
+        $catalogStream = $null
+        try {
+            $pronunciationBackground.Enabled = $false
+            $pronouncer.SetInputToAudioStream($quietStream, $format)
+            $phonetic = $pronouncer.Recognize()
+            if ($null -eq $phonetic -or $phonetic.Confidence -lt 0.90 -or
+                    $phonetic.Text -ne $utterance -or $elapsed.ElapsedMilliseconds -ge 1200) { return $false }
+            $engine.SetInputToNull()
+            $catalogStream = [System.IO.MemoryStream]::new($quiet, $false)
+            $background.Enabled = $false
+            $engine.SetInputToAudioStream($catalogStream, $format)
+            $catalogMatch = $engine.Recognize()
+            if ($null -eq $catalogMatch -or $catalogMatch.Grammar -ne $calls -or $catalogMatch.Confidence -lt 0.66) { return $false }
+            $catalogName = $catalogMatch.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
+            return $aliases.ContainsKey($catalogName) -and $aliases[$catalogName] -eq $aliases[$proposed]
+        } finally {
+            if ($null -ne $catalogStream) {
+                $engine.SetInputToNull()
+                $background.Enabled = $true
+                $catalogStream.Dispose()
+            }
+            $pronouncer.SetInputToNull()
+            $pronunciationBackground.Enabled = $true
+            $quietStream.Dispose()
+            [Array]::Clear($quiet, 0, $quiet.Length)
+        }
+    }
+
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
         16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,
         [System.Speech.AudioFormat.AudioChannel]::Mono)
@@ -120,6 +169,7 @@ try {
         $pcm = $reader.ReadBytes($length)
         if ($pcm.Length -ne $length) { exit 3 }
         $stream = [System.IO.MemoryStream]::new($pcm, $false)
+        $elapsed = [Diagnostics.Stopwatch]::StartNew()
         $decision = 0
         try {
             $engine.SetInputToAudioStream($stream, $format)
@@ -234,6 +284,16 @@ try {
                                 if (($samePrimary -and $result.Confidence -ge 0.82 -and $restricted.Confidence -ge 0.74) -or
                                         ($samePrimary -and $result.Confidence -ge 0.68 -and $restricted.Confidence -ge 0.90) -or
                                         ($sameOpen -and $match.Confidence -ge 0.70 -and $restricted.Confidence -ge 0.90)) {
+                                    $confident = $true
+                                    $name = $proposed
+                                }
+                                # Only spend two extra short passes on a plausible missed name. Require
+                                # agreement between different vocabularies at the common input level.
+                                # A forced match in the small grammar alone cannot rescue a rejection.
+                                $canRetry = -not $confident -and $decision -eq 0 -and $proposed -in @('lopunny', 'enderman') -and
+                                        $restricted.Confidence -ge 0.62 -and $elapsed.ElapsedMilliseconds -lt 800 -and
+                                        -not ($null -ne $match -and $match.Grammar -is [System.Speech.Recognition.DictationGrammar] -and $match.Confidence -ge 0.30)
+                                if ($canRetry -and (Confirm-LevelMatch $proposed $restricted.Text $pcm $elapsed)) {
                                     $confident = $true
                                     $name = $proposed
                                 }

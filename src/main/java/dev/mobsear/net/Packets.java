@@ -71,21 +71,54 @@ public final class Packets {
         return id;
     }
 
-    /** Private reply to the caller, emitted only when a server-side reaction starts. */
-    public record Heard(ResourceLocation id, boolean species) implements CustomPacketPayload {
-        public static final Type<Heard> TYPE = Packets.id("heard");
+    public sealed interface MobCall extends CustomPacketPayload permits Call, EntityCall, SpeciesCall {}
+
+    private static long readRequestId(FriendlyByteBuf buf) {
+        long value = buf.readVarLong();
+        if (value <= 0) throw new DecoderException("Invalid mob call request number");
+        return value;
+    }
+
+    /** A negotiated extension of the original calls; their codecs still enforce the same bounds. */
+    public record CallRequest(long requestId, MobCall call) implements CustomPacketPayload {
+        public static final Type<CallRequest> TYPE = Packets.id("call_request");
+        public static final StreamCodec<FriendlyByteBuf, CallRequest> CODEC = StreamCodec.of((buf, packet) -> {
+            buf.writeVarLong(packet.requestId);
+            switch (packet.call) {
+                case Call classic -> { buf.writeByte(0); Call.CODEC.encode(buf, classic); }
+                case EntityCall entity -> { buf.writeByte(1); EntityCall.CODEC.encode(buf, entity); }
+                case SpeciesCall species -> { buf.writeByte(2); SpeciesCall.CODEC.encode(buf, species); }
+            }
+        }, buf -> {
+            long number = readRequestId(buf);
+            MobCall call = switch (buf.readUnsignedByte()) {
+                case 0 -> Call.CODEC.decode(buf);
+                case 1 -> EntityCall.CODEC.decode(buf);
+                case 2 -> SpeciesCall.CODEC.decode(buf);
+                default -> throw new DecoderException("Invalid mob call kind");
+            };
+            return new CallRequest(number, call);
+        });
+        @Override public Type<CallRequest> type() { return TYPE; }
+    }
+
+    /** Private reply to the numbered request that started a server-side reaction. */
+    public record Heard(long requestId, ResourceLocation id, boolean species) implements CustomPacketPayload {
+        public static final Type<Heard> TYPE = Packets.id("heard_reply");
         public static final StreamCodec<FriendlyByteBuf, Heard> CODEC = StreamCodec.of((buf, packet) -> {
+            buf.writeVarLong(packet.requestId);
             buf.writeBoolean(packet.species);
             buf.writeUtf(packet.id.toString(), MAX_CALL_ID_LENGTH);
         }, buf -> {
+            long number = readRequestId(buf);
             int kind = buf.readUnsignedByte();
             if (kind > 1) throw new DecoderException("Invalid heard mob kind");
-            return new Heard(readCallId(buf), kind == 1);
+            return new Heard(number, readCallId(buf), kind == 1);
         });
         @Override public Type<Heard> type() { return TYPE; }
     }
 
-    public record EntityCall(ResourceLocation entityType) implements CustomPacketPayload {
+    public record EntityCall(ResourceLocation entityType) implements MobCall {
         public static final Type<EntityCall> TYPE = id("entity_call");
         public static final StreamCodec<FriendlyByteBuf, EntityCall> CODEC = StreamCodec.of(
                 (buf, packet) -> buf.writeUtf(packet.entityType.toString(), MAX_CALL_ID_LENGTH),
@@ -93,7 +126,7 @@ public final class Packets {
         @Override public Type<EntityCall> type() { return TYPE; }
     }
 
-    public record SpeciesCall(ResourceLocation species) implements CustomPacketPayload {
+    public record SpeciesCall(ResourceLocation species) implements MobCall {
         public static final int MAX_ID_LENGTH = MAX_CALL_ID_LENGTH;
         public static final Type<SpeciesCall> TYPE = id("species_call");
         public static final StreamCodec<FriendlyByteBuf, SpeciesCall> CODEC = StreamCodec.of(
@@ -102,7 +135,7 @@ public final class Packets {
         @Override public Type<SpeciesCall> type() { return TYPE; }
     }
 
-    public record Call(Cue cue) implements CustomPacketPayload {
+    public record Call(Cue cue) implements MobCall {
         public static final Type<Call> TYPE = id("mob_cue");
         public static final StreamCodec<FriendlyByteBuf, Call> CODEC = StreamCodec.of(
                 (buf, packet) -> buf.writeByte(packet.cue.ordinal()), buf -> {

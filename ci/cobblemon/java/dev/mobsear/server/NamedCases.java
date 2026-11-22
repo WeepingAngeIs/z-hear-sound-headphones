@@ -31,7 +31,7 @@ final class NamedCases {
             // Shade the sample using real blocks; the native disguise retains its own equipment.
             for (int x=-3;x<=3;x++) for (int z=5;z<=11;z++) level.setBlockAndUpdate(new net.minecraft.core.BlockPos(x,111,z),
                     net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
-            if (c==PokemonCase.DUNGEON_MIMIC) { subject.addTag("cu_mimic"); subject.addTag("cu_floor_1"); }
+            if (c.nativeMimic()) { subject.addTag("cu_mimic"); subject.addTag("cu_floor_1"); }
             else if (c==PokemonCase.NAMED_ONLY_ZOMBIE) subject.setCustomName(net.minecraft.network.chat.Component.literal("Dungeon Mimic"));
         }
         if (c==PokemonCase.BROAD_COW || c==PokemonCase.BOSS_FIGHTING || c==PokemonCase.NAGA_COMBAT || c==PokemonCase.OWL_OFFENDER) {
@@ -55,11 +55,16 @@ final class NamedCases {
         if (c.mimicCase()) {
             var target=subject.getTarget();
             boolean marked=subject.getTags().contains("cu_mimic"), disguised=subject.getPersistentData().hasUUID("cu_mimic_fake");
-            boolean allied=subject.isAlliedTo(caller), expected=c==PokemonCase.DUNGEON_MIMIC;
+            boolean allied=subject.isAlliedTo(caller), expected=c.nativeMimic();
             var details=c+" marked="+marked+" nativeDisguise="+disguised+" callerAllied="+allied+" callerDistance="+subject.distanceTo(caller)+
                     " callerVisible="+subject.hasLineOfSight(caller)+" target="+(target==null?"none":BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()));
             System.out.println("ENTITY_MIMIC_SETUP "+details);
             if (target!=null || marked!=expected || disguised!=expected || !allied) throw PokemonProbe.fail("Wrong Mimic setup "+details);
+            if (c==PokemonCase.ZOMBIE_CALL_MIMIC) {
+                var zombies=caller.serverLevel().getEntitiesOfClass(Mob.class,caller.getBoundingBox().inflate(32),
+                        mob -> mob.getType()==EntityType.ZOMBIE && mob.isAlive() && mob.distanceToSqr(caller)<=32*32);
+                if (zombies.size()!=1 || zombies.get(0)!=subject) throw PokemonProbe.fail("Expected only the native Mimic in range: "+zombies);
+            }
         } else if (c==PokemonCase.BOSS_CHARGING) ((WitherBoss)subject).makeInvulnerable();
         else if (c==PokemonCase.BOSS_FIGHTING || c==PokemonCase.NAGA_COMBAT) subject.setTarget(companion);
         else if (c==PokemonCase.BROAD_COW) companion.setTarget(null);

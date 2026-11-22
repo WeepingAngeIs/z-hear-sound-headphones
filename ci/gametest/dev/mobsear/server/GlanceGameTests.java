@@ -35,6 +35,19 @@ public final class GlanceGameTests {
         walking(test, EntityType.SPIDER, Cue.SPIDER);
     }
 
+    @GameTest(template = "hearing_floor", batch = "spider_jockey")
+    public static void spiderJockeyKeepsControl(GameTestHelper test) {
+        var spider = test.spawn(EntityType.SPIDER, 5, 2, 5);
+        var rider = test.spawn(EntityType.SKELETON, 5, 2, 5);
+        if (!spider.isVehicle()) rider.startRiding(spider, true);
+        test.assertTrue(spider.isVehicle(), "Missing native rider");
+        var player = speaker(test, spider.position().add(3, 0, 0));
+        int before = spider.goalSelector.getAvailableGoals().size();
+        test.assertTrue(MobReactions.react(player, Cue.SPIDER, 5) == null, "An occupied spider confirmed a call");
+        test.assertTrue(spider.goalSelector.getAvailableGoals().size() == before && spider.isVehicle(), "Voice disturbed a jockey");
+        test.succeed();
+    }
+
     private static void walking(GameTestHelper test, EntityType<? extends Mob> type, Cue named) {
         var mob = test.spawn(type, 3, 2, 5);
         var origin = mob.position();

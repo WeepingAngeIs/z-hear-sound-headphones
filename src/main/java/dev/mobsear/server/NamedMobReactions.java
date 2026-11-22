@@ -42,19 +42,27 @@ public final class NamedMobReactions {
 
     static boolean isReacting(Mob mob) { return active.containsKey(mob); }
 
-    static boolean hear(ServerPlayer caller, ResourceLocation id, double radius) {
-        if (!eligibleCaller(caller) || !Double.isFinite(radius) || radius <= 0) return false;
+    static ResourceLocation hear(ServerPlayer caller, ResourceLocation id, double radius) {
+        if (!eligibleCaller(caller) || !Double.isFinite(radius) || radius <= 0) return null;
         boolean dungeonMimic = MobCallTypes.DUNGEON_MIMIC.equals(id) && ModList.get().isLoaded("cumimic");
         var type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
-        if (!dungeonMimic && (type == null || !MobCallTypes.eligibleType(id, type))) return false;
+        if (!dungeonMimic && (type == null || !MobCallTypes.eligibleType(id, type))) return null;
         var level = caller.serverLevel();
         double limit = radius * radius;
-        boolean heard = false;
+        Mob nearest = null;
         for (var mob : level.getEntitiesOfClass(Mob.class, caller.getBoundingBox().inflate(radius), candidate ->
                 candidate.distanceToSqr(caller) <= limit && (dungeonMimic ? candidate.getTags().contains("cu_mimic") : candidate.getType() == type))) {
-            if (glanceIfCalm(caller, mob, limit)) heard = true;
+            if (glanceIfCalm(caller, mob, limit)
+                    && (nearest == null || mob.distanceToSqr(caller) < nearest.distanceToSqr(caller))) {
+                nearest = mob;
+            }
         }
-        return heard;
+        return nearest == null ? null : listenerName(nearest);
+    }
+
+    static ResourceLocation listenerName(Mob mob) {
+        if (mob.getTags().contains("cu_mimic") && ModList.get().isLoaded("cumimic")) return MobCallTypes.DUNGEON_MIMIC;
+        return BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
     }
 
     static boolean glanceIfCalm(ServerPlayer caller, Mob mob, double limit) {

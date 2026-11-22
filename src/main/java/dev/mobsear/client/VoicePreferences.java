@@ -28,6 +28,7 @@ public final class VoicePreferences {
     private UUID pitchAccount;
     private String pitchPrefix = "";
     private long deviceRevision;
+    private long inputRevision;
 
     public VoicePreferences(Path file) {
         this(file, new VoiceDevices());
@@ -86,9 +87,16 @@ public final class VoicePreferences {
     }
 
     public synchronized boolean muted() { return flag("micMuted", false); }
-    public synchronized void setMuted(boolean value) { setFlag("micMuted", value); }
+    public synchronized void setMuted(boolean value) {
+        if (value != muted()) inputRevision++;
+        setFlag("micMuted", value);
+    }
     public synchronized boolean deafened() { return flag("deafened", false); }
-    public synchronized void setDeafened(boolean value) { setFlag("deafened", value); }
+    public synchronized void setDeafened(boolean value) {
+        if (value != deafened()) inputRevision++;
+        setFlag("deafened", value);
+    }
+    synchronized long inputRevision() { return inputRevision; }
     public synchronized boolean noiseSuppression() { return flag("noiseSuppression", false); }
     public synchronized void setNoiseSuppression(boolean value) { setFlag("noiseSuppression", value); }
     public synchronized boolean recognitionDiagnostics() { return flag("recognitionDiagnostics", false); }

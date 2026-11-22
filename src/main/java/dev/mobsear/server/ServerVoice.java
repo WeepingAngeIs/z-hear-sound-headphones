@@ -46,23 +46,37 @@ public final class ServerVoice {
     }
 
     public static void cue(ServerPlayer speaker, Cue cue, double radius) {
+        cue(speaker, cue, radius, 0);
+    }
+
+    public static void cue(ServerPlayer speaker, Cue cue, double radius, long requestId) {
         if (!acceptCall(speaker)) return;
         ResourceLocation listener = MobReactions.react(speaker, cue, radius);
-        if (listener != null) confirm(speaker, listener, false);
+        if (listener != null) confirm(speaker, requestId, listener, false);
     }
 
     public static void speciesCue(ServerPlayer speaker, ResourceLocation species, double radius) {
-        if (acceptCall(speaker) && PokemonReactions.tryCall(speaker, species, radius)) confirm(speaker, species, true);
+        speciesCue(speaker, species, radius, 0);
+    }
+
+    public static void speciesCue(ServerPlayer speaker, ResourceLocation species, double radius, long requestId) {
+        if (acceptCall(speaker) && PokemonReactions.tryCall(speaker, species, radius)) confirm(speaker, requestId, species, true);
     }
 
     public static void entityCue(ServerPlayer speaker, ResourceLocation entityType, double radius) {
-        if (acceptCall(speaker) && NamedMobReactions.hear(speaker, entityType, radius)) confirm(speaker, entityType, false);
+        entityCue(speaker, entityType, radius, 0);
     }
 
-    private static void confirm(ServerPlayer speaker, ResourceLocation id, boolean species) {
-        if (id.toString().length() <= Packets.MAX_CALL_ID_LENGTH && speaker.connection != null
+    public static void entityCue(ServerPlayer speaker, ResourceLocation entityType, double radius, long requestId) {
+        if (!acceptCall(speaker)) return;
+        ResourceLocation listener = NamedMobReactions.hear(speaker, entityType, radius);
+        if (listener != null) confirm(speaker, requestId, listener, false);
+    }
+
+    private static void confirm(ServerPlayer speaker, long requestId, ResourceLocation id, boolean species) {
+        if (requestId > 0 && id.toString().length() <= Packets.MAX_CALL_ID_LENGTH && speaker.connection != null
                 && speaker.connection.hasChannel(Packets.Heard.TYPE))
-            PacketDistributor.sendToPlayer(speaker, new Packets.Heard(id, species));
+            PacketDistributor.sendToPlayer(speaker, new Packets.Heard(requestId, id, species));
     }
 
     public static void forget(ServerPlayer player) {

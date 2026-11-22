@@ -32,12 +32,8 @@ public final class FocusFixture {
         if (grammar.code("enderman") != Cue.ENDERMAN.ordinal()+1
                 || !id(grammar, grammar.code("lopunny")).equals("cobblemon:lopunny")) throw new AssertionError("Incorrect names");
         var rows = new ArrayList<String>();
-        rows.add("fixture\tvoice\tphrase\tprofile\tmode\texpected\tactual\tsegments");
-        boolean probe = args[1].equals("candidate-probe");
-        Process helper = probe ? new ProcessBuilder(Path.of(System.getenv("SystemRoot"), "System32",
-                "WindowsPowerShell", "v1.0", "powershell.exe").toString(), "-NoLogo", "-NoProfile",
-                "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", dir.resolve("probe.ps1").toString())
-                .redirectError(ProcessBuilder.Redirect.INHERIT).start() : SpeechCues.launch();
+        rows.add("fixture\tvoice\tphrase\tprofile\tmode\texpected\tactual\tsegments\tmaxMillis");
+        Process helper = SpeechCues.launch();
         helper.onExit().orTimeout(210,TimeUnit.SECONDS).exceptionally(e -> {helper.destroyForcibly(); return null;});
         try (var input=new DataInputStream(helper.getInputStream()); var output=new DataOutputStream(helper.getOutputStream())) {
             grammar.writeTo(output);
@@ -60,17 +56,18 @@ public final class FocusFixture {
                                 (wire,original)->segments.accept(original),segments::finish);
                     }
                     var replies=new ArrayList<String>();
+                    long maxMillis = 0;
                     for (var clip : clips) {
-                        if (probe) System.err.println("PROBE_INPUT " + f[0] + " "
-                                + (automatic ? "activation" : "ptt") + " bytes=" + clip.length);
+                        long started = System.nanoTime();
                         output.writeInt(Integer.reverseBytes(clip.length));
                         output.write(clip);
                         output.flush();
                         String reply=id(grammar,input.readUnsignedShort());
+                        maxMillis = Math.max(maxMillis, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
                         if (!reply.equals("neutral")) replies.add(reply);
                     }
                     rows.add(String.join("\t",f[0],f[1],f[2],f[3],automatic?"activation":"ptt",f[4],
-                            replies.isEmpty()?"neutral":String.join(",",replies),String.valueOf(clips.size())));
+                            replies.isEmpty()?"neutral":String.join(",",replies),String.valueOf(clips.size()),String.valueOf(maxMillis)));
                 }
             }
         } finally { helper.destroyForcibly(); }

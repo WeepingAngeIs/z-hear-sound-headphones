@@ -1,5 +1,8 @@
 package dev.mobsear.client;
 
+import dev.mobsear.net.Packets;
+import net.minecraft.client.Minecraft;
+
 /** Read the same client notice that the game HUD displays. Only compiled in disposable worlds. */
 public final class NoticeFixture {
     private NoticeFixture() {}
@@ -10,6 +13,17 @@ public final class NoticeFixture {
     }
 
     public static void clear() { MobCallNotice.clear(); }
+
+    /** Replay only the recognizer decision, using the actual client's negotiated outgoing packet. */
+    public static void send(Packets.MobCall call) {
+        MobCallNotice.clearMatch();
+        VoiceClient.sendCall(Minecraft.getInstance().getConnection(), call);
+    }
+
+    public static void cycleRecognition() {
+        VoiceClient.setRecognition(false);
+        VoiceClient.setRecognition(true);
+    }
 
     public static String localMatch() {
         var message = MobCallNotice.localMatch();

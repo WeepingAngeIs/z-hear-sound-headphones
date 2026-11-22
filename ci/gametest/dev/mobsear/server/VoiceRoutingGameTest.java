@@ -13,6 +13,7 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.GameType;
@@ -28,6 +29,30 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 @GameTestHolder("mobsear")
 @PrefixGameTestTemplate(false)
 public final class VoiceRoutingGameTest {
+    @GameTest(template = "hearing_floor")
+    public static void numberedMobCallWire(GameTestHelper helper) {
+        var entity = ResourceLocation.withDefaultNamespace("spider");
+        var species = ResourceLocation.fromNamespaceAndPath("cobblemon", "lopunny");
+        for (var call : List.<Packets.MobCall>of(new Packets.Call(dev.mobsear.net.Cue.MOBS),
+                new Packets.EntityCall(entity), new Packets.SpeciesCall(species))) {
+            var request = new Packets.CallRequest(Long.MAX_VALUE, call);
+            helper.assertTrue(request.equals(roundTrip(Packets.CallRequest.CODEC, request)), "Changed numbered mob call");
+        }
+        var reply = new Packets.Heard(8192, species, true);
+        helper.assertTrue(reply.equals(roundTrip(Packets.Heard.CODEC, reply)), "Changed private reply");
+        for (long invalid : new long[]{0, -1}) {
+            try {
+                roundTrip(Packets.CallRequest.CODEC, new Packets.CallRequest(invalid, new Packets.EntityCall(entity)));
+                helper.fail("Accepted invalid request number");
+            } catch (io.netty.handler.codec.DecoderException expected) { }
+            try {
+                roundTrip(Packets.Heard.CODEC, new Packets.Heard(invalid, entity, false));
+                helper.fail("Accepted invalid confirmation number");
+            } catch (io.netty.handler.codec.DecoderException expected) { }
+        }
+        helper.succeed();
+    }
+
     @GameTest(template = "hearing_floor")
     public static void serverRoutesSyntheticVoice(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();

@@ -105,11 +105,22 @@ public final class MobsEar {
     private void register(RegisterPayloadHandlersEvent event) {
         var reg = event.registrar("1").optional();
         reg.playToClient(Packets.Heard.TYPE, Packets.Heard.CODEC, (packet, context) -> callHeard.accept(packet));
+        boolean hasSpecies = ModList.get().isLoaded("cobblemon");
+        reg.playToServer(Packets.CallRequest.TYPE, Packets.CallRequest.CODEC, (request, context) -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            switch (request.call()) {
+                case Packets.Call call -> ServerVoice.cue(player, call.cue(), radius.getAsInt(), request.requestId());
+                case Packets.EntityCall call -> ServerVoice.entityCue(player, call.entityType(), radius.getAsInt(), request.requestId());
+                case Packets.SpeciesCall call -> {
+                    if (hasSpecies) ServerVoice.speciesCue(player, call.species(), radius.getAsInt(), request.requestId());
+                }
+            }
+        });
         reg.playToServer(Packets.EntityCall.TYPE, Packets.EntityCall.CODEC, (packet, context) -> {
             if (context.player() instanceof ServerPlayer player)
                 ServerVoice.entityCue(player, packet.entityType(), radius.getAsInt());
         });
-        if (ModList.get().isLoaded("cobblemon")) {
+        if (hasSpecies) {
             reg.playToServer(Packets.SpeciesCall.TYPE, Packets.SpeciesCall.CODEC, (packet, context) -> {
                 if (context.player() instanceof ServerPlayer player)
                     ServerVoice.speciesCue(player, packet.species(), radius.getAsInt());

@@ -37,7 +37,8 @@ public final class PokemonCaseClient {
     private String capture, waiting;
     private boolean saved, guardVerified, scopedGuardian;
     private boolean sourceKnown;
-    private Packets.Heard confirmation;
+    private Packets.Heard confirmation, delayed;
+    private long lastReplyId;
     private double sourceX,sourceZ;
     private net.minecraft.world.phys.Vec3 trackedCaller;
 
@@ -102,6 +103,7 @@ public final class PokemonCaseClient {
             if (!connection.hasChannel(Packets.SpeciesCall.TYPE)) throw PokemonProbe.fail("Missing negotiated species channel");
             if (!connection.hasChannel(Packets.EntityCall.TYPE)) throw PokemonProbe.fail("Missing negotiated mob name channel");
             if (!connection.hasChannel(Packets.Heard.TYPE)) throw PokemonProbe.fail("Missing negotiated confirmation channel");
+            if (!connection.hasChannel(Packets.CallRequest.TYPE)) throw PokemonProbe.fail("Missing numbered call channel");
             for (var check:PokemonCase.requiredRegistryEntries())
                 if (PokemonSpecies.getByIdentifier(check.species)==null) {
                     waitFor("synced species " + check.species); return;
@@ -113,10 +115,29 @@ public final class PokemonCaseClient {
             var displayHeard=MobsEar.callHeard;
             MobsEar.callHeard=ack -> {
                 if (!caller || c==null || expectedListener()==null || !expectedListener().equals(ack.id())
-                        || ack.species()==c.ordinaryEntity() || confirmation!=null)
+                        || ack.species()==c.ordinaryEntity() || confirmation!=null || ack.requestId()<=lastReplyId)
                     throw PokemonProbe.fail("Unexpected confirmed listener for "+c+" on "+mc.getUser().getName()+": "+ack);
                 confirmation=ack;
-                displayHeard.accept(ack);
+                lastReplyId=ack.requestId();
+                if (!acoustic && c==PokemonCase.NEAR_EDGE) {
+                    // Keep this genuine reply in flight until a later out-of-range call is pending.
+                    delayed=ack;
+                } else if (!acoustic && (c==PokemonCase.LOOK || c==PokemonCase.APPROACH || c==PokemonCase.BLOCKED)) {
+                    String transition;
+                    if (c==PokemonCase.LOOK) {
+                        NoticeFixture.cycleRecognition();
+                        transition="recognition-off-on";
+                    } else if (c==PokemonCase.APPROACH) {
+                        VoiceClient.options().setMuted(true);
+                        VoiceClient.options().setMuted(false);
+                        transition="mute-unmute";
+                    } else {
+                        VoiceClient.options().setDeafened(true);
+                        VoiceClient.options().setDeafened(false);
+                        transition="deafen-undeafen";
+                    }
+                    rejectDelayed(ack,transition);
+                } else displayHeard.accept(ack);
             };
             String side=solo ? "home-client" : caller ? "caller-client" : "viewer-client";
             PokemonRegistryAudit.check(side);
@@ -170,9 +191,14 @@ public final class PokemonCaseClient {
                 for (int i=0;i<320;i++) { int v=(i%20-10)*650; pcm[i*2]=(byte)v; pcm[i*2+1]=(byte)(v>>8); }
                 reply(PokemonProbe.ARRANGE);
                 PacketDistributor.sendToServer(new Packets.Up(pcm));
-                if (c==PokemonCase.BROAD_COW) PacketDistributor.sendToServer(new Packets.Call(dev.mobsear.net.Cue.MOBS));
-                else if (c.ordinaryEntity()) PacketDistributor.sendToServer(new Packets.EntityCall(c.spoken()));
-                else PacketDistributor.sendToServer(new Packets.SpeciesCall(c.spoken()));
+                if (c==PokemonCase.BROAD_COW) NoticeFixture.send(new Packets.Call(dev.mobsear.net.Cue.MOBS));
+                else if (c.ordinaryEntity()) NoticeFixture.send(new Packets.EntityCall(c.spoken()));
+                else NoticeFixture.send(new Packets.SpeciesCall(c.spoken()));
+                if (c==PokemonCase.FAR) {
+                    if (delayed==null) throw PokemonProbe.fail("Missing genuine delayed near reply");
+                    rejectDelayed(delayed,"near-after-new-far");
+                    delayed=null;
+                }
                 reply(PokemonProbe.FIRE); sent=true;
             }
         }
@@ -180,7 +206,7 @@ public final class PokemonCaseClient {
             if (c.ordinaryEntity()) {
                 var id=net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
                 // The genuine Mimic server can present this exact tracked zombie as its synthetic player disguise.
-                boolean disguise=c==PokemonCase.DUNGEON_MIMIC && entity instanceof net.minecraft.client.player.RemotePlayer;
+                boolean disguise=c.nativeMimic() && entity instanceof net.minecraft.client.player.RemotePlayer;
                 if (!disguise && !id.equals(c.species)) throw PokemonProbe.fail("Wrong tracked entity type "+id+" for "+c);
             } else if (!(entity instanceof PokemonEntity pokemon) || !pokemon.getPokemon().getSpecies().getResourceIdentifier().equals(c.species)) {
                 throw PokemonProbe.fail("Client received wrong tracked Pokémon "+c);
@@ -197,6 +223,9 @@ public final class PokemonCaseClient {
         if (c==PokemonCase.LOPUNNY && caller && !Component.translatable("mobsear.speech.heard",
                 PokemonSpecies.getByIdentifier(c.species).getTranslatedName()).getString().equals(overlay()))
             throw PokemonProbe.fail("Missing confirmed Lopunny HUD notice: "+overlay());
+        if (c==PokemonCase.ZOMBIE_CALL_MIMIC && caller && !Component.translatable("mobsear.speech.heard",
+                Component.translatable("mobsear.speech.dungeon_mimic")).getString().equals(overlay()))
+            throw PokemonProbe.fail("Exact zombie call showed the wrong listener: "+overlay());
         if (c==PokemonCase.LOPUNNY_FAR && caller) {
             if (ticks<45) return;
             if (confirmation!=null || overlay().contains("heard you")) throw PokemonProbe.fail("False distant Lopunny success");
@@ -216,6 +245,7 @@ public final class PokemonCaseClient {
     }
 
     private ResourceLocation expectedListener() {
+        if (c.nativeMimic()) return dev.mobsear.net.MobCallTypes.DUNGEON_MIMIC;
         // In these two trials a second eligible mob actually hears the call.
         if (c==PokemonCase.BROAD_COW) return ResourceLocation.withDefaultNamespace("zombie");
         if (c==PokemonCase.COOLDOWN_HELD) return c.species;
@@ -256,6 +286,12 @@ public final class PokemonCaseClient {
     }
     private String overlay() {
         return NoticeFixture.text();
+    }
+
+    private void rejectDelayed(Packets.Heard ack,String transition) {
+        VoiceClient.heard(ack);
+        if (overlay().contains("heard you")) throw PokemonProbe.fail("Stale success after "+transition);
+        System.out.println("MOBSEAR_CALL_REPLY_GUARD "+transition+" stale-success=false");
     }
     private void reply(int code) {
         PacketDistributor.sendToServer(new PokemonProbe.Message(code,stage.scenario(),stage.entity()));

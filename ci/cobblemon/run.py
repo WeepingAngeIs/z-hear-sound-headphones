@@ -82,6 +82,12 @@ def run(mode):
             wait("speaker", "POKEMON_CLIENT_READY", 360)
             start("listener")
             wait("server", "MOBSEAR_POKEMON_MULTI_PASS", 660)
+        caller_log = (root / ("solo.console" if mode == "solo" else "speaker.console")).read_text(errors="replace")
+        for transition in ("near-after-new-far", "recognition-off-on", "mute-unmute", "deafen-undeafen"):
+            guard = f"MOBSEAR_CALL_REPLY_GUARD {transition} stale-success=false"
+            if guard not in caller_log:
+                raise RuntimeError(f"Delayed reply was not checked after {transition}")
+            print(guard, flush=True)
         landed = (root/"evidence")
         expected = ["pikachu-before", "pikachu-after", "eevee-after", "lopunny-before", "lopunny-after", "look-after", "approach-after", "addon-after",
                     "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
@@ -90,7 +96,8 @@ def run(mode):
             expected.extend(["pack_form-after", "pack_custom-after", "global_pack-after", "named_cow-before", "named_cow-after",
                              "named_hostile-after", "forest_deer-before", "forest_deer-after", "boss_charging-protected", "naga_combat-protected",
                              "owl_guardian-before", "owl_guardian-after", "owl_offender-protected", "velvet_idle-before",
-                             "velvet_idle-after", "velvet_guard-protected", "dungeon_mimic-before", "dungeon_mimic-after"])
+                             "velvet_idle-after", "velvet_guard-protected", "dungeon_mimic-before", "dungeon_mimic-after",
+                             "zombie_call_mimic-before", "zombie_call_mimic-after"])
         for view in expected:
             if not (landed/f"{mode}-{view}.png").is_file(): raise RuntimeError("Missing actual in-game capture " + view)
     except BaseException:
