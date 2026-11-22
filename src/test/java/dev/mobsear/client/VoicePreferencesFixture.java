@@ -44,6 +44,7 @@ public final class VoicePreferencesFixture {
         try {
             Files.writeString(options, "guiScale:2\nkey_key.forward:key.keyboard.w\n");
             var fresh = new VoicePreferences(saved);
+            require(!fresh.callDebugLog(), "Private debug logging starts off");
             require(fresh.voiceActivated() && fresh.localMobCalls() && !fresh.muted() && !fresh.deafened(),
                     "Fresh install uses hands-free voice and local calls without opening a device");
             fresh.initializeProfile();
@@ -54,8 +55,10 @@ public final class VoicePreferencesFixture {
                 restart.setVoiceActivated(activation);
                 restart.setLocalMobCalls(calls);
                 restart.setMuted(true);
+                restart.setCallDebugLog(calls);
                 require(restart.save(), "Save explicit modes");
                 restart = new VoicePreferences(saved);
+                require(restart.callDebugLog() == calls && !restart.recognitionDiagnostics(), "Log opt-in is saved separately from HUD feedback");
                 require(restart.voiceActivated() == activation && restart.localMobCalls() == calls && restart.muted(),
                         "Independent input, calls and mute choices survive restart");
             }

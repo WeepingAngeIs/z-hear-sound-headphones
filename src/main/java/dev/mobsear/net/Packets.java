@@ -79,6 +79,21 @@ public final class Packets {
         @Override public Type<MobPose> type() { return TYPE; }
     }
 
+    public record CallDeclined(long requestId, CallFailure reason) implements CustomPacketPayload {
+        public static final Type<CallDeclined> TYPE = id("call_declined");
+        public static final StreamCodec<FriendlyByteBuf, CallDeclined> CODEC = StreamCodec.of((buf, packet) -> {
+            buf.writeVarLong(packet.requestId);
+            buf.writeByte(packet.reason.ordinal());
+        }, buf -> {
+            long number = readRequestId(buf);
+            int index = buf.readUnsignedByte();
+            var reasons = CallFailure.values();
+            if (index >= reasons.length || buf.isReadable()) throw new DecoderException("Invalid call outcome");
+            return new CallDeclined(number, reasons[index]);
+        });
+        @Override public Type<CallDeclined> type() { return TYPE; }
+    }
+
     private static ResourceLocation readCallId(FriendlyByteBuf buf) {
         String key = buf.readUtf(MAX_CALL_ID_LENGTH);
         ResourceLocation id = ResourceLocation.tryParse(key);

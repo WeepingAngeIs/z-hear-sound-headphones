@@ -95,6 +95,8 @@
   "mobsear.speech.off": "Mob calls off",
   "mobsear.speech.heard": "%s heard you",
   "mobsear.settings.recognition_diagnostics.label": "Speech Test Feedback",
+  "mobsear.settings.call_debug_log.label": "Local Mob Call Debug Log",
+  "mobsear.settings.call_debug_log.hint": "Write recognition status, matched mob names and server outcomes to your local logs/latest.log. Audio and sentence text are excluded.",
   "mobsear.settings.recognition_diagnostics.hint": "Privately show listening, name matches and short guesses for missed words above your health bar. Requires Local Mob Calls.",
   "mobsear.speech.hostiles": "Hostile mobs",
   "mobsear.speech.dungeon_mimic": "Dungeon Mimic",

@@ -115,6 +115,11 @@ try {
     # A second grammar has one registered name between optional passages of real dictation.
     # It is disabled during the original short-command pass and shares the same local engine.
     $nameItems = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
+    $sentencePhones = @{}
+    foreach ($key in $lexicon.Keys) { $sentencePhones[$key] = $lexicon[$key] }
+    if ($english.Culture.Name -eq 'en-US') {
+        $sentencePhones['pikachu'] = @('p iy k ax ch uw','p ih k ax ch uw','p iy k aa ch uw','p iy k ah ch uw')
+    }
     $overlapping = @{}
     foreach ($full in $aliases.Keys) {
         $parts = $full.Split(' ')
@@ -129,8 +134,8 @@ try {
         $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($label)
         $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsNameValueTag]::new('mob', $label))
         $nameItems.Add($item)
-        if ($lexicon.Contains($label)) {
-            foreach ($phones in $lexicon[$label]) {
+        if ($sentencePhones.ContainsKey($label)) {
+            foreach ($phones in $sentencePhones[$label]) {
                 $token = [System.Speech.Recognition.SrgsGrammar.SrgsToken]::new($label)
                 $token.Pronunciation = $phones
                 $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new()
@@ -163,6 +168,7 @@ try {
         try {
             $sentence.Enabled = $true
             $calls.Enabled = $false
+            $background.Enabled = $false
             $engine.SetInputToAudioStream($audio,$format)
             $mention = $engine.Recognize()
             if ($null -eq $mention -or $mention.Grammar.Name -ne 'name in speech' -or
@@ -189,14 +195,31 @@ try {
                 $right = $left + $span.Duration.TotalMilliseconds
                 $plainWords = $plain.Words
                 $startEdge = $endEdge = $false
+                $sameWords = [Collections.Generic.List[string]]::new()
                 for ($k=0; $k -lt $plainWords.Count; $k++) {
                     $word = $plain.GetAudioForWordRange($plainWords[$k],$plainWords[$k])
                     if ([Math]::Abs($word.AudioPosition.TotalMilliseconds-$left) -le 75) { $startEdge=$true }
                     if ([Math]::Abs(($word.AudioPosition+$word.Duration).TotalMilliseconds-$right) -le 75) { $endEdge=$true }
+                    $middle = $word.AudioPosition.TotalMilliseconds + $word.Duration.TotalMilliseconds / 2
+                    if ($middle -ge $left -and $middle -le $right) { $sameWords.Add($plainWords[$k].LexicalForm.ToLowerInvariant()) }
                 }
                 if (-not ($startEdge -and $endEdge)) { continue }
-                $dictation = ' ' + (($plainWords | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) -join ' ') + ' '
-                if ($dictation.Contains(' '+$label+' ')) { return $aliases[$label] }
+                $heard = $sameWords -join ' '
+                $target = $aliases[$label]
+                if ($aliases.ContainsKey($heard)) {
+                    if ($aliases[$heard] -eq $target) { return $target }
+                    continue
+                }
+                if ($sameWords.Count -eq 1 -and $units.Length -eq 1) {
+                    # Prefer a complete ordinary word over a prefix or near-identical homophone
+                    # (for example, mobility/mob and lantern/Lanturn).
+                    if ($heard.Contains($label) -or $label.Contains($heard)) { continue }
+                    if ($heard.Length -eq $label.Length) {
+                        $different = 0
+                        for ($n=0; $n -lt $heard.Length; $n++) { if ($heard[$n] -ne $label[$n]) { $different++ } }
+                        if ($different -le 1) { continue }
+                    }
+                }
                 # A made-up name may be absent from dictation. Re-recognize its whole-word audio
                 # with the short command (or pronunciation) grammar competing against ordinary speech.
                 if ($confirm.ContainsKey($label)) { continue }
@@ -204,20 +227,39 @@ try {
                 try {
                     $silence = [byte[]]::new(6400)
                     $wordAudio.Write($silence,0,$silence.Length)
-                    $span.WriteToAudioStream($wordAudio)
-                    $wordAudio.Write($silence,0,$silence.Length)
+                    $from = [Math]::Max(0, [int][Math]::Floor(($left-35)*16)*2)
+                    $to = [Math]::Min($samples.Length, [int][Math]::Ceiling(($right+35)*16)*2)
+                    if ($to -le $from) { continue }
+                    $wordAudio.Write($samples,$from,$to-$from)
+                    for ($n=0; $n -lt 3; $n++) { $wordAudio.Write($silence,0,$silence.Length) }
                     $wordAudio.Position=0
                     $engine.SetInputToNull()
                     $sentence.Enabled=$false
                     $calls.Enabled=$true
-                    $verifyEngine = if ($null -ne $pronouncer -and $lexicon.Contains($label)) { $pronouncer } else { $engine }
+                    $background.Enabled=$true
+                    $shortName = if ($label -in @('endermen','ender man','ender men')) { 'enderman' } else { $label }
+                    $verifyEngine = if ($null -ne $pronouncer -and $lexicon.Contains($shortName)) { $pronouncer } else { $engine }
                     try {
                         $verifyEngine.SetInputToAudioStream($wordAudio,$format)
                         $isolated = $verifyEngine.Recognize()
-                        if ($null -ne $isolated -and $isolated.Text -eq $label -and $isolated.Confidence -ge 0.70) {
-                            return $aliases[$label]
+                        if ($null -ne $isolated -and $aliases.ContainsKey($isolated.Text) -and
+                                $aliases[$isolated.Text] -eq $target -and $isolated.Confidence -ge 0.58) {
+                            return $target
                         }
-                    } finally { $verifyEngine.SetInputToNull() }
+                        $verifyEngine.SetInputToNull()
+                        if ($verifyEngine -eq $pronouncer) { $pronunciationBackground.Enabled=$false }
+                        else { $background.Enabled=$false }
+                        $wordAudio.Position=0
+                        $verifyEngine.SetInputToAudioStream($wordAudio,$format)
+                        $closed = $verifyEngine.Recognize()
+                        if ($null -ne $closed -and $aliases.ContainsKey($closed.Text) -and
+                                $aliases[$closed.Text] -eq $target -and $closed.Confidence -ge 0.90) {
+                            return $target
+                        }
+                    } finally {
+                        $verifyEngine.SetInputToNull()
+                        if ($null -ne $pronouncer) { $pronunciationBackground.Enabled=$true }
+                    }
                 } finally { $wordAudio.Dispose() }
             }
             return 0
@@ -225,6 +267,7 @@ try {
             $engine.SetInputToNull()
             $sentence.Enabled=$false
             $calls.Enabled=$true
+            $background.Enabled=$true
             $audio.Dispose()
         }
     }

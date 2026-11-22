@@ -2,6 +2,7 @@ package dev.mobsear.server;
 
 import dev.mobsear.MobsEar;
 import dev.mobsear.net.Cue;
+import dev.mobsear.net.CallFailure;
 import dev.mobsear.net.Packets;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -13,6 +14,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 public final class ServerVoice {
     // All payload handlers and resets run on the Minecraft server thread.
     private static final Map<ServerPlayer, TalkWindow> sessions = new WeakHashMap<>();
+    private static final Map<ServerPlayer, Long> lastDecline = new WeakHashMap<>();
 
     private ServerVoice() {}
 
@@ -39,10 +41,24 @@ public final class ServerVoice {
         }
     }
 
-    private static boolean acceptCall(ServerPlayer speaker) {
+    private static boolean acceptCall(ServerPlayer speaker, long requestId) {
         TalkWindow window = sessions.get(speaker);
-        return eligible(speaker) && !NearbyMics.inputBlocked(speaker) && !speaker.isCreative()
-                && window != null && window.acceptCue(System.nanoTime());
+        CallFailure failure;
+        if (!eligible(speaker) || speaker.isCreative()) failure = CallFailure.GAME_MODE;
+        else if (NearbyMics.inputBlocked(speaker)) failure = CallFailure.INPUT_BLOCKED;
+        else failure = window == null ? CallFailure.NO_RECENT_VOICE : window.tryCue(System.nanoTime());
+        if (failure == null) return true;
+        decline(speaker, requestId, failure);
+        return false;
+    }
+
+    private static void decline(ServerPlayer speaker, long requestId, CallFailure cause) {
+        if (requestId <= 0 || speaker.connection == null || !speaker.connection.hasChannel(Packets.CallDeclined.TYPE)) return;
+        long now = System.nanoTime();
+        Long previous = lastDecline.get(speaker);
+        if (previous != null && now - previous < 500_000_000L) return;
+        lastDecline.put(speaker, now);
+        PacketDistributor.sendToPlayer(speaker, new Packets.CallDeclined(requestId, cause));
     }
 
     public static void cue(ServerPlayer speaker, Cue cue, double radius) {
@@ -50,9 +66,10 @@ public final class ServerVoice {
     }
 
     public static void cue(ServerPlayer speaker, Cue cue, double radius, long requestId) {
-        if (!acceptCall(speaker)) return;
+        if (!acceptCall(speaker, requestId)) return;
         ResourceLocation listener = MobReactions.react(speaker, cue, radius);
         if (listener != null) confirm(speaker, requestId, listener, false);
+        else decline(speaker, requestId, CallFailure.NO_ELIGIBLE_MOB);
     }
 
     public static void speciesCue(ServerPlayer speaker, ResourceLocation species, double radius) {
@@ -60,7 +77,9 @@ public final class ServerVoice {
     }
 
     public static void speciesCue(ServerPlayer speaker, ResourceLocation species, double radius, long requestId) {
-        if (acceptCall(speaker) && PokemonReactions.tryCall(speaker, species, radius)) confirm(speaker, requestId, species, true);
+        if (!acceptCall(speaker, requestId)) return;
+        if (PokemonReactions.tryCall(speaker, species, radius)) confirm(speaker, requestId, species, true);
+        else decline(speaker, requestId, CallFailure.NO_ELIGIBLE_MOB);
     }
 
     public static void entityCue(ServerPlayer speaker, ResourceLocation entityType, double radius) {
@@ -68,9 +87,10 @@ public final class ServerVoice {
     }
 
     public static void entityCue(ServerPlayer speaker, ResourceLocation entityType, double radius, long requestId) {
-        if (!acceptCall(speaker)) return;
+        if (!acceptCall(speaker, requestId)) return;
         ResourceLocation listener = NamedMobReactions.hear(speaker, entityType, radius);
         if (listener != null) confirm(speaker, requestId, listener, false);
+        else decline(speaker, requestId, CallFailure.NO_ELIGIBLE_MOB);
     }
 
     private static void confirm(ServerPlayer speaker, long requestId, ResourceLocation id, boolean species) {
@@ -81,8 +101,9 @@ public final class ServerVoice {
 
     public static void forget(ServerPlayer player) {
         sessions.remove(player);
+        lastDecline.remove(player);
         NearbyMics.forget(player);
         HordeMode.LIVE.forget(player);
     }
-    public static void clear() { sessions.clear(); NearbyMics.clear(); }
+    public static void clear() { sessions.clear(); lastDecline.clear(); NearbyMics.clear(); }
 }

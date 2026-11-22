@@ -46,6 +46,7 @@ public final class MobsEar {
     public static Consumer<MicPresence.Nearby> presence = packet -> {};
     public static Consumer<Boolean> hordeStatus = optedIn -> {};
     public static Consumer<Packets.Heard> callHeard = ack -> {};
+    public static Consumer<Packets.CallDeclined> callDeclined = reply -> {};
     public static Consumer<Packets.MobPose> mobPose = pose -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
@@ -105,6 +106,7 @@ public final class MobsEar {
         var reg = event.registrar("1").optional();
         reg.playToClient(Packets.MobPose.TYPE, Packets.MobPose.CODEC, (packet, context) -> mobPose.accept(packet));
         reg.playToClient(Packets.Heard.TYPE, Packets.Heard.CODEC, (packet, context) -> callHeard.accept(packet));
+        reg.playToClient(Packets.CallDeclined.TYPE, Packets.CallDeclined.CODEC, (packet, context) -> callDeclined.accept(packet));
         boolean hasSpecies = ModList.get().isLoaded("cobblemon");
         reg.playToServer(Packets.CallRequest.TYPE, Packets.CallRequest.CODEC, (request, context) -> {
             if (!(context.player() instanceof ServerPlayer player)) return;

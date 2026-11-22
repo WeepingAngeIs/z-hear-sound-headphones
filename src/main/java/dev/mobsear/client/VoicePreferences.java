@@ -141,6 +141,8 @@ public final class VoicePreferences {
     public synchronized void setNoiseSuppression(boolean value) { setFlag("noiseSuppression", value); }
     public synchronized boolean recognitionDiagnostics() { return flag("recognitionDiagnostics", false); }
     public synchronized void setRecognitionDiagnostics(boolean value) { setFlag("recognitionDiagnostics", value); }
+    public synchronized boolean callDebugLog() { return flag("callDebugLog", false); }
+    public synchronized void setCallDebugLog(boolean value) { setFlag("callDebugLog", value); }
     public synchronized boolean pitchEnabled() { return flag(pitchPrefix + "pitchEnabled", false); }
     public synchronized void setPitchEnabled(boolean value) { setFlag(pitchPrefix + "pitchEnabled", value); }
     public synchronized int customPitchCents() {

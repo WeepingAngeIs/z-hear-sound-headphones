@@ -1,5 +1,6 @@
 package dev.mobsear.server;
 
+import dev.mobsear.net.CallFailure;
 import java.util.concurrent.TimeUnit;
 
 /** One authenticated player's short-lived server-side transmission budget. */
@@ -31,11 +32,15 @@ final class TalkWindow {
     }
 
     boolean acceptCue(long now) {
-        if (!spoke || !freshAudio || now - lastFrame > CUE_WINDOW) return false;
-        if (usedCue && now - lastCue < CUE_COOLDOWN) return false;
+        return tryCue(now) == null;
+    }
+
+    CallFailure tryCue(long now) {
+        if (!spoke || !freshAudio || now - lastFrame > CUE_WINDOW) return CallFailure.NO_RECENT_VOICE;
+        if (usedCue && now - lastCue < CUE_COOLDOWN) return CallFailure.COOLDOWN;
         lastCue = now;
         usedCue = true;
         freshAudio = false;
-        return true;
+        return null;
     }
 }

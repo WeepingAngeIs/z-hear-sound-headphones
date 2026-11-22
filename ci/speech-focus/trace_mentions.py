@@ -26,4 +26,4 @@ def show(root):
     proc = subprocess.run([str(shell),"-NoProfile","-NonInteractive","-Command",script],
                           input=data,capture_output=True,timeout=120,check=True)
     for file, output in zip(files,proc.stderr.decode("utf8","replace").split("NEXT")[1:]):
-        print("GENERATED_MENTION_TRACE",file.stem,output.strip().replace("\n"," / "),flush=True)
+        print("GENERATED_MENTION_TRACE",file.stem," / ".join(output.strip().splitlines()),flush=True)

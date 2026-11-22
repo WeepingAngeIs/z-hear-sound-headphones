@@ -46,6 +46,7 @@ public final class VoiceClient {
     private final KeyMapping mute = mapping("mute", GLFW.GLFW_KEY_M);
     private final KeyMapping deafen = mapping("deafen", GLFW.GLFW_KEY_UNKNOWN);
     private final VoicePreferences preferences = new VoicePreferences(FMLPaths.CONFIGDIR.get().resolve("mobsear-client.properties"));
+    private final CallDebugLog debug = new CallDebugLog(preferences::callDebugLog);
     private ClientPacketListener connection;
     private Session session;
     private boolean testMic;
@@ -74,12 +75,17 @@ public final class VoiceClient {
         MobsEar.presence = packet -> nearby.put(packet.speaker(), new Seen(packet, System.nanoTime()));
         MobsEar.hordeStatus = enabled -> horde = enabled;
         MobsEar.callHeard = VoiceClient::heard;
+        MobsEar.callDeclined = reply -> {
+            debug.reply(reply.requestId(), CallDebugLog.Event.valueOf(reply.reason().name()));
+            if (pendingRequestId == reply.requestId()) pendingRequestId = 0;
+        };
         ClientMobPose.register();
     }
 
     public static boolean connected() { return instance != null && instance.session != null; }
     public static void heard(Packets.Heard ack) {
         var mc = Minecraft.getInstance();
+        if (connected()) instance.debug.reply(ack.requestId(), CallDebugLog.Event.HEARD);
         if (!connected() || ack.requestId() != instance.pendingRequestId || instance.pendingRequestId == 0) return;
         instance.pendingRequestId = 0;
         if (!options().localMobCalls() || instance.pendingInputRevision != options().inputRevision()
@@ -101,9 +107,11 @@ public final class VoiceClient {
             long requestId = ++instance.lastRequestId;
             instance.pendingRequestId = requestId;
             instance.pendingInputRevision = options().inputRevision();
+            instance.debug.sent(requestId, call);
             PacketDistributor.sendToServer(new Packets.CallRequest(requestId, call));
         } else {
             instance.pendingRequestId = 0;
+            instance.debug.write(CallDebugLog.Event.SERVER_CHANNEL_UNAVAILABLE, CallDebugLog.target(call), 0);
             PacketDistributor.sendToServer(call);
         }
     }
@@ -115,6 +123,7 @@ public final class VoiceClient {
         }
         if (!enabled) {
             instance.pendingRequestId = 0;
+            instance.debug.clearSession();
             MobCallNotice.clearMatch();
             if (instance.session != null && instance.session.recognition) instance.session.enableRecognition(false);
         }
@@ -198,6 +207,7 @@ public final class VoiceClient {
 
     private void tick(ClientTickEvent.Post event) {
         var mc = Minecraft.getInstance();
+        debug.tick();
         preferences.bindPitchAccount(mc.getUser().getProfileId());
         var current = mc.getConnection();
         if (connection != current) {
@@ -278,6 +288,7 @@ public final class VoiceClient {
 
     private void closeSession() {
         pendingRequestId = 0;
+        debug.clearSession();
         MobCallNotice.clear();
         if (session != null) {
             session.close();
@@ -323,6 +334,7 @@ public final class VoiceClient {
         long lastSpeaking;
         long lastMeter;
         long displayedAttempt;
+        long loggedDecision;
         boolean recognition;
         boolean creative;
         boolean suspended;
@@ -456,6 +468,8 @@ public final class VoiceClient {
             MobCallNotice.clearMatch();
             var mc = Minecraft.getInstance();
             Component name;
+            var target = CallDebugLog.target(ready);
+            instance.debug.write(CallDebugLog.Event.DETECTED, target, 0);
             if (ready instanceof Packets.SpeciesCall call) {
                 if (names == null || !link.hasChannel(Packets.SpeciesCall.TYPE)) return;
                 name = CobblemonNames.display(call.species());
@@ -473,6 +487,7 @@ public final class VoiceClient {
             }
             // A successful local decision displays its canonical name even when no mob answers.
             if (mc.player != null && (mc.player.isCreative() || mc.player.isSpectator())) {
+                instance.debug.write(CallDebugLog.Event.GAME_MODE, target, 0);
                 if (prefs.recognitionDiagnostics())
                     MobCallNotice.diagnose(Component.translatable("mobsear.speech.recognized_mode", name));
                 return;
@@ -485,7 +500,20 @@ public final class VoiceClient {
         void reportStatus(Minecraft mc) {
             var failure = problem.getAndSet(null);
             var state = speech.status();
+            var debug = instance.debug;
+            if (!suspended) {
+                var status = speech.startupTimedOut() ? CallDebugLog.Event.STARTUP_TIMEOUT
+                        : speech.decoderTimedOut() ? CallDebugLog.Event.DECODE_TIMEOUT : CallDebugLog.Event.valueOf(state.name());
+                debug.state(status);
+            }
+            var decision = speech.lastDecision();
+            if (decision != null && decision.number() != loggedDecision) {
+                loggedDecision = decision.number();
+                if (!decision.timely()) debug.write(CallDebugLog.Event.LATE, null, 0);
+                else if (!decision.matched()) debug.write(CallDebugLog.Event.NO_MATCH, null, 0);
+            }
             if (failure != null) {
+                debug.write(CallDebugLog.Event.valueOf(failure.name()), null, 0);
                 String key = failure == VoiceAudio.Problem.MICROPHONE_UNAVAILABLE ? "mic" : "output";
                 MobCallNotice.show(Component.translatable("mobsear.problem." + key));
             } else if (state != previous && !suspended) {
