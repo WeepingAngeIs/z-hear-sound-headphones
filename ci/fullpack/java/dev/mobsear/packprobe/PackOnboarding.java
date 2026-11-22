@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameRules;
+import net.neoforged.fml.ModList;
 
 /** Complete the pack's normal first-join screens for the one new, hosted test player. */
 final class PackOnboarding {
@@ -19,6 +20,10 @@ final class PackOnboarding {
     private int titleTicks;
     private boolean opened, declined, tutorial, created;
     private final boolean fresh="1".equals(System.getenv("MOBSEAR_NATIVE_WORLD"));
+
+    boolean readyForSpeech() {
+        return !fresh || !ModList.get().isLoaded("unyieldingquests") || tutorial;
+    }
 
     void tick(Minecraft mc) throws ReflectiveOperationException {
         if (mc.screen==null) { titleTicks=0; return; }

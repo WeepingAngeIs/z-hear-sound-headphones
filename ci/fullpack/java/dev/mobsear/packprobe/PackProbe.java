@@ -76,7 +76,7 @@ public final class PackProbe {
         volatile double callDistance = -1;
         volatile boolean started;
         boolean recognized, dispatched, confirmed, notice, facedAway, screenshot;
-        int aligned, postAckTicks;
+        int aligned, postAckTicks, renderedNoticeFrames;
         double initialError = -1, closestError = 180;
         long initialRequest, startedAt, seenAt, initialDecision;
         Boundary.Decision decision;
@@ -274,6 +274,9 @@ public final class PackProbe {
             }
             if (!state.equals("READY") && !state.equals("UNAVAILABLE")) return;
             if (!ready) {
+                // Voice stays opted in through onboarding. A first-join screen intentionally
+                // suspends capture, so play comparison words only after the tutorial's Later action.
+                if (!onboarding.readyForSpeech()) return;
                 if (!earlier) Files.write(home.resolve("public-registry.bin"),Boundary.publicVocabulary());
                 System.out.println("ACOUSTIC_TRIALS decoder="+state+" integrated=true mode="+mc.gameMode.getPlayerMode()+" loader="+
                         ModList.get().getModContainerById("neoforge").orElseThrow().getModInfo().getVersion()+
@@ -375,15 +378,22 @@ public final class PackProbe {
         try {
             if (!Boundary.notice("current").equals(o.test.name+" heard you")) return;
             try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-                int pink=0;
-                for (int y=pic.getHeight()/2; y<pic.getHeight()*9/10; y+=2)
-                    for (int x=pic.getWidth()/5; x<pic.getWidth()*3/4; x+=2)
-                        if ((pic.getPixelRGBA(x,y)&0xffffff)==0xa177d7) pink++;
-                if (pink<12) return;
+                int scale=(int)mc.getWindow().getGuiScale();
+                int left=(mc.getWindow().getGuiScaledWidth()/2-91)*scale;
+                int top=pic.getHeight(), bottom=0;
+                for (int y=pic.getHeight()/2; y<pic.getHeight()*9/10; y++) {
+                    int row=0;
+                    for (int x=Math.max(0,left); x<Math.min(pic.getWidth(),left+182*scale); x+=scale)
+                        if ((pic.getPixelRGBA(x,y)&0xffffff)==0xa177d7) row++;
+                    if (row>=8) { top=Math.min(top,y); bottom=y; }
+                }
+                // Diagnostics are enabled here. A matched name alone draws one line. A server
+                // acknowledgement draws two. Wait for that taller rail in two completed frames.
+                if (bottom-top+1<21*scale || ++o.renderedNoticeFrames<2) return;
                 var folder=Files.createDirectories(home.resolve("evidence"));
                 pic.writeToFile(folder.resolve(o.number+"-"+o.test.name+".png"));
                 o.screenshot=true;
-                System.out.println("ACOUSTIC_RENDERED_NOTICE sample="+o.test.recording+" borderPixels="+pink);
+                System.out.println("ACOUSTIC_RENDERED_NOTICE sample="+o.test.recording+" noticeHeight="+(bottom-top+1)+" guiScale="+scale);
             }
         } catch (Exception ex) { fail(ex); }
     }
