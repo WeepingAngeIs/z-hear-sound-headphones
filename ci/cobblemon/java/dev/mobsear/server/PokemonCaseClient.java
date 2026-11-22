@@ -105,6 +105,7 @@ public final class PokemonCaseClient {
                 // Only the Linux recognizer boundary is replayed. The real server validates the client's normal PCM and species packet.
                 byte[] pcm=new byte[640];
                 for (int i=0;i<320;i++) { int v=(i%20-10)*650; pcm[i*2]=(byte)v; pcm[i*2+1]=(byte)(v>>8); }
+                if (c==PokemonCase.OFFLINE_OWNER) reply(PokemonProbe.TRANSFER);
                 PacketDistributor.sendToServer(new Packets.Up(pcm));
                 PacketDistributor.sendToServer(new Packets.SpeciesCall(c.spoken()));
                 reply(PokemonProbe.FIRE); sent=true;
