@@ -42,26 +42,29 @@ public final class NamedMobReactions {
 
     static boolean isReacting(Mob mob) { return active.containsKey(mob); }
 
-    static void hear(ServerPlayer caller, ResourceLocation id, double radius) {
-        if (!eligibleCaller(caller) || !Double.isFinite(radius) || radius <= 0) return;
+    static boolean hear(ServerPlayer caller, ResourceLocation id, double radius) {
+        if (!eligibleCaller(caller) || !Double.isFinite(radius) || radius <= 0) return false;
         boolean dungeonMimic = MobCallTypes.DUNGEON_MIMIC.equals(id) && ModList.get().isLoaded("cumimic");
         var type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
-        if (!dungeonMimic && (type == null || !MobCallTypes.eligibleType(id, type))) return;
+        if (!dungeonMimic && (type == null || !MobCallTypes.eligibleType(id, type))) return false;
         var level = caller.serverLevel();
         double limit = radius * radius;
+        boolean heard = false;
         for (var mob : level.getEntitiesOfClass(Mob.class, caller.getBoundingBox().inflate(radius), candidate ->
                 candidate.distanceToSqr(caller) <= limit && (dungeonMimic ? candidate.getTags().contains("cu_mimic") : candidate.getType() == type))) {
-            glanceIfCalm(caller, mob, limit);
+            if (glanceIfCalm(caller, mob, limit)) heard = true;
         }
+        return heard;
     }
 
-    static void glanceIfCalm(ServerPlayer caller, Mob mob, double limit) {
+    static boolean glanceIfCalm(ServerPlayer caller, Mob mob, double limit) {
         long now = caller.serverLevel().getServer().overworld().getGameTime();
-        if (cooldowns.getOrDefault(mob.getUUID(), 0L) > now || !canGlance(mob)) return;
+        if (cooldowns.getOrDefault(mob.getUUID(), 0L) > now || !canGlance(mob)) return false;
         var glance = new Glance(caller, caller.getEyePosition(), limit, now, mob.getYHeadRot(), mob.yBodyRot);
         active.put(mob, glance);
         cooldowns.put(mob.getUUID(), now + COOLDOWN_TICKS);
         turn(mob, glance, now);
+        return true;
     }
 
     private static boolean eligibleCaller(ServerPlayer player) {

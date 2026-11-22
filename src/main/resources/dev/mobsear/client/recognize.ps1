@@ -46,7 +46,39 @@ try {
     $builder = [System.Speech.Recognition.GrammarBuilder]::new()
     $builder.Culture = $english.Culture
     $builder.Append($phrases)
-    $calls = [System.Speech.Recognition.Grammar]::new($builder)
+    if ($english.Culture.Name -eq 'en-US') {
+        # Fictional compound names have several pronunciations. Keep their written result,
+        # ID and confidence checks identical for all pronunciations of the same name.
+        $lexicon = [ordered]@{
+            enderman = @('eh n d er m ae n', 'eh n d er m ax n')
+            lopunny = @('l aa p ax n iy', 'l aa p ah n iy', 'l ow p ah n iy', 'l aa p b ah n iy')
+        }
+        $document = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($builder)
+        $document.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
+        $choice = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
+        $existing = [System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::new($document.Root)
+        $choice.Add([System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($existing))
+        foreach ($name in $lexicon.Keys) {
+            if (-not $aliases.ContainsKey($name) -or $aliases[$name] -eq 0) { continue }
+            foreach ($phones in $lexicon[$name]) {
+                foreach ($prefix in @('', 'hey', 'call')) {
+                    $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new()
+                    if ($prefix) { $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsText]::new($prefix)) }
+                    $token = [System.Speech.Recognition.SrgsGrammar.SrgsToken]::new($name)
+                    $token.Pronunciation = $phones
+                    $item.Add($token)
+                    $choice.Add($item)
+                }
+            }
+        }
+        $root = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('RegisteredCalls')
+        $root.Add($choice)
+        $document.Rules.Add($root)
+        $document.Root = $root
+        $calls = [System.Speech.Recognition.Grammar]::new($document)
+    } else {
+        $calls = [System.Speech.Recognition.Grammar]::new($builder)
+    }
     $calls.Name = 'mob call'
     $calls.Priority = 1
     $engine.LoadGrammar($calls)

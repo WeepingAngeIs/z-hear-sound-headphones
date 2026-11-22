@@ -27,9 +27,9 @@ jobs:
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
-          cp build/libs/mobsear-0.3.0.jar dist/
-          jar tf dist/mobsear-0.3.0.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
-          if jar tf dist/mobsear-0.3.0.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
+          cp build/libs/mobsear-0.3.1.jar dist/
+          jar tf dist/mobsear-0.3.1.jar | grep -qx 'dev/mobsear/client/recognize.ps1'
+          if jar tf dist/mobsear-0.3.1.jar | grep -E 'GameTest|Fixture|hearing_floor'; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
         run: |
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mobs-hear-u
-          path: dist/mobsear-0.3.0.jar
+          path: dist/mobsear-0.3.1.jar
           if-no-files-found: error
   packaged-server:
     name: Packaged jar on NeoForge ${{ matrix.loader }}
@@ -162,6 +162,13 @@ jobs:
           MOBSEAR_INTEGRATED: '1'
           MOBSEAR_CUE_PROOF: ${{ github.workspace }}/build/cue-proof/recognized-calls.txt
         run: xvfb-run -a -s '-screen 0 1024x768x24' bash ci/integrated/run.sh
+      - name: Keep actual mob-call notices beside the health and armor bars
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: notice-previews
+          path: build/notice-previews/*.png
+          if-no-files-found: warn
   multiplayer:
     name: Two NeoForge 21.1.249 clients on a disposable server
     needs: windows-speech

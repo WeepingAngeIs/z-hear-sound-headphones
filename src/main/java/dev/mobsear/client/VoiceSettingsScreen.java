@@ -102,6 +102,7 @@ public final class VoiceSettingsScreen extends Screen {
         toggle("meter", VoiceClient.testingMic(), VoiceClient.connected() && !prefs.muted() && !prefs.deafened(),
                 VoiceClient::setTestingMic);
         addMobCalls(x, y, w);
+        toggle("recognition_diagnostics", prefs.recognitionDiagnostics(), true, prefs::setRecognitionDiagnostics);
         shownHorde = VoiceClient.hordeEnabled();
         toggle("horde", shownHorde, VoiceClient.connected() && MobsEar.hordeAvailable(), VoiceClient::setHordeEnabled);
         cycle("mic_style", prefs.micStyle(), List.of("auto","uwu","emo","vanilla","amethyst"), prefs::setMicStyle);

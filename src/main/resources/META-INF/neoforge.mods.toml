@@ -4,7 +4,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="mobsear"
-version="0.3.0"
+version="0.3.1"
 displayName="Mobs Hear U"
 description="Proximity voice and optional local name calls for nearby vanilla mobs, modded creatures and wild Cobblemon."
 

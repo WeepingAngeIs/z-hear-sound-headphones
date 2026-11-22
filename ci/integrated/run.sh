@@ -2,6 +2,7 @@
 set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true && ${MOBSEAR_INTEGRATED:-} == 1 && -n ${DISPLAY:-} ]]
 export MOBSEAR_SMOKE_DIR
+export MOBSEAR_NOTICE_PROOF=1
 MOBSEAR_SMOKE_DIR=$(mktemp -d "${RUNNER_TEMP}/hearing-integrated.XXXXXX")
 export LIBGL_ALWAYS_SOFTWARE=true LP_NUM_THREADS=1 ALSOFT_DRIVERS=null
 mkdir -p "$MOBSEAR_SMOKE_DIR"/{server,smokeIntegrated/saves}
@@ -60,6 +61,10 @@ cleanup() {
   local status=$?
   trap - EXIT
   if ((status)); then
+    if [[ -d "$MOBSEAR_SMOKE_DIR/notices" ]]; then
+      mkdir -p build/notice-previews
+      cp -R "$MOBSEAR_SMOKE_DIR/notices/." build/notice-previews/
+    fi
     grep -E 'MOBSEAR_|Caused by:|Exception:|\[.*ERROR\]' "$MOBSEAR_SMOKE_DIR/integrated.console" | cut -c1-500 | tail -n 65 || true
     tail -n 30 "$MOBSEAR_SMOKE_DIR/integrated.console" | cut -c1-500 || true
   fi
@@ -72,6 +77,13 @@ deadline=$((SECONDS + 300))
 while ((SECONDS < deadline)); do
   if grep -Fq 'MOBSEAR_INTEGRATED_PASS' "$MOBSEAR_SMOKE_DIR/integrated.console"; then
     grep -F 'MOBSEAR_INTEGRATED_' "$MOBSEAR_SMOKE_DIR/integrated.console"
+    grep -F 'MOBSEAR_NOTICE_FRAME' "$MOBSEAR_SMOKE_DIR/integrated.console"
+    mkdir -p build/notice-previews
+    for scale in 1 2 3; do
+      for hud in hearts armor; do
+        cp "$MOBSEAR_SMOKE_DIR/notices/notice-scale-$scale-$hud.png" build/notice-previews/
+      done
+    done
     exit 0
   fi
   grep -Fq 'MOBSEAR_SMOKE_FAIL' "$MOBSEAR_SMOKE_DIR/integrated.console" && exit 1

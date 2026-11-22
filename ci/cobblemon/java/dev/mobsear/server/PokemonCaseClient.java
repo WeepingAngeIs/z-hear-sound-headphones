@@ -3,6 +3,7 @@ package dev.mobsear.server;
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.mobsear.MobsEar;
 import dev.mobsear.client.FixtureSound;
 import dev.mobsear.client.VoiceClient;
 import dev.mobsear.net.Packets;
@@ -11,9 +12,10 @@ import java.nio.file.Path;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
-import net.minecraft.client.gui.Gui;
+import dev.mobsear.client.NoticeFixture;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.neoforged.api.distmarker.Dist;
@@ -35,6 +37,7 @@ public final class PokemonCaseClient {
     private String capture, waiting;
     private boolean saved, guardVerified, scopedGuardian;
     private boolean sourceKnown;
+    private Packets.Heard confirmation;
     private double sourceX,sourceZ;
     private net.minecraft.world.phys.Vec3 trackedCaller;
 
@@ -65,11 +68,15 @@ public final class PokemonCaseClient {
             var speaker=caller ? mc.player : mc.level.players().stream().filter(p->p.getGameProfile().getName().equals("PokemonCaller")).findFirst().orElse(null);
             if (speaker!=null) trackedCaller=speaker.position();
         }
-        if (acoustic && request.stage()==PokemonProbe.BEFORE) {
-            if (!armed) {
+        if (request.stage()==PokemonProbe.BEFORE) {
+            confirmation=null;
+            NoticeFixture.clear();
+            if (caller && !armed) {
                 KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
                 armed=true;
             }
+        }
+        if (acoustic && request.stage()==PokemonProbe.BEFORE) {
             VoiceClient.setVoiceActivated(c==PokemonCase.EEVEE);
             KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V), c!=PokemonCase.EEVEE);
         }
@@ -94,12 +101,23 @@ public final class PokemonCaseClient {
             var connection=mc.getConnection();
             if (!connection.hasChannel(Packets.SpeciesCall.TYPE)) throw PokemonProbe.fail("Missing negotiated species channel");
             if (!connection.hasChannel(Packets.EntityCall.TYPE)) throw PokemonProbe.fail("Missing negotiated mob name channel");
+            if (!connection.hasChannel(Packets.Heard.TYPE)) throw PokemonProbe.fail("Missing negotiated confirmation channel");
             for (var check:PokemonCase.requiredRegistryEntries())
                 if (PokemonSpecies.getByIdentifier(check.species)==null) {
                     waitFor("synced species " + check.species); return;
                 }
             solo=connection.getConnection().isMemoryConnection();
             caller=solo || mc.getUser().getName().equals("PokemonCaller");
+            if (VoiceClient.options().recognitionDiagnostics()) throw PokemonProbe.fail("Diagnostics unexpectedly enabled by default");
+            VoiceClient.options().setRecognitionDiagnostics(acoustic);
+            var displayHeard=MobsEar.callHeard;
+            MobsEar.callHeard=ack -> {
+                if (!caller || c==null || expectedListener()==null || !expectedListener().equals(ack.id())
+                        || ack.species()==c.ordinaryEntity() || confirmation!=null)
+                    throw PokemonProbe.fail("Unexpected confirmed listener for "+c+" on "+mc.getUser().getName()+": "+ack);
+                confirmation=ack;
+                displayHeard.accept(ack);
+            };
             String side=solo ? "home-client" : caller ? "caller-client" : "viewer-client";
             PokemonRegistryAudit.check(side);
             dev.mobsear.client.EntityNamesAudit.check(side);
@@ -144,7 +162,7 @@ public final class PokemonCaseClient {
                 Component label=c.ordinaryEntity() ? net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.get(c.spoken()).getDescription()
                         : PokemonSpecies.getByIdentifier(c.spoken()).getTranslatedName();
                 String expected=Component.translatable("mobsear.speech.recognized",label).getString();
-                recognized |= expected.equals(overlay());
+                recognized |= expected.equals(NoticeFixture.localMatch());
                 if (recognized) { reply(PokemonProbe.FIRE); sent=true; }
             } else {
                 // Only the Linux recognizer boundary is replayed. The real server validates the client's normal PCM and species packet.
@@ -175,6 +193,14 @@ public final class PokemonCaseClient {
             if (sourceKnown && error<=30 && ++alignedTicks>=2) aligned=true;
         }
         if ((caller && !sent) || (c.accepts() && !aligned) || ticks<5) return;
+        if (caller && expectedListener()!=null && confirmation==null) return;
+        if (c==PokemonCase.LOPUNNY && caller && !Component.translatable("mobsear.speech.heard",
+                PokemonSpecies.getByIdentifier(c.species).getTranslatedName()).getString().equals(overlay()))
+            throw PokemonProbe.fail("Missing confirmed Lopunny HUD notice: "+overlay());
+        if (c==PokemonCase.LOPUNNY_FAR && caller) {
+            if (ticks<45) return;
+            if (confirmation!=null || overlay().contains("heard you")) throw PokemonProbe.fail("False distant Lopunny success");
+        }
         if (c.guardPicture() && !guardVerified) return;
         if ((solo || !caller) && c.guardPicture() && !saved) { capture="protected"; return; }
         if (c==PokemonCase.PACK_FORM) {
@@ -184,9 +210,16 @@ public final class PokemonCaseClient {
         }
         if ((solo || !caller) && c.accepts() && !saved) { capture="after"; return; }
         reply(PokemonProbe.SEEN); acknowledged=true;
-        if (acoustic) System.out.println("POKEMON_REAL_SPEECH "+c+" canonical=true client-facing="+aligned+
+        if (acoustic) System.out.println("POKEMON_REAL_SPEECH "+c+" canonical=true client-facing="+aligned+" confirmed="+(confirmation!=null)+
                 " mode="+(c==PokemonCase.EEVEE?"voice-activation":"push-to-talk")+
                 (c==PokemonCase.OWL_GUARDIAN ? " syntheticVariant="+(scopedGuardian?"explicit-call":"bare-name") : ""));
+    }
+
+    private ResourceLocation expectedListener() {
+        // In these two trials a second eligible mob actually hears the call.
+        if (c==PokemonCase.BROAD_COW) return ResourceLocation.withDefaultNamespace("zombie");
+        if (c==PokemonCase.COOLDOWN_HELD) return c.species;
+        return c.accepts() ? c.spoken() : null;
     }
     private void waitFor(String reason) {
         if (!reason.equals(waiting)) System.out.println("POKEMON_CLIENT_WAIT " + reason);
@@ -222,10 +255,7 @@ public final class PokemonCaseClient {
         } catch (ReflectiveOperationException ex) { throw PokemonProbe.fail("Cannot read speech readiness "+ex); }
     }
     private String overlay() {
-        try {
-            var f=Gui.class.getDeclaredField("overlayMessageString"); f.setAccessible(true);
-            var value=(Component)f.get(mc.gui); return value==null?"":value.getString();
-        } catch (ReflectiveOperationException ex) { throw PokemonProbe.fail("Cannot read canonical feedback "+ex); }
+        return NoticeFixture.text();
     }
     private void reply(int code) {
         PacketDistributor.sendToServer(new PokemonProbe.Message(code,stage.scenario(),stage.entity()));

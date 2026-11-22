@@ -2,6 +2,7 @@ package dev.mobsear.smoke;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.mobsear.client.FixtureSound;
+import dev.mobsear.client.NoticeFixture;
 import dev.mobsear.client.VoiceClient;
 import dev.mobsear.net.Cue;
 import java.nio.file.Files;
@@ -11,7 +12,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
@@ -34,6 +34,7 @@ final class GazeClient {
         supplied = false;
         ticks = stable = 0;
         active = true;
+        if (before && sender) NoticeFixture.clear();
         if (before && sender && index == 0) {
             try {
                 decisions = Files.readAllLines(Path.of(System.getenv("MOBSEAR_CUE_PROOF")));
@@ -57,10 +58,9 @@ final class GazeClient {
             } else {
                 Cue cue = Cue.valueOf(decisions.get(GazeSmoke.DECISIONS[index]));
                 if (!supplied) { supplyDecision(cue); supplied = true; return; }
-                var fixedName = cue == Cue.MOBS ? Component.translatable("mobsear.speech.hostiles")
-                        : Component.translatable("entity.minecraft." + cue.entityPath);
-                String expected = Component.translatable("mobsear.speech.recognized", fixedName).getString();
-                if (!expected.equals(overlay(mc.gui)) || ++stable < 3) return;
+                var receiver = Component.translatable("entity.minecraft." + (GazeSmoke.enderman(index) ? "enderman" : "spider"));
+                String expected = Component.translatable("mobsear.speech.heard", receiver).getString();
+                if (!expected.equals(NoticeFixture.text()) || ++stable < 3) return;
                 capture("gaze-" + GazeSmoke.CASES[index] + "-feedback");
             }
         } else {
@@ -92,13 +92,6 @@ final class GazeClient {
             ((AtomicReference<net.minecraft.network.protocol.common.custom.CustomPacketPayload>)mailbox.get(current))
                     .set(new dev.mobsear.net.Packets.Call(cue));
         } catch (ReflectiveOperationException e) { throw SmokeControl.failure("recognizer mailbox " + e); }
-    }
-    static String overlay(Gui gui) {
-        try {
-            var field = Gui.class.getDeclaredField("overlayMessageString"); field.setAccessible(true);
-            Component text = (Component)field.get(gui);
-            return text == null ? "" : text.getString();
-        } catch (ReflectiveOperationException e) { throw SmokeControl.failure("action bar " + e); }
     }
     private static void capture(String filename) {
         var folder = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"), "visuals");

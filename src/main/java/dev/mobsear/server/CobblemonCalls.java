@@ -55,13 +55,14 @@ final class CobblemonCalls {
         return response != null && response.walk != null;
     }
 
-    static void hear(ServerPlayer speaker, ResourceLocation id, double radius, ToIntFunction<Mob> roll) {
+    static boolean hear(ServerPlayer speaker, ResourceLocation id, double radius, ToIntFunction<Mob> roll) {
         var species = PokemonSpecies.getByIdentifier(id);
-        if (species == null || !id.equals(species.getResourceIdentifier())) return;
+        if (species == null || !id.equals(species.getResourceIdentifier())) return false;
         var level = speaker.serverLevel();
         long now = level.getServer().overworld().getGameTime();
         double limit = radius * radius;
         var area = speaker.getBoundingBox().inflate(radius);
+        boolean heard = false;
         for (PokemonEntity mob : level.getEntitiesOfClass(PokemonEntity.class, area, mob ->
                 mob.distanceToSqr(speaker) <= limit && id.equals(mob.getPokemon().getSpecies().getResourceIdentifier())
                         && available(mob))) {
@@ -74,7 +75,9 @@ final class CobblemonCalls {
             var response = new Response(speaker, limit, mob.position(), sound, tracker, walk, now, mob.getYHeadRot(), mob.yBodyRot);
             responses.put(mob, response);
             orient(mob, response, now);
+            heard = true;
         }
+        return heard;
     }
 
     private static boolean available(PokemonEntity mob) {

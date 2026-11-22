@@ -71,6 +71,20 @@ public final class Packets {
         return id;
     }
 
+    /** Private reply to the caller, emitted only when a server-side reaction starts. */
+    public record Heard(ResourceLocation id, boolean species) implements CustomPacketPayload {
+        public static final Type<Heard> TYPE = Packets.id("heard");
+        public static final StreamCodec<FriendlyByteBuf, Heard> CODEC = StreamCodec.of((buf, packet) -> {
+            buf.writeBoolean(packet.species);
+            buf.writeUtf(packet.id.toString(), MAX_CALL_ID_LENGTH);
+        }, buf -> {
+            int kind = buf.readUnsignedByte();
+            if (kind > 1) throw new DecoderException("Invalid heard mob kind");
+            return new Heard(readCallId(buf), kind == 1);
+        });
+        @Override public Type<Heard> type() { return TYPE; }
+    }
+
     public record EntityCall(ResourceLocation entityType) implements CustomPacketPayload {
         public static final Type<EntityCall> TYPE = id("entity_call");
         public static final StreamCodec<FriendlyByteBuf, EntityCall> CODEC = StreamCodec.of(

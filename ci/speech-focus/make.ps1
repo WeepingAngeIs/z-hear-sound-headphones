@@ -16,6 +16,10 @@ $words=@(
     @('ender-unstressed','<phoneme alphabet="ipa" ph="&#x2C8;&#x25B;nd&#x25A;m&#x259;n">Enderman</phoneme>','ENDERMAN'),
     @('ender-stressed','<phoneme alphabet="ipa" ph="&#x2C8;&#x25B;nd&#x25A;m&#xE6;n">Enderman</phoneme>','ENDERMAN'),
     @('buneary','Buneary','cobblemon:buneary'),@('endermite','Endermite','ENDERMITE'),
+    @('poponee','Poponee','cobblemon:poponee'),@('hoglin','Hoglin','HOGLIN'),@('zoglin','Zoglin','ZOGLIN'),
+    @('hold-on','hold on','neutral'),@('hanging','I was hanging the lantern','neutral'),
+    @('jogging','jogging','neutral'),@('logged-in','I just logged in','neutral'),
+    @('huddling','we were huddling together','neutral'),@('ordinary-chat','I was talking to my friend','neutral'),
     @('bunny','bunny','neutral'),@('slender','slender man','neutral'),@('punny','that was funny','neutral'),
     @('menu','enter the menu','neutral'),@('ordinary','the lantern is on the table','neutral'),
     @('honey','more honey','neutral'),@('ending','in the morning','neutral'))

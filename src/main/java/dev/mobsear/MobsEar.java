@@ -48,6 +48,7 @@ public final class MobsEar {
     public static Consumer<Packets.Down> playback = frame -> {};
     public static Consumer<MicPresence.Nearby> presence = packet -> {};
     public static Consumer<Boolean> hordeStatus = optedIn -> {};
+    public static Consumer<Packets.Heard> callHeard = ack -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
     public static double wildPokemonApproachChance() { return pokemonApproachChance.getAsDouble(); }
@@ -103,6 +104,7 @@ public final class MobsEar {
 
     private void register(RegisterPayloadHandlersEvent event) {
         var reg = event.registrar("1").optional();
+        reg.playToClient(Packets.Heard.TYPE, Packets.Heard.CODEC, (packet, context) -> callHeard.accept(packet));
         reg.playToServer(Packets.EntityCall.TYPE, Packets.EntityCall.CODEC, (packet, context) -> {
             if (context.player() instanceof ServerPlayer player)
                 ServerVoice.entityCue(player, packet.entityType(), radius.getAsInt());

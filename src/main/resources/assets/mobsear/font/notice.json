@@ -1,0 +1,26 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "mobsear:font/notice_letters.png",
+      "height": 8,
+      "ascent": 7,
+      "filter": {
+        "uniform": false
+      },
+      "chars": [
+        "ABCDEFGHIJKL",
+        "MNOPQRSTUVWX",
+        "YZabcdefghij",
+        "klmnopqrstuv",
+        "wxyz01234567",
+        "89!?\u00b7\u2022.,:;'\u2019",
+        "\u2026-/()+\u00e9\u00c9\u2640\u2642\u2190\u2192"
+      ]
+    },
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    }
+  ]
+}

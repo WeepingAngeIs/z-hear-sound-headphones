@@ -59,6 +59,7 @@ public final class VoiceClient {
 
     public VoiceClient(IEventBus bus, ModContainer container) {
         instance = this;
+        bus.addListener(MobCallNotice::register);
         bus.addListener((RegisterKeyMappingsEvent event) -> {
             event.register(talk);
             event.register(toggle);
@@ -72,9 +73,24 @@ public final class VoiceClient {
         MobsEar.playback = this::receive;
         MobsEar.presence = packet -> nearby.put(packet.speaker(), new Seen(packet, System.nanoTime()));
         MobsEar.hordeStatus = enabled -> horde = enabled;
+        MobsEar.callHeard = VoiceClient::heard;
     }
 
     public static boolean connected() { return instance != null && instance.session != null; }
+    public static void heard(Packets.Heard ack) {
+        var mc = Minecraft.getInstance();
+        if (!connected() || !instance.recognition || options().muted() || options().deafened()
+                || instance.connection != mc.getConnection() || mc.player == null || !mc.player.isAlive()
+                || mc.player.isSpectator() || mc.player.isCreative() || instance.session.level != mc.level) return;
+        Component name;
+        if (ack.species()) {
+            if (!ModList.get().isLoaded("cobblemon")) return;
+            name = CobblemonNames.display(ack.id());
+        } else {
+            name = EntityCallNames.display(ack.id());
+        }
+        if (name != null) MobCallNotice.confirm(Component.translatable("mobsear.speech.heard", name));
+    }
     public static VoicePreferences options() { return instance.preferences; }
     public static boolean voiceActivated() { return connected() && instance.activation; }
     public static void setVoiceActivated(boolean enabled) {
@@ -175,7 +191,10 @@ public final class VoiceClient {
         publishControls(current);
         if (!(mc.screen instanceof VoiceSettingsScreen) || !mc.isWindowActive()) testMic = false;
         boolean inputBlocked = preferences.muted() || preferences.deafened();
-        if (inputBlocked) testMic = false;
+        if (inputBlocked) {
+            testMic = false;
+            MobCallNotice.clearMatch();
+        }
         if (!talk.isDown()) waitForRelease = false;
         boolean held = focused && !inputBlocked && (activation || (talk.isDown() && !waitForRelease));
         if (!focused || inputBlocked) {
@@ -214,6 +233,7 @@ public final class VoiceClient {
     }
 
     private void closeSession() {
+        MobCallNotice.clear();
         if (session != null) {
             session.close();
             session = null;
@@ -350,7 +370,10 @@ public final class VoiceClient {
             recognition = enable;
             gate.reset();
             speech.setEnabled(enable && !suspended);
-            if (!enable) cue.set(null);
+            if (!enable) {
+                cue.set(null);
+                MobCallNotice.clearMatch();
+            }
         }
 
         void send(ClientPacketListener link) {
@@ -360,6 +383,7 @@ public final class VoiceClient {
             }
             CustomPacketPayload ready = cue.getAndSet(null);
             if (ready == null || !recognition) return;
+            MobCallNotice.clearMatch();
             var mc = Minecraft.getInstance();
             Component name;
             if (ready instanceof Packets.SpeciesCall call) {
@@ -377,12 +401,14 @@ public final class VoiceClient {
                 if (!link.hasChannel(Packets.Call.TYPE)) return;
                 if (mob != Cue.ZOMBIE && mob != Cue.MOBS && mob != Cue.ENDERMAN && !link.hasChannel(MicPresence.Controls.TYPE)) return;
             }
-            // Display the fixed cue meaning privately. Never display a recognized phrase or a transcript.
+            // Optional troubleshooting shows canonical names, never transcribed words.
             if (mc.player != null && (mc.player.isCreative() || mc.player.isSpectator())) {
-                mc.gui.setOverlayMessage(Component.translatable("mobsear.speech.recognized_mode", name), false);
+                if (prefs.recognitionDiagnostics())
+                    MobCallNotice.diagnose(Component.translatable("mobsear.speech.recognized_mode", name));
                 return;
             }
-            mc.gui.setOverlayMessage(Component.translatable("mobsear.speech.recognized", name), false);
+            if (prefs.recognitionDiagnostics())
+                MobCallNotice.diagnose(Component.translatable("mobsear.speech.recognized", name));
             PacketDistributor.sendToServer(ready);
         }
 
@@ -391,11 +417,13 @@ public final class VoiceClient {
             var state = speech.status();
             if (failure != null) {
                 String key = failure == VoiceAudio.Problem.MICROPHONE_UNAVAILABLE ? "mic" : "output";
-                mc.player.displayClientMessage(Component.translatable("mobsear.problem." + key), true);
+                MobCallNotice.show(Component.translatable("mobsear.problem." + key));
             } else if (state != previous && !suspended) {
                 previous = state;
                 String key = state.name().toLowerCase(java.util.Locale.ROOT);
-                mc.player.displayClientMessage(Component.translatable("mobsear.speech." + key), true);
+                Component status = Component.translatable("mobsear.speech." + key);
+                if (state == SpeechCues.Status.READY) MobCallNotice.ready(status);
+                else MobCallNotice.show(status);
             }
         }
 

@@ -2,6 +2,7 @@ package dev.mobsear.smoke;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.mobsear.client.FixtureSound;
+import dev.mobsear.client.NoticeFixture;
 import dev.mobsear.client.VoiceClient;
 import dev.mobsear.net.Cue;
 import dev.mobsear.net.MicState;
@@ -38,6 +39,7 @@ final class IntegratedCalls {
     private static final int X = 8, Y = 104, Z = 8;
     private static final List<String> EXPECTED = List.of("ENDERMAN","SPIDER","MOBS","MOBS");
     private final boolean acoustic = System.getenv("MOBSEAR_SYNTH_DEVICE") != null;
+    private final NoticeProof notices = "1".equals(System.getenv("MOBSEAR_NOTICE_PROOF")) ? new NoticeProof() : null;
     private final List<String> decisions;
     // Each counter has a single writer. World entities stay on their owning thread.
     private volatile int stage = -1, ready = -1, released = -1, feedback = -1, seen = -1, entityId;
@@ -54,9 +56,15 @@ final class IntegratedCalls {
         NeoForge.EVENT_BUS.addListener(this::client);
     }
 
+    private Case scenario(int index) {
+        return index < CASES.size() ? CASES.get(index) : new Case("Enderman-notice-" + (index - CASES.size()), 0, true, false, 18);
+    }
+
+    private int total() { return CASES.size() + (notices == null ? 0 : NoticeProof.COUNT); }
+
     private void prepare(ServerPlayer owner, int index) {
         var level = owner.serverLevel();
-        var c = CASES.get(index);
+        var c = scenario(index);
         if (index == 0) {
             level.getServer().setDifficulty(Difficulty.NORMAL,true);
             level.setWeatherParameters(60000,0,false,false);
@@ -65,7 +73,10 @@ final class IntegratedCalls {
                 level.setBlockAndUpdate(new BlockPos(X+x,Y-1,Z+z),Blocks.STONE.defaultBlockState());
             owner.setGameMode(GameType.SURVIVAL);
         }
-        owner.teleportTo(level,X+.5+c.distance,Y,Z+.5,-90,0);
+        boolean picture = index >= CASES.size();
+        if (picture) NoticeProof.equip(owner, index - CASES.size());
+        // Keep the mob in view for HUD pictures. Looking down avoids a vanilla eye-contact trigger.
+        owner.teleportTo(level,X+.5+c.distance,Y,Z+.5,picture ? 90 : -90,picture ? 13 : 0);
         subject = (c.enderman ? EntityType.ENDERMAN : EntityType.SPIDER).create(level);
         if (subject == null || !level.isDay()) throw SmokeControl.failure("Expected a daytime world");
         // Keep the outside control beyond the boundary for the whole synthetic utterance.
@@ -87,11 +98,11 @@ final class IntegratedCalls {
     }
     private void server(ServerTickEvent.Post event) {
         var server = event.getServer();
-        if (stage == CASES.size() || server.getPlayerCount() == 0) return;
+        if (stage == total() || server.getPlayerCount() == 0) return;
         if (server.isDedicatedServer() || server.getPlayerCount() != 1) throw SmokeControl.failure("Expected private single-player");
         var owner = server.getPlayerList().getPlayers().getFirst();
         if (stage < 0) { prepare(owner,0); return; }
-        var c = CASES.get(stage);
+        var c = scenario(stage);
         if (++age > 620) throw SmokeControl.failure("Integrated "+c.label+" stalled ready="+ready
                 +" release="+released+" feedback="+feedback+" clientSeen="+seen+" claimed="+claimed+" aligned="+aligned);
         if (subject.getTarget()!=null || subject instanceof EnderMan e && (e.isCreepy() || e.hasBeenStaredAt() || e.isAngry()))
@@ -115,26 +126,30 @@ final class IntegratedCalls {
                 +" memory-connection=true daytime=true server-listen-goal="+claimed+" alignedTicks="+aligned
                 +" live-windows-decoder="+acoustic+" target=none");
         subject.discard();
-        if (stage+1 < CASES.size()) prepare(owner,stage+1);
-        else { stage=CASES.size(); System.out.println("MOBSEAR_INTEGRATED_PASS"); }
+        if (stage+1 < total()) prepare(owner,stage+1);
+        else { stage=total(); System.out.println("MOBSEAR_INTEGRATED_PASS"); }
     }
 
     private void client(ClientTickEvent.Post event) {
         var mc=Minecraft.getInstance();
         if (!installed) { FixtureSound.install(); installed=true; }
         int index=stage;
-        if (index<0 || index>=CASES.size() || mc.getSingleplayerServer()==null || mc.level==null ||
+        if (index<0 || index>=total() || mc.getSingleplayerServer()==null || mc.level==null ||
                 mc.player==null || mc.screen!=null || !mc.isWindowActive()) return;
         var link=mc.getConnection();
         if (link==null || !link.getConnection().isMemoryConnection() || !link.hasChannel(Packets.Call.TYPE)
                 || !VoiceClient.connected()) throw SmokeControl.failure("Missing integrated mod connection");
-        var c=CASES.get(index);
+        var c=scenario(index);
+        int view=index-CASES.size();
         var v=InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V);
         if (clientStage!=index) {
             clientStage=index;
             clientTicks=seenTicks=0;
             playedPhrase=false;
-            mc.gui.setOverlayMessage(Component.empty(),false);
+            NoticeFixture.clear();
+            // The out-of-range control must still prove the synthetic phrase was recognized locally.
+            VoiceClient.options().setRecognitionDiagnostics(c.distance>32);
+            if (view>=0) NoticeProof.prepare(mc,view);
             if (index==0) {
                 KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
                 VoiceClient.options().setNoiseSuppression(true);
@@ -144,9 +159,9 @@ final class IntegratedCalls {
             FixtureSound.tone=!acoustic;
         }
         var entity=mc.level.getEntity(entityId);
-        if (++clientTicks<6 || !(entity instanceof Mob mob)) return;
+        if (++clientTicks<6 || !(entity instanceof Mob mob) || (view>=0 && !NoticeProof.ready(mc,view))) return;
         boolean inputReady = acoustic ? (index > 0 || Component.translatable("mobsear.speech.ready").getString()
-                .equals(GazeClient.overlay(mc.gui))) : VoiceClient.localState()==MicState.SPEAKING;
+                .equals(NoticeFixture.text())) : VoiceClient.localState()==MicState.SPEAKING;
         if (ready<index && inputReady && Math.abs(Mth.wrapDegrees(mob.getYHeadRot()+90))>=90)
             ready=index;
         if (released!=index) return;
@@ -157,6 +172,7 @@ final class IntegratedCalls {
                 try { FixtureSound.say(Files.readAllBytes(Path.of(System.getenv("MOBSEAR_SYNTH_DEVICE"), c.decision+".pcm"))); }
                 catch (Exception e) { throw SmokeControl.failure("Missing generated acoustic fixture"); }
             } else {
+                if (view==0) mc.gui.setOverlayMessage(Component.literal("Quest updated"),false);
                 KeyMapping.set(v,false);
                 FixtureSound.tone=false;
                 GazeClient.supplyDecision(cue);
@@ -164,8 +180,15 @@ final class IntegratedCalls {
             return;
         }
         if (acoustic && FixtureSound.finishedPhrase()) KeyMapping.set(v,false);
-        var name=cue==Cue.MOBS ? Component.translatable("mobsear.speech.hostiles") : Component.translatable("entity.minecraft."+cue.entityPath);
-        if (Component.translatable("mobsear.speech.recognized",name).getString().equals(GazeClient.overlay(mc.gui))) feedback=index;
+        var receiver=Component.translatable("entity.minecraft."+(c.enderman?"enderman":"spider"));
+        String success=Component.translatable("mobsear.speech.heard",receiver).getString();
+        if (c.distance <= 32) {
+            if (success.equals(NoticeFixture.text()) && (view<0 || notices.captured(view))) feedback=index;
+        } else {
+            var local=Component.translatable("mobsear.speech.recognized",Component.translatable("mobsear.speech.hostiles"));
+            if (success.equals(NoticeFixture.text())) throw SmokeControl.failure("Out-of-range mob acknowledged hearing");
+            if (local.getString().equals(NoticeFixture.localMatch())) feedback=index;
+        }
         if (Math.abs(Mth.wrapDegrees(mob.getYHeadRot()+90))<=25) {
             if (++seenTicks>=3) seen=index;
         } else seenTicks=0;

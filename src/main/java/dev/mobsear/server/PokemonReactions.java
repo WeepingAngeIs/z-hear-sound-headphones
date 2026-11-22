@@ -16,14 +16,19 @@ public final class PokemonReactions {
     }
 
     public static void hear(ServerPlayer speaker, ResourceLocation species, double radius) {
-        hear(speaker, species, radius, mob -> mob.getRandom().nextDouble() < MobsEar.wildPokemonApproachChance() ? 0 : 1);
+        tryCall(speaker, species, radius);
     }
 
-    static void hear(ServerPlayer speaker, ResourceLocation species, double radius, ToIntFunction<Mob> roll) {
+    static boolean tryCall(ServerPlayer speaker, ResourceLocation species, double radius) {
+        return hear(speaker, species, radius, mob -> mob.getRandom().nextDouble() < MobsEar.wildPokemonApproachChance() ? 0 : 1);
+    }
+
+    static boolean hear(ServerPlayer speaker, ResourceLocation species, double radius, ToIntFunction<Mob> roll) {
         if (ModList.get().isLoaded("cobblemon") && species != null && Double.isFinite(radius) && radius > 0
                 && speaker.isAlive() && !speaker.isRemoved() && !speaker.isSpectator() && !speaker.isCreative()) {
-            CobblemonCalls.hear(speaker, species, radius, roll);
+            return CobblemonCalls.hear(speaker, species, radius, roll);
         }
+        return false;
     }
 
     static boolean isReacting(Mob mob) {

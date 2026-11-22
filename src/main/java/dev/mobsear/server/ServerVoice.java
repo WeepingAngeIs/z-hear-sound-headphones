@@ -8,6 +8,7 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class ServerVoice {
     // All payload handlers and resets run on the Minecraft server thread.
@@ -45,15 +46,23 @@ public final class ServerVoice {
     }
 
     public static void cue(ServerPlayer speaker, Cue cue, double radius) {
-        if (acceptCall(speaker)) MobReactions.handle(speaker, cue, radius);
+        if (!acceptCall(speaker)) return;
+        ResourceLocation listener = MobReactions.react(speaker, cue, radius);
+        if (listener != null) confirm(speaker, listener, false);
     }
 
     public static void speciesCue(ServerPlayer speaker, ResourceLocation species, double radius) {
-        if (acceptCall(speaker)) PokemonReactions.hear(speaker, species, radius);
+        if (acceptCall(speaker) && PokemonReactions.tryCall(speaker, species, radius)) confirm(speaker, species, true);
     }
 
     public static void entityCue(ServerPlayer speaker, ResourceLocation entityType, double radius) {
-        if (acceptCall(speaker)) NamedMobReactions.hear(speaker, entityType, radius);
+        if (acceptCall(speaker) && NamedMobReactions.hear(speaker, entityType, radius)) confirm(speaker, entityType, false);
+    }
+
+    private static void confirm(ServerPlayer speaker, ResourceLocation id, boolean species) {
+        if (id.toString().length() <= Packets.MAX_CALL_ID_LENGTH && speaker.connection != null
+                && speaker.connection.hasChannel(Packets.Heard.TYPE))
+            PacketDistributor.sendToPlayer(speaker, new Packets.Heard(id, species));
     }
 
     public static void forget(ServerPlayer player) {
