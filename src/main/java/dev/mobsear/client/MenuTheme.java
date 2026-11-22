@@ -34,6 +34,6 @@ public enum MenuTheme {
             String normalized = id.toLowerCase(Locale.ROOT);
             for (MenuTheme candidate : values()) if (candidate.id.equals(normalized)) return candidate;
         }
-        return UWU;
+        return LOTUS;
     }
 }

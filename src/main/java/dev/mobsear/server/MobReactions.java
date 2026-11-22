@@ -8,8 +8,10 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.WrappedGoal;
+import net.minecraft.world.entity.ai.navigation.WallClimberNavigation;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.phys.Vec3;
 
@@ -29,6 +31,11 @@ public final class MobReactions {
                 mob instanceof Enemy && mob.isAlive() && !mob.isNoAi()
                     && !mob.isAlliedTo(speaker) && mob.canAttack(speaker)
                     && mob.distanceToSqr(speaker) <= distanceLimit && matches(mob, cue))) {
+            if (mob instanceof EnderMan || mob instanceof Spider) {
+                // Vanilla still owns eye contact, targets, retaliation and escape.
+                if (calm(mob)) listenGoal(mob).hear(speaker.getEyePosition());
+                continue;
+            }
             mob.lookAt(speaker, 45.0F, 45.0F);
             mob.getLookControl().setLookAt(speaker, 45.0F, 45.0F);
             if (mob instanceof Zombie zombie) {
@@ -56,42 +63,60 @@ public final class MobReactions {
         };
     }
 
-    private static ListenGoal listenGoal(Zombie zombie) {
-        for (WrappedGoal existing : zombie.goalSelector.getAvailableGoals()) {
+    private static boolean calm(Mob mob) {
+        return mob.getTarget() == null && (!(mob instanceof EnderMan enderman)
+                || (!enderman.hasBeenStaredAt() && !enderman.isCreepy() && !enderman.isAngry()));
+    }
+
+    private static ListenGoal listenGoal(Mob mob) {
+        for (WrappedGoal existing : mob.goalSelector.getAvailableGoals()) {
             if (existing.getGoal() instanceof ListenGoal listen) {
                 return listen;
             }
         }
-        ListenGoal listen = new ListenGoal(zombie);
-        zombie.goalSelector.addGoal(0, listen);
+        ListenGoal listen = new ListenGoal(mob);
+        // Idle species can interrupt ordinary strolling or looking. Float, flee and stare goals retain precedence.
+        mob.goalSelector.addGoal(mob instanceof Zombie ? 0 : 4, listen);
         return listen;
     }
 
-    /** Keeps vanilla chase goals from immediately replacing the pause on the next tick. */
+    /** Owns MOVE and LOOK just long enough for a visible turn. No player reference survives the sound. */
     private static final class ListenGoal extends Goal {
-        private final Zombie zombie;
+        private final Mob mob;
         private Vec3 heardAt = Vec3.ZERO;
         private long pauseUntil;
         private long nextPause;
 
-        ListenGoal(Zombie zombie) {
-            this.zombie = zombie;
+        ListenGoal(Mob mob) {
+            this.mob = mob;
             setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
         }
 
         void hear(Vec3 position) {
-            heardAt = position;
-            long now = zombie.level().getGameTime();
-            if (now >= nextPause) {
-                pauseUntil = now + 10;
-                nextPause = now + 40;
-                zombie.getNavigation().stop();
+            long now = mob.level().getGameTime();
+            if (now < nextPause) {
+                if (mob instanceof Zombie) heardAt = position;
+                return;
             }
+            heardAt = position;
+            pauseUntil = now + (mob instanceof Zombie ? 10 : 18);
+            nextPause = now + 40;
+            if (mob instanceof Zombie) mob.getNavigation().stop();
+            mob.getLookControl().setLookAt(heardAt.x, heardAt.y, heardAt.z, 45.0F, 45.0F);
         }
 
         @Override
         public boolean canUse() {
-            return zombie.level().getGameTime() < pauseUntil;
+            return mob.level().getGameTime() < pauseUntil && (mob instanceof Zombie || calm(mob));
+        }
+
+        @Override
+        public void start() {
+            // A climbing spider keeps a fallback destination after PathNavigation.stop() clears its path.
+            // Let the navigation controller finish that fallback at its current feet.
+            var navigation = mob.getNavigation();
+            if (navigation instanceof WallClimberNavigation) navigation.moveTo(mob.getX(), mob.getY(), mob.getZ(), 0);
+            navigation.stop();
         }
 
         @Override
@@ -101,8 +126,18 @@ public final class MobReactions {
 
         @Override
         public void tick() {
-            zombie.getNavigation().stop();
-            zombie.getLookControl().setLookAt(heardAt.x, heardAt.y, heardAt.z, 45.0F, 45.0F);
+            // Vanilla can acquire a target on the same tick before this goal's next selector cleanup.
+            if (!canUse()) return;
+            mob.getNavigation().stop();
+            mob.getLookControl().setLookAt(heardAt.x, heardAt.y, heardAt.z, 45.0F, 45.0F);
+        }
+
+        @Override
+        public void stop() {
+            if (!(mob instanceof Zombie)) {
+                pauseUntil = 0;
+                heardAt = Vec3.ZERO;
+            }
         }
     }
 }

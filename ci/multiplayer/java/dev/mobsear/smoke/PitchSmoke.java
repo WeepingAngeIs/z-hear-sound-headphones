@@ -46,7 +46,7 @@ final class PitchSmoke {
         if (stage == NEAR) begin(a,b,FAR);
         else {
             System.out.println("MOBSEAR_PITCH_WIRE_PASS");
-            System.out.println("MOBSEAR_MULTIPLAYER_PASS");
+            GazeSmoke.start(a,b);
         }
     }
 }

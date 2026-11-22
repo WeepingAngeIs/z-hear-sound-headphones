@@ -44,6 +44,13 @@ pauseOnLostFocus:false
 OPTIONS
 done
 
+if [[ ${MOBSEAR_PUBLIC_MENU_STACK:-} == 1 ]]; then
+  python3 ci/multiplayer/stage_menu_stack.py "$MOBSEAR_SMOKE_DIR/smokeListener/mods"
+  mkdir -p "$MOBSEAR_SMOKE_DIR/smokeListener/config"
+  # Exercise the menu/render stack with the standard pipeline and the mod's default scene.
+  echo 'enableShaders=false' > "$MOBSEAR_SMOKE_DIR/smokeListener/config/iris.properties"
+fi
+
 bash gradlew --no-daemon --max-workers=2 -PvoiceMultiplayer \
   classes prepareSmokeServerRun prepareSmokeSpeakerRun prepareSmokeListenerRun \
   createSmokeServerLaunchScript createSmokeSpeakerLaunchScript createSmokeListenerLaunchScript
@@ -89,7 +96,7 @@ launch() {
     setsid bash "$script" > "$MOBSEAR_SMOKE_DIR/$role.console" 2>&1 &
   else
     # Each fullscreen GLFW surface has independent focus. Neither can suspend the other's real capture path.
-    setsid xvfb-run -a -s '-screen 0 1024x768x24' bash "$script" > "$MOBSEAR_SMOKE_DIR/$role.console" 2>&1 &
+    setsid xvfb-run -a -s '-screen 0 1440x900x24' bash "$script" > "$MOBSEAR_SMOKE_DIR/$role.console" 2>&1 &
   fi
   pids+=("$!")
   roles+=("$role")
@@ -110,11 +117,20 @@ wait_for smokeServer 'Done (' 240
 launch smokeSpeaker
 wait_for smokeSpeaker 'MOBSEAR_CLIENT_READY' 200
 launch smokeListener
+if [[ ${MOBSEAR_PUBLIC_MENU_STACK:-} == 1 ]]; then
+  wait_for smokeListener 'MOBSEAR_MENU_PASS' 500
+  grep -F 'MOBSEAR_PUBLIC_MENU_STACK' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+  grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+  collect_images
+  test -s build/state-previews/menu-gui-scale3.png
+  exit 0
+fi
 wait_for smokeServer 'MOBSEAR_MULTIPLAYER_PASS' 600
 grep -Fq 'MOBSEAR_HORDE_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -F 'MOBSEAR_PITCH_AUDIO' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -F 'MOBSEAR_TRACKED_HEAD' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -Fq 'MOBSEAR_PITCH_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 mkdir -p build/pitch-previews
 for sample in bypass squeaky deep low-end high-end center restored; do
@@ -136,7 +152,8 @@ for role in hud nameplate; do
   snapshots+=("$role-effects-reduced" "$role-effects-off" "$role-hidden")
 done
 snapshots+=(nameplate-out-of-range nameplate-team-visible nameplate-team-hidden status-speaking status-quiet gain-zero device-meter)
-snapshots+=(menu-compact menu-voice-changer)
+snapshots+=(menu-first-open menu-compact menu-voice-changer)
+for call in enderman spider mob mobs; do snapshots+=("gaze-$call-before" "gaze-$call-after" "gaze-$call-feedback"); done
 snapshots+=(menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
 for name in "${snapshots[@]}"; do test -s "build/state-previews/$name.png" || { echo "Missing $name"; exit 1; }; done
 printf 'MOBSEAR_CAPTURE %s.png\n' "${snapshots[@]}"

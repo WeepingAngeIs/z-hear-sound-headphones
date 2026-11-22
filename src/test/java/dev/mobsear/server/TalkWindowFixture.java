@@ -17,7 +17,10 @@ public final class TalkWindowFixture {
         require(window.acceptCue(start + ms(1300)), "second utterance");
         require(window.acceptFrame(start + ms(1400)), "third frame");
         require(!window.acceptCue(start + ms(1400)), "cue rate limit");
-        require(!window.acceptCue(start + ms(4401)), "stale voice");
+        require(window.acceptCue(start + ms(6400)), "maximum accepted decode and delivery delay");
+        require(!window.acceptCue(start + ms(6400)), "accepted late decision consumed the frame");
+        require(window.acceptFrame(start + ms(6500)), "fourth frame");
+        require(!window.acceptCue(start + ms(11500) + 1), "voice older than five seconds");
         System.out.println("Voice burst, refill, freshness and cue cooldown passed.");
     }
 

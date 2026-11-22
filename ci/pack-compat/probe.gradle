@@ -1,0 +1,8 @@
+// Applied only inside the disposable Actions checkout.
+sourceSets.main.java.srcDir('ci/pack-compat/java')
+sourceSets.main.resources.srcDir('ci/gametest-resources')
+neoForge.runs.named('gameTestServer') {
+    gameDirectory = file('build/pack-compat/game')
+    systemProperty 'mobsear.probe.profile', providers.gradleProperty('probeProfile').get()
+    systemProperty 'mobsear.probe.revision', providers.gradleProperty('probeRevision').get()
+}

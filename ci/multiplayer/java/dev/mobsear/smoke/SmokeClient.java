@@ -41,6 +41,7 @@ public final class SmokeClient {
         if (menu != null) menu.tick();
         if (visuals != null) visuals.tick();
         if (pitch != null) pitch.tick();
+        GazeClient.tick();
         var mc = Minecraft.getInstance();
         var connection = mc.getConnection();
         if (ready || mc.player == null || mc.level == null || connection == null) return;
@@ -67,6 +68,7 @@ public final class SmokeClient {
     }
 
     private void barrier(int phase) {
+        if (GazeSmoke.handles(phase)) { GazeClient.start(phase, sender); return; }
         if (phase == PitchSmoke.NEAR || phase == PitchSmoke.FAR) {
             pitch = new PitchClientSmoke(sender, phase);
             return;

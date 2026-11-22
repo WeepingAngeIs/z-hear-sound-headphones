@@ -1,0 +1,59 @@
+name: Compare mob hearing with installed AI mods
+on:
+  push:
+    branches: [codex/proximity-voice-prototype]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    name: ${{ matrix.revision }} / ${{ matrix.profile }} / NeoForge 21.1.249
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [baseline, candidate]
+        profile: [clean, ai]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - if: matrix.revision == 'baseline'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ee8dda6a5780499d160833d65a464bc45dc643ac
+          path: baseline
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Observe head rotation and target ownership on real entity ticks
+        env:
+          REVISION: ${{ matrix.revision }}
+          PROFILE: ${{ matrix.profile }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$REVISION" == baseline ]]; then
+            cp -R ci/pack-compat baseline/ci/pack-compat
+            cd baseline
+          else
+            cp ci/gametest/dev/mobsear/server/GlanceGameTests.java ci/pack-compat/java/dev/mobsear/server/
+          fi
+          python3 ci/pack-compat/prepare.py "$PROFILE"
+          printf '\napply from: "ci/pack-compat/probe.gradle"\n' >> build.gradle
+          trap 'grep "PACK_GLANCE " "$RUNNER_TEMP/pack-probe.log" > "$RUNNER_TEMP/angles.txt" || true' EXIT
+          bash gradlew --no-daemon -PprobeRevision="$REVISION" -PprobeProfile="$PROFILE" runGameTestServer 2>&1 | tee "$RUNNER_TEMP/pack-probe.log"
+          grep -E 'All [1-9][0-9]* required tests passed' "$RUNNER_TEMP/pack-probe.log"
+          grep 'PACK_GLANCE ' "$RUNNER_TEMP/pack-probe.log" > "$RUNNER_TEMP/angles.txt"
+          grep -q 'PACK_GLANCE_COMPLETE' "$RUNNER_TEMP/pack-probe.log"
+      - name: Keep only the measured results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: glance-${{ matrix.revision }}-${{ matrix.profile }}
+          path: ${{ runner.temp }}/angles.txt
+          if-no-files-found: warn

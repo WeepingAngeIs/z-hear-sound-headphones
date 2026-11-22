@@ -69,26 +69,26 @@ public final class VoiceAudioFixture {
         var gate = new CaptureGate();
         var sent = new AtomicInteger();
         var endings = new AtomicInteger();
-        java.util.function.Consumer<byte[]> output = pcm -> sent.incrementAndGet();
-        for (int i = 0; i < 20; i++) gate.accept(constant(0), true, 50, false, output, endings::incrementAndGet);
+        java.util.function.BiConsumer<byte[], byte[]> output = (pcm, original) -> sent.incrementAndGet();
+        for (int i = 0; i < 20; i++) gate.accept(constant(0), true, 50, false, false, output, endings::incrementAndGet);
         check(sent.get() == 0 && gate.level() == 0, "quiet auto capture sends no frames");
-        gate.accept(constant(-1_500), true, 50, false, output, endings::incrementAndGet);
+        gate.accept(constant(-1_500), true, 50, false, false, output, endings::incrementAndGet);
         check(sent.get() == 7 && gate.level() > 0, "speech opens six-frame pre-roll and drives meter");
-        for (int i = 0; i < 15; i++) gate.accept(constant(0), true, 50, false, output, endings::incrementAndGet);
+        for (int i = 0; i < 15; i++) gate.accept(constant(0), true, 50, false, false, output, endings::incrementAndGet);
         check(sent.get() == 19 && endings.get() == 1, "bounded tail completes one utterance");
         gate.reset();
-        gate.accept(constant(300), true, 0, false, output, endings::incrementAndGet);
+        gate.accept(constant(300), true, 0, false, false, output, endings::incrementAndGet);
         check(sent.get() == 19, "least sensitive setting rejects a soft signal");
         gate.reset();
-        gate.accept(constant(300), true, 100, false, output, endings::incrementAndGet);
+        gate.accept(constant(300), true, 100, false, false, output, endings::incrementAndGet);
         check(sent.get() == 20, "most sensitive setting admits a soft signal after reset");
         gate.reset();
         byte[] hum = constant(40);
-        gate.accept(hum, false, 50, true, output, endings::incrementAndGet);
+        gate.accept(hum, false, 50, true, false, output, endings::incrementAndGet);
         check(VoiceSignal.rms(hum) == 0 && gate.level() == 0, "low noise is attenuated before metering and delivery");
         for (int i = 0; i < 8; i++) {
             byte[] dc = constant(1_000);
-            gate.accept(dc, false, 50, true, output, endings::incrementAndGet);
+            gate.accept(dc, false, 50, true, false, output, endings::incrementAndGet);
             if (i == 7) check(VoiceSignal.rms(dc) < 0.001, "high-pass attenuates persistent DC");
         }
         byte[] tone = new byte[VoiceAudio.FRAME_BYTES];
@@ -97,10 +97,10 @@ public final class VoiceAudioFixture {
             tone[2*i] = (byte) sample;
             tone[2*i + 1] = (byte) (sample >> 8);
         }
-        gate.accept(tone, false, 50, true, output, endings::incrementAndGet);
+        gate.accept(tone, false, 50, true, false, output, endings::incrementAndGet);
         check(VoiceSignal.rms(tone) > 0.1 && gate.level() > 0.5, "voice-band tone survives filtering");
         gate.reset();
-        gate.accept(constant(0), false, 50, false, output, endings::incrementAndGet);
+        gate.accept(constant(0), false, 50, false, false, output, endings::incrementAndGet);
         check(sent.get() == 31 && gate.level() == 0, "push-to-talk passes silence while its meter stays quiet");
     }
 

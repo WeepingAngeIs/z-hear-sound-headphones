@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
@@ -66,15 +65,24 @@ public final class VoicePreferences {
     }
 
     public synchronized String theme() {
-        return normalizeTheme(values.getProperty("theme"));
+        return MenuTheme.fromId(values.getProperty("theme")).id();
     }
 
     public synchronized void setTheme(String theme) {
-        values.setProperty("theme", normalizeTheme(theme));
+        var choice = MenuTheme.fromId(theme);
+        values.setProperty("theme", choice.id());
+        values.setProperty("backdrop." + choice.family(), choice.id());
     }
 
-    private static String normalizeTheme(String value) {
-        return MenuTheme.fromId(value == null ? "uwu" : value.toLowerCase(Locale.ROOT)).id();
+    /** First visits show an animated scene. Returning to a family restores its explicit backdrop, including Original. */
+    public synchronized void selectFamily(String family) {
+        var current = MenuTheme.fromId(theme());
+        if (current.family().equals(family)) return;
+        values.setProperty("backdrop." + current.family(), current.id());
+        var firstScene = MenuTheme.fromId(family).next();
+        String saved = values.getProperty("backdrop." + family);
+        var remembered = MenuTheme.fromId(saved);
+        setTheme(saved != null && remembered.family().equals(family) ? remembered.id() : firstScene.id());
     }
 
     public synchronized boolean muted() { return flag("micMuted", false); }

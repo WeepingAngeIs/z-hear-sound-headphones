@@ -82,7 +82,18 @@ public final class VoicePreferencesFixture {
             return fakeLine(info.getLineClass());
         });
         var prefs = new VoicePreferences(file, sound);
-        require(prefs.theme().equals("uwu") && prefs.volume() == 100 && prefs.gain(PLAYER) == 100, "Defaults");
+        require(prefs.theme().equals("uwu_lotus") && prefs.volume() == 100 && prefs.gain(PLAYER) == 100, "Defaults");
+        prefs.selectFamily("emo");
+        require(prefs.theme().equals("emo_skulls"), "First family selection shows a scene");
+        prefs.setTheme("emo");
+        prefs.selectFamily("uwu");
+        prefs.setTheme("uwu_blossom");
+        prefs.selectFamily("uwu");
+        require(prefs.theme().equals("uwu_blossom"), "Clicking current family preserves selected scene");
+        prefs.selectFamily("emo");
+        require(prefs.theme().equals("emo"), "Explicit Original remains selectable and is remembered");
+        prefs.selectFamily("uwu");
+        require(prefs.theme().equals("uwu_blossom"), "Returning to family restores scene");
         require(!prefs.muted() && !prefs.deafened() && !prefs.noiseSuppression() && prefs.sensitivity() == 50,
                 "Default audio controls");
         require(!prefs.pitchEnabled() && prefs.pitchCents() == 0 && prefs.pitchPreset().equals("natural")
@@ -193,7 +204,7 @@ public final class VoicePreferencesFixture {
         Files.writeString(file, "theme=wrong\nvolume=oops\ngain." + PLAYER + "=400\nfuture=value\n"
                 + "micStyle=oops\neffects=oops\naccent=oops\nsensitivity=oops\nhudVisible=oops\n");
         prefs = new VoicePreferences(file, sound);
-        require(prefs.theme().equals("uwu") && prefs.volume() == 100 && prefs.gain(PLAYER) == 200,
+        require(prefs.theme().equals("uwu_lotus") && prefs.volume() == 100 && prefs.gain(PLAYER) == 200,
                 "Invalid individual preferences");
         require(prefs.micStyle().equals("auto") && prefs.resolvedMicStyle().equals("uwu")
                 && prefs.effects().equals("full") && prefs.accent().equals("auto") && prefs.sensitivity() == 50

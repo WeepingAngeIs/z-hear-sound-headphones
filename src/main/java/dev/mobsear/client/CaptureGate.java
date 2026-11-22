@@ -2,11 +2,12 @@ package dev.mobsear.client;
 
 import dev.mobsear.net.VoiceSignal;
 import java.util.ArrayDeque;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /** Processes the existing 20 ms input frames. All audio retained here is volatile pre-roll. */
 final class CaptureGate {
-    private final ArrayDeque<byte[]> preRoll = new ArrayDeque<>(6);
+    private record Frame(byte[] outbound, byte[] original) {}
+    private final ArrayDeque<Frame> preRoll = new ArrayDeque<>(6);
     private int tail;
     private double previousSample;
     private double previousHighPass;
@@ -16,31 +17,35 @@ final class CaptureGate {
 
     double level() { return level; }
 
-    void accept(byte[] pcm, boolean automatic, int sensitivity, boolean suppress,
-                Consumer<byte[]> transmit, Runnable endUtterance) {
+    void accept(byte[] pcm, boolean automatic, int sensitivity, boolean suppress, boolean recognize,
+                BiConsumer<byte[], byte[]> transmit, Runnable endUtterance) {
         if (pcm.length != VoiceAudio.FRAME_BYTES) return;
+        byte[] original = recognize && suppress ? pcm.clone() : pcm;
         if (suppress) suppress(pcm);
         else if (filtering) resetFilter();
         filtering = suppress;
         double rms = VoiceSignal.rms(pcm);
         level = VoiceSignal.meter(rms);
         if (!automatic) {
-            transmit.accept(pcm);
+            transmit.accept(pcm, original);
             return;
         }
 
         // Sensitivity spans -20 dBFS at 0 to -52 dBFS at 100. Hangover protects word endings.
         double threshold = Math.pow(10, (-20 - Math.clamp(sensitivity, 0, 100) * 0.32) / 20.0);
         if (rms >= threshold) {
-            while (!preRoll.isEmpty()) transmit.accept(preRoll.removeFirst());
+            while (!preRoll.isEmpty()) {
+                Frame prior = preRoll.removeFirst();
+                transmit.accept(prior.outbound, prior.original);
+            }
             tail = 12;
-            transmit.accept(pcm);
+            transmit.accept(pcm, original);
         } else if (tail > 0) {
-            transmit.accept(pcm);
+            transmit.accept(pcm, original);
             if (--tail == 0) endUtterance.run();
         } else {
             if (preRoll.size() == 6) preRoll.removeFirst();
-            preRoll.addLast(pcm);
+            preRoll.addLast(new Frame(pcm, original));
         }
     }
 

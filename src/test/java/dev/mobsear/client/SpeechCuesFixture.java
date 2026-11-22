@@ -199,12 +199,19 @@ public final class SpeechCuesFixture {
         for (int i = 0; i < phrases.length; i++) {
             // Use the normal operating system recognizer, segmenter and the TEST profile's noise filter.
             var filter = new CaptureGate();
+            var clips = new ArrayList<byte[]>();
+            var diagnostics = new SpeechCues.Utterances(clips::add);
             for (int pos = 0; pos < phrases[i].length; pos += FRAME) {
                 byte[] pcm = Arrays.copyOfRange(phrases[i], pos, pos + FRAME);
-                filter.accept(pcm, false, 50, true, speech::acceptFrame, speech::endUtterance);
+                filter.accept(pcm, false, 50, true, true, (wire, original) -> {
+                    diagnostics.accept(original);
+                    speech.acceptFrame(original);
+                }, speech::endUtterance);
             }
             speech.endUtterance();
+            diagnostics.finish();
             Cue recognized = received.poll(8, TimeUnit.SECONDS);
+            if (recognized != calls[i]) diagnoseSyntheticDecisions(clips.toArray(byte[][]::new), aliasFile);
             require(recognized == calls[i], "Filtered synthetic call " + i + " expected " + calls[i] + " got " + recognized);
             results.add(recognized.name());
         }

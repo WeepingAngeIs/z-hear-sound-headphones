@@ -117,7 +117,7 @@ public final class VoiceSettingsScreen extends Screen {
             int tx = x + (i % 2) * (half + 2), tw = i % 2 == 0 ? half : w - half - 2;
             addButton(id, tx, themeY + (i / 2) * (themeHeight + 2), tw, themeHeight, t("theme." + id),
                     Style.ROW, theme.family().equals(id), () -> {
-                        prefs.setTheme(id);
+                        prefs.selectFamily(id);
                         refresh(id);
                     });
         }
@@ -125,7 +125,7 @@ public final class VoiceSettingsScreen extends Screen {
                 t("backdrop", theme.label()), Style.ROW, false, () -> {
                     prefs.setTheme(theme.next().id());
                     refresh("backdrop");
-                });
+                }).setTooltip(Tooltip.create(t("backdrop.hint")));
 
         int listY = bodyY + sectionHeight + 1;
         double scroll = players == null ? 0 : players.getScrollAmount();

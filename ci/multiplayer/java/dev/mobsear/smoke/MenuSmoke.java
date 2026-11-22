@@ -25,7 +25,7 @@ import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.neoforged.fml.loading.FMLPaths;
-import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
 
@@ -33,10 +33,22 @@ import org.lwjgl.glfw.GLFW;
 final class MenuSmoke {
     private enum Step {
         FOCUS, OPEN, SCROLL_DOWN, SCROLL_UP, SELECT_THEME, CAPTURE, ANIMATION, REDUCED, CLOSE, REOPEN,
-        AUDIO_MODE, RESTORE_MODE, COMPACT, RESTORE_SIZE, PITCH, PITCH_CAPTURE, PITCH_BACK, DONE
+        AUDIO_MODE, RESTORE_MODE, COMPACT, RESTORE_SIZE, GUI_SCALE3, PITCH, PITCH_CAPTURE, PITCH_BACK, DONE
     }
     private static final String[] THEMES = {"UwU", "Dark / Emo", "Vanilla", "Amethyst"};
-    private static final MenuTheme[] BACKDROPS = MenuTheme.values();
+    private static final MenuTheme[] BACKDROPS = captureOrder();
+    private static MenuTheme[] captureOrder() {
+        var choices = new java.util.ArrayList<MenuTheme>();
+        for (MenuTheme base : MenuTheme.values()) {
+            if (base.hasScene()) continue;
+            var current = base;
+            do {
+                current = current.next();
+                choices.add(current);
+            } while (current != base);
+        }
+        return choices.toArray(MenuTheme[]::new);
+    }
     private static final UUID SPEAKER_ID = UUID.nameUUIDFromBytes(
             ("OfflinePlayer:" + SmokeControl.SPEAKER).getBytes(StandardCharsets.UTF_8));
     private final Minecraft mc = Minecraft.getInstance();
@@ -52,6 +64,8 @@ final class MenuSmoke {
     private int framesSeen;
     private long reducedAt;
     private Screen pitchParent;
+    private static final boolean PUBLIC_STACK = "1".equals(System.getenv("MOBSEAR_PUBLIC_MENU_STACK"));
+    private boolean checkedScale3;
 
     MenuSmoke(Runnable acknowledge) {
         this.acknowledge = acknowledge;
@@ -75,6 +89,11 @@ final class MenuSmoke {
             }
             case OPEN -> {
                 if (!inSettings() || !displayed) return;
+                if (PUBLIC_STACK) {
+                    for (String id : java.util.List.of("fancymenu", "konkrete", "melody", "drippyloadingscreen", "sodium", "iris"))
+                        check(net.neoforged.fml.ModList.get().isLoaded(id), "public compatibility client did not load " + id);
+                    System.out.println("MOBSEAR_PUBLIC_MENU_STACK loaded FancyMenu Konkrete Melody DrippyLoadingScreen Sodium Iris");
+                }
                 slider("Voice volume", 0.25);
                 check(value("Voice volume", 50), "master slider did not update");
                 slider(SmokeControl.SPEAKER, 0.75);
@@ -107,7 +126,7 @@ final class MenuSmoke {
             }
             case SELECT_THEME -> {
                 MenuTheme selected = BACKDROPS[theme];
-                var choice = selected.hasScene() ? widget("Backdrop", true) : widget(THEMES[theme / 5], false);
+                var choice = theme % 5 == 0 ? widget(THEMES[theme / 5], false) : widget("Backdrop", true);
                 if (theme == 5) keyboardSelect(choice);
                 else if (choice.active) pointer(choice, 0.5);
                 check(mc.getConnection() == connection && value("Voice volume", 50) && value(SmokeControl.SPEAKER, 150),
@@ -116,6 +135,9 @@ final class MenuSmoke {
                 step = Step.CAPTURE;
             }
             case CLOSE -> {
+                // Keep the final Starfield selected for the independent pitch persistence/restart fixtures.
+                for (int i = 0; i < 4; i++) pointer(widget("Backdrop", true), .5);
+                check(VoiceClient.options().theme().equals("amethyst_stars"), "could not select Starfield after Original");
                 mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 check(mc.screen == null, "Escape did not return to the game");
                 pressG();
@@ -156,6 +178,12 @@ final class MenuSmoke {
             }
             case RESTORE_SIZE -> {
                 if (mc.getWindow().getWidth() != 854 || mc.screen.width != 427) return;
+                if (PUBLIC_STACK && !checkedScale3) {
+                    mc.getWindow().setWindowed(1280, 720);
+                    renderedFrames = 0;
+                    step = Step.GUI_SCALE3;
+                    return;
+                }
                 pitchParent = mc.screen;
                 pointer(widget("Voice Changer", false), .5);
                 step = Step.PITCH;
@@ -223,14 +251,29 @@ final class MenuSmoke {
         }
     }
 
-    private void render(ScreenEvent.Render.Post event) {
-        if (step == Step.PITCH_CAPTURE && event.getScreen() instanceof PitchSettingsScreen && ++renderedFrames >= 3) {
-            save(event, "menu-voice-changer.png");
+    private void render(RenderFrameEvent.Post event) {
+        if (step == Step.PITCH_CAPTURE && mc.screen instanceof PitchSettingsScreen && ++renderedFrames >= 3) {
+            save("menu-voice-changer.png");
             step = Step.PITCH_BACK;
             return;
         }
-        if (!inSettings() || event.getScreen() != mc.screen) return;
+        if (!inSettings()) return;
+        if (step == Step.OPEN && !displayed) {
+            check(VoiceClient.options().theme().equals("uwu_lotus"), "fresh menu did not open on Lotus Pond");
+            save("menu-first-open.png");
+        }
         displayed = true;
+        if (step == Step.GUI_SCALE3) {
+            if (mc.getWindow().getWidth() != 1280) return;
+            if (mc.getWindow().getGuiScale() != 3) { mc.options.guiScale().set(3); return; }
+            if (++renderedFrames < 4) return;
+            save("menu-gui-scale3.png");
+            checkedScale3 = true;
+            mc.options.guiScale().set(2);
+            mc.getWindow().setWindowed(854, 480);
+            step = Step.RESTORE_SIZE;
+            return;
+        }
         if (step == Step.COMPACT) {
             if (mc.screen.width != 320 || mc.screen.height != 240 || ++renderedFrames < 4) return;
             var audio = list("VoiceControlList");
@@ -241,7 +284,7 @@ final class MenuSmoke {
             pointer(peer, .75);
             check(mc.screen.getFocused() == people && people.getFocused() != null && value(SmokeControl.SPEAKER, 150),
                     "compact roster could not take focus and preserve gain");
-            save(event, "menu-compact.png");
+            save("menu-compact.png");
             mc.getWindow().setWindowed(854, 480);
             step = Step.RESTORE_SIZE;
             return;
@@ -253,7 +296,7 @@ final class MenuSmoke {
                 if (now % 400 < 65 || now % 400 > 315) return;
                 int frame = FixtureSound.sceneFrame();
                 if ((framesSeen & (1 << frame)) == 0) {
-                    save(event, "menu-" + BACKDROPS[theme].id() + "-frame-" + frame + ".png");
+                    save("menu-" + BACKDROPS[theme].id() + "-frame-" + frame + ".png");
                     framesSeen |= 1 << frame;
                 }
                 if (framesSeen == 255) {
@@ -267,10 +310,10 @@ final class MenuSmoke {
             } else {
                 check(FixtureSound.sceneFrame() == 0, "reduced motion did not freeze scene");
                 if (framesSeen == 255 && now - reducedAt > 200) {
-                    save(event, "menu-uwu_lotus-reduced.png");
+                    save("menu-uwu_lotus-reduced.png");
                     framesSeen++;
                 } else if (framesSeen == 256 && now - reducedAt > 1900) {
-                    save(event, "menu-uwu_lotus-reduced-check.png");
+                    save("menu-uwu_lotus-reduced-check.png");
                     try {
                         check(java.util.Arrays.equals(headerStamp("reduced"), headerStamp("reduced-check")),
                                 "reduced motion changed the scene header pixels");
@@ -283,7 +326,7 @@ final class MenuSmoke {
         }
         if (step != Step.CAPTURE || ++renderedFrames < 3) return;
         renderedFrames = 0;
-        save(event, "menu-" + BACKDROPS[theme].id() + ".png");
+        save("menu-" + BACKDROPS[theme].id() + ".png");
         if (BACKDROPS[theme].hasScene()) {
             framesSeen = 0;
             step = Step.ANIMATION;
@@ -293,10 +336,10 @@ final class MenuSmoke {
 
     private void nextTheme() { step = ++theme < BACKDROPS.length ? Step.SELECT_THEME : Step.CLOSE; }
 
-    private void save(ScreenEvent.Render.Post event, String filename) {
-        event.getGuiGraphics().flush();
+    private void save(String filename) {
         try (var picture = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-            check(picture.getWidth() == (step == Step.COMPACT ? 640 : 854) && picture.getHeight() == 480,
+            int w = step == Step.GUI_SCALE3 ? 1280 : step == Step.COMPACT ? 640 : 854;
+            check(picture.getWidth() == w && picture.getHeight() == (step == Step.GUI_SCALE3 ? 720 : 480),
                     "unexpected framebuffer dimensions");
             Files.createDirectories(screenshots);
             picture.writeToFile(screenshots.resolve(filename));
@@ -314,6 +357,7 @@ final class MenuSmoke {
                         "two scenic phases rendered the same header stamp for " + BACKDROPS[theme].id());
                 sections.add(stamp);
             }
+            if (PUBLIC_STACK) ScenePixels.checkBody(screenshots, BACKDROPS[theme].id());
         } catch (IOException ex) { throw SmokeControl.failure("could not compare actual scene frames"); }
     }
 

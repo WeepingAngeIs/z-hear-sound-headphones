@@ -6,7 +6,8 @@ import java.util.concurrent.TimeUnit;
 final class TalkWindow {
     private static final long FRAME_TIME = TimeUnit.MILLISECONDS.toNanos(20);
     private static final long BURST_TIME = 12 * FRAME_TIME;
-    private static final long CUE_WINDOW = TimeUnit.SECONDS.toNanos(3);
+    // Recognition permits four seconds after the utterance endpoint. Allow one more for delivery.
+    private static final long CUE_WINDOW = TimeUnit.SECONDS.toNanos(5);
     private static final long CUE_COOLDOWN = TimeUnit.MILLISECONDS.toNanos(1250);
     private long budget = BURST_TIME;
     private long updatedAt;

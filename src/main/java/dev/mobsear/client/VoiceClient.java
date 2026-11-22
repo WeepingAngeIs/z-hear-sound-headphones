@@ -260,10 +260,11 @@ public final class VoiceClient {
         private synchronized void capture(byte[] frame) {
             if ((!held && !monitoring) || prefs.muted() || prefs.deafened()) return;
             lastMeter = System.nanoTime();
-            gate.accept(frame, automatic && !monitoring, prefs.sensitivity(), prefs.noiseSuppression(), pcm -> {
+            gate.accept(frame, automatic && !monitoring, prefs.sensitivity(), prefs.noiseSuppression(),
+                    recognition && !monitoring, (pcm, original) -> {
                 if (monitoring || !held) return;
                 int cents = prefs.pitchEnabled() ? prefs.pitchCents() : 0;
-                if (pitch.route(pcm, cents, frames::offer, speech::acceptFrame)
+                if (pitch.route(pcm, cents, frames::offer, ignored -> speech.acceptFrame(original))
                         && VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
             }, () -> {
                 pitch.reset();
