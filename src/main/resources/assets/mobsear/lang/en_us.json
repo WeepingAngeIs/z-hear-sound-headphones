@@ -92,6 +92,7 @@
   "key.mobsear.settings": "Open voice settings",
   "mobsear.speech.off": "Mob calls off",
   "mobsear.speech.hostiles": "Hostile mobs",
+  "mobsear.speech.dungeon_mimic": "Dungeon Mimic",
   "mobsear.speech.recognized": "Recognized locally · %s",
   "mobsear.speech.recognized_mode": "Recognized locally · %s · Use Survival or Adventure for mob reactions",
   "mobsear.speech.starting": "Starting local mob calls…",

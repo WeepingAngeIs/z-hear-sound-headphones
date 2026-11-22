@@ -27,10 +27,11 @@ try {
         $parts = $entry.Split(':')
         if ($parts.Count -ne 3) { exit 3 }
         $aliases.Add($parts[2], [uint16]$parts[0])
+        $words.Add('call ' + $parts[2])
+        if ($parts[1] -eq '2') { continue }
         if ($parts[1] -eq '1') { $confirm.Add($parts[2], $true) }
         $words.Add($parts[2])
         $words.Add('hey ' + $parts[2])
-        $words.Add('call ' + $parts[2])
     }
     $phrases = [System.Speech.Recognition.Choices]::new()
     # Explicit rejection phrases give greetings and generic collective calls a harmless match.

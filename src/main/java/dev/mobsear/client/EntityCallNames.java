@@ -11,6 +11,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.fml.ModList;
 
 /** Use registered mob types and English labels. Never read an individual entity's custom name. */
 final class EntityCallNames {
@@ -36,12 +37,17 @@ final class EntityCallNames {
             }
             names.put(id.toString(), List.copyOf(labels));
         }
+        if (ModList.get().isLoaded("cumimic")) {
+            names.put(MobCallTypes.DUNGEON_MIMIC.toString(), List.of("Dungeon Mimic"));
+        }
         entries = Map.copyOf(names);
         language = selected;
         return entries;
     }
 
     static Component display(ResourceLocation id) {
+        if (MobCallTypes.DUNGEON_MIMIC.equals(id) && ModList.get().isLoaded("cumimic"))
+            return Component.translatable("mobsear.speech.dungeon_mimic");
         return BuiltInRegistries.ENTITY_TYPE.getOptional(id).map(type -> type.getDescription()).orElse(null);
     }
 }

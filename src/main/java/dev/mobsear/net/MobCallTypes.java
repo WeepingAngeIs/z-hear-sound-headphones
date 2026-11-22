@@ -6,7 +6,7 @@ import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 
 public final class MobCallTypes {
     public static final ResourceLocation OWL_GUARDIAN = ResourceLocation.fromNamespaceAndPath("uwudimension", "blossom_warden");
-    public static final ResourceLocation VELVET_VESPER = ResourceLocation.fromNamespaceAndPath("uwudimension", "velvet_vesper");
+    public static final ResourceLocation DUNGEON_MIMIC = ResourceLocation.fromNamespaceAndPath("mobsear", "dungeon_mimic");
     private static final ResourceLocation POKEMON = ResourceLocation.fromNamespaceAndPath("cobblemon", "pokemon");
 
     private MobCallTypes() {}

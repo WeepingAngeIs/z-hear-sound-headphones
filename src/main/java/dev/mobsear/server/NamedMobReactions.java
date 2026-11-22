@@ -19,6 +19,7 @@ import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -40,12 +41,13 @@ public final class NamedMobReactions {
 
     static void hear(ServerPlayer caller, ResourceLocation id, double radius) {
         if (!eligibleCaller(caller) || !Double.isFinite(radius) || radius <= 0) return;
+        boolean dungeonMimic = MobCallTypes.DUNGEON_MIMIC.equals(id) && ModList.get().isLoaded("cumimic");
         var type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
-        if (type == null || !MobCallTypes.eligibleType(id, type)) return;
+        if (!dungeonMimic && (type == null || !MobCallTypes.eligibleType(id, type))) return;
         var level = caller.serverLevel();
         double limit = radius * radius;
         for (var mob : level.getEntitiesOfClass(Mob.class, caller.getBoundingBox().inflate(radius), candidate ->
-                candidate.getType() == type && candidate.distanceToSqr(caller) <= limit)) {
+                candidate.distanceToSqr(caller) <= limit && (dungeonMimic ? candidate.getTags().contains("cu_mimic") : candidate.getType() == type))) {
             glanceIfCalm(caller, mob, limit);
         }
     }

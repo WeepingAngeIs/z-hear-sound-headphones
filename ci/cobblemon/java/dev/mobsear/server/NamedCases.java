@@ -20,6 +20,16 @@ final class NamedCases {
         caller.setHealth(caller.getMaxHealth());
         var type=BuiltInRegistries.ENTITY_TYPE.getOptional(c.species).orElseThrow(() -> PokemonProbe.fail("Missing actual entity "+c.species));
         if (!(type.create(level) instanceof Mob subject)) throw PokemonProbe.fail("No actual mob for "+c.species);
+        if (c.mimicCase()) {
+            if (!net.neoforged.fml.ModList.get().isLoaded("cumimic")) throw PokemonProbe.fail("Missing native Dungeon Mimic mod");
+            // Conceal the unarmored speaker from ordinary zombie vision to isolate sound from vanilla aggro.
+            caller.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.INVISIBILITY,220,0,false,false));
+            // Shade the sample using real blocks; the native disguise retains its own equipment.
+            for (int x=-3;x<=3;x++) for (int z=5;z<=11;z++) level.setBlockAndUpdate(new net.minecraft.core.BlockPos(x,111,z),
+                    net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+            if (c==PokemonCase.DUNGEON_MIMIC) { subject.addTag("cu_mimic"); subject.addTag("cu_floor_1"); }
+            else if (c==PokemonCase.NAMED_ONLY_ZOMBIE) subject.setCustomName(net.minecraft.network.chat.Component.literal("Dungeon Mimic"));
+        }
         if (c==PokemonCase.BROAD_COW || c==PokemonCase.BOSS_FIGHTING || c==PokemonCase.NAGA_COMBAT || c==PokemonCase.OWL_OFFENDER) {
             if (c==PokemonCase.OWL_OFFENDER) {
                 var keeper=net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("uwudimension","petal_keeper");
@@ -32,7 +42,11 @@ final class NamedCases {
         return subject;
     }
     void arrange(PokemonCase c,Mob subject,ServerPlayer caller) {
-        if (c==PokemonCase.BOSS_CHARGING) ((WitherBoss)subject).makeInvulnerable();
+        if (c.mimicCase()) {
+            if (subject.getTarget()!=null || subject.getTags().contains("cu_mimic")!=(c==PokemonCase.DUNGEON_MIMIC)
+                    || subject.getPersistentData().hasUUID("cu_mimic_fake")!=(c==PokemonCase.DUNGEON_MIMIC))
+                throw PokemonProbe.fail("Wrong native Mimic identity or preexisting target "+c);
+        } else if (c==PokemonCase.BOSS_CHARGING) ((WitherBoss)subject).makeInvulnerable();
         else if (c==PokemonCase.BOSS_FIGHTING || c==PokemonCase.NAGA_COMBAT) subject.setTarget(companion);
         else if (c==PokemonCase.BROAD_COW) companion.setTarget(null);
         else if (c==PokemonCase.OWL_OFFENDER) {
@@ -65,6 +79,7 @@ final class NamedCases {
         if (!preserved) throw PokemonProbe.fail("Named/broad call disrupted actual state for "+c);
     }
     void finish(PokemonCase c,Mob subject,boolean reacted,int aligned) {
+        if (c.mimicCase() && subject.getTarget()!=null) throw PokemonProbe.fail("Mimic call changed a zombie's target "+c);
         if (c==PokemonCase.BOSS_CHARGING && ((WitherBoss)subject).getInvulnerableTicks()<=0)
             throw PokemonProbe.fail("Wither left its native charge");
         System.out.println("ENTITY_NAME_CASE_PASS "+c+" id="+c.species+" spoken="+c.spoken()+" reacted="+reacted+

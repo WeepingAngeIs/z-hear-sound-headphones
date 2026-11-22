@@ -185,6 +185,7 @@ public final class SpeechCuesFixture {
         entities.put("cobblemon:pokemon", List.of("Pokémon", "Pokemon"));
         entities.put("uwudimension:blossom_warden", List.of("Owl Guardian", "Blossom Warden", "UwU Guardian"));
         entities.put("uwudimension:velvet_vesper", List.of("Velvet Vesper"));
+        entities.put("mobsear:dungeon_mimic", List.of("Dungeon Mimic"));
         var registries = SpeechGrammar.registries(names, entities);
         var vocabulary = registries.species();
         var grammar = new SpeechGrammar(aliasFile, registries);
@@ -222,7 +223,8 @@ public final class SpeechCuesFixture {
                 synthesize("cow"), synthesize("iron golem"), synthesize("Owl Guardian"), synthesize("oo woo guardian"),
                 synthesize("you woo guardian"), synthesize("blossom warden"), synthesize("Velvet Vesper"), synthesize("guardian"),
                 synthesize("call cow"), synthesize("call Owl Guardian"), synthesize("call oo woo guardian"),
-                synthesize("call Mikueon"), synthesize("call"), synthesize("call pokemon"), synthesize("call the garden is beautiful")};
+                synthesize("call Mikueon"), synthesize("call"), synthesize("call pokemon"), synthesize("call the garden is beautiful"),
+                synthesize("call Miku Eon"), synthesize("Dungeon Mimic"), synthesize("call Dungeon Mimic")};
         int spectreon = grammar.code("spectreon");
         int spectrier = grammar.code("spectrier");
         // For a bare close pair, exact or abstained is valid; qualified calls must return the one correct ID.
@@ -231,7 +233,8 @@ public final class SpeechCuesFixture {
                 {grammar.code("lunavee")}, {grammar.code("lunavee")}, {grammar.code("boxtail")}, {grammar.code("mikueon"), 0},
                 {grammar.code("cow"), 0}, {grammar.code("iron golem")}, {grammar.code("owl guardian"), 0}, {grammar.code("owl guardian"), 0},
                 {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("velvet vesper")}, {Cue.GUARDIAN.ordinal() + 1},
-                {grammar.code("cow")}, {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("mikueon")}, {0}, {0}, {0}};
+                {grammar.code("cow")}, {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("mikueon"), 0}, {0}, {0}, {0},
+                {grammar.code("mikueon")}, {grammar.code("dungeon mimic"), 0}, {grammar.code("dungeon mimic")}};
         require("cobblemon:boxtail".equals(vocabulary.get("boxtail")) && "cobblemon:mikueon".equals(vocabulary.get("mikueon")),
                 "Global species pack display names");
         long started = System.nanoTime();
@@ -256,7 +259,7 @@ public final class SpeechCuesFixture {
                 + " qualifiedSpectreon=" + result[6] + " qualifiedSpectrier=" + result[7]);
         System.out.println("MOBSEAR_LUNAVEE_SPEECH_PASS bare=" + result[15] + " greeting=" + result[16] + " registry=cobblemon:lunavee");
         System.out.println("MOBSEAR_GLOBAL_PACK_SPEECH_PASS boxtail=" + result[17] + " bareMikueon=" + result[18]
-                + " explicitMikueon=" + result[30]);
+                + " explicitMikueon=" + result[30] + " spacedMikueon=" + result[34]);
         var exactEntities = new ArrayList<String>();
         for (int index : new int[]{27, 20, 28, 29, 23, 24, 25}) {
             require(grammar.dispatch(result[index], c -> { throw new AssertionError("Unexpected classic cue"); },
@@ -265,6 +268,8 @@ public final class SpeechCuesFixture {
         require(exactEntities.equals(List.of("minecraft:cow", "minecraft:iron_golem", "uwudimension:blossom_warden",
                 "uwudimension:blossom_warden", "uwudimension:blossom_warden", "uwudimension:blossom_warden",
                 "uwudimension:velvet_vesper")), "Specific synthetic entity-call outcomes " + exactEntities);
+        require(grammar.dispatch(result[36], c -> {}, s -> {}, exactEntities::add) && exactEntities.getLast().equals("mobsear:dungeon_mimic"),
+                "Dungeon Mimic must emit only the encounter registry ID");
         System.out.println("MOBSEAR_REGISTERED_ENTITY_SPEECH_PASS " + exactEntities + " vanillaGuardian=" + result[26]
                 + " bareCow=" + result[19] + " bareOwlGuardian=" + result[21] + " bareOoWooGuardian=" + result[22]);
         var ids = new ArrayBlockingQueue<String>(4);

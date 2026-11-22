@@ -56,6 +56,22 @@ TWILIGHT = (
     "493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35",
 )
 
+MIMIC_JAR = "upsidedown-1.2.0-beta.5.jar"
+MIMIC_FILES = (
+    (MIMIC_JAR, "https://nightly.link/WeepingAngeIs/unyielddungrilssidedown/actions/runs/43351006827/"
+     "upside-down-dungeons-dad1ad7bff12430cef0dfb9dda09cec214ba7a9c.zip",
+     "4bb26fc8116f8e666855a3845128d955bdd9a4782972ce719559dd5379b83317"),
+    ("simplyswords-neoforge-1.70.2-1.21.1.jar",
+     "https://edge.forgecdn.net/files/8746/1/simplyswords-neoforge-1.70.2-1.21.1.jar",
+     "5e75bd66ea489079d60c9c1ed98762550fbc0bee88cd7af399f17bbeb56608c3"),
+    ("fzzy_config-0.7.7+1.21+neoforge.jar",
+     "https://edge.forgecdn.net/files/8883/390/fzzy_config-0.7.7%2B1.21%2Bneoforge.jar",
+     "26af871cacd134ce52610384bbdd362a018707444eb2d498e4833063f378cf85"),
+    ("SimplyTooltips-neoforge-0.1.5.jar",
+     "https://edge.forgecdn.net/files/8715/141/SimplyTooltips-neoforge-0.1.5.jar",
+     "fdac367da1c5243ac5225f00f831b786817452ee9fa6a7f4acd99ec819b0f2b7"),
+)
+
 
 def copy_guardian_baseline(source, output):
     # This publicly accessible test archive includes the exact previous production baseline.
@@ -79,7 +95,7 @@ def main():
     dest = destinations[0]
     files = FILES + MEGA_FILES if os.getenv("MOBSEAR_POKEMON_PACK") == "1" else FILES
     if os.getenv("MOBSEAR_ENTITY_PACK") == "1":
-        files += OWL_FILES + (TWILIGHT,)
+        files += OWL_FILES + (TWILIGHT,) + MIMIC_FILES
     elif os.getenv("MOBSEAR_OWL_ACOUSTIC") == "1":
         files += OWL_FILES
     for name, url, sha in files:
@@ -89,6 +105,11 @@ def main():
             with urlopen(url, timeout=120) as source, temp.open("wb") as out:
                 if name == OWL_JAR:
                     copy_guardian_baseline(source, out)
+                elif name == MIMIC_JAR:
+                    archive_data = source.read(914_224)
+                    assert sha256(archive_data).hexdigest() == "a88d9eb24f737fb24fcf70c9712492fb55c32428d46fd432e4f12b39561f7f1e"
+                    with ZipFile(BytesIO(archive_data)) as archive, archive.open("build/libs/" + MIMIC_JAR) as jar:
+                        copyfileobj(jar, out)
                 else:
                     copyfileobj(source, out)
             with temp.open("rb") as data:

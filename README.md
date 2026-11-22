@@ -35,6 +35,8 @@ The client reads English mob names from Minecraft’s entity registry and includ
 
 In **UwU Dimension**, the Guardian’s English name is **Owl Guardian**. The girl and male variants both use `uwudimension:blossom_warden`. The mod also accepts the name **UwU Guardian**. **Velvet Vesper** is a separate boss. **Guardian** alone keeps the Minecraft underwater guardian call. Other pack examples include **Twilight Lich**, **Ender Guardian**, **Ancient Remnant** and **Valkyrie Queen**. The private recognition message shows the mob type selected by the recognizer.
 
+Say **Dungeon Mimic** for Unyielding’s tagged Mimic. That encounter uses an ordinary mob with the `cu_mimic` marker, which the server checks. A zombie renamed with a name tag does not qualify. For randomly titled Apotheosis invaders or Infernal Mobs, use the underlying mob’s type name.
+
 ## Calling wild Cobblemon
 
 With Cobblemon on the client and server, enable **Local Mob Calls** and say a nearby wild Pokémon’s species name, such as **Pikachu** or **Eevee**. Use push-to-talk or voice activation, then leave a short pause. The private action bar confirms the species the local recognizer heard. The same configured voice radius and Survival or Adventure requirement apply.

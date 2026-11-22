@@ -38,6 +38,7 @@ final class SpeechGrammar {
     private final Map<String, Integer> phrases;
     private final List<Registered> registeredByIndex;
     private final Set<String> needsConfirmation;
+    private final Set<String> explicitOnly;
     private static final Cue[] MOBS = Cue.values();
     record Registries(Map<String, String> species, Map<String, String> entities, Set<String> neutral) {}
     private record Registered(boolean entity, String id) {}
@@ -180,6 +181,25 @@ final class SpeechGrammar {
             }
         }
         needsConfirmation = Set.copyOf(confirm);
+        // A clear word break can help the English recognizer pronounce a made-up compound.
+        // Retain every letter of the registered name and enable this spelling only after 'call'.
+        var separated = new TreeMap<String, Integer>();
+        vocabulary.forEach((name, owner) -> {
+            if (name.length() < 7 || name.length() > 24 || name.indexOf(' ') >= 0 || needsConfirmation.contains(name)) return;
+            int code = entries.getOrDefault(name, 0);
+            if (code <= MOBS.length) return;
+            int added = 0;
+            for (int i = 3; i <= name.length() - 3 && added < 2; i++) {
+                char left = name.charAt(i - 1), right = name.charAt(i);
+                if (left == right || "aeiou".indexOf(left) < 0 || "aeiou".indexOf(right) < 0) continue;
+                String split = name.substring(0, i) + " " + name.substring(i);
+                if (entries.containsKey(split)) continue;
+                separated.merge(split, code, (a, b) -> a.equals(b) ? a : 0);
+                added++;
+            }
+        });
+        explicitOnly = Set.copyOf(separated.keySet());
+        entries.putAll(separated);
         phrases = Collections.unmodifiableMap(entries);
         registeredByIndex = List.copyOf(ids);
     }
@@ -219,8 +239,10 @@ final class SpeechGrammar {
     /** The vocabulary uses a length-prefixed binary pipe, independent of the OS environment size limit. */
     void writeTo(DataOutputStream output) throws IOException {
         var encoded = new StringBuilder();
-        phrases.forEach((phrase, code) -> encoded.append(code).append(needsConfirmation.contains(phrase) ? ":1:" : ":0:")
-                .append(phrase).append('\n'));
+        phrases.forEach((phrase, code) -> {
+            int variant = explicitOnly.contains(phrase) ? 2 : needsConfirmation.contains(phrase) ? 1 : 0;
+            encoded.append(code).append(':').append(variant).append(':').append(phrase).append('\n');
+        });
         byte[] bytes = encoded.toString().getBytes(StandardCharsets.US_ASCII);
         output.writeInt(Integer.reverseBytes(bytes.length));
         output.write(bytes);

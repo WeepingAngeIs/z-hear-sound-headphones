@@ -136,10 +136,12 @@ public final class PokemonCaseClient {
                 reply(PokemonProbe.FIRE); sent=true;
             }
         }
-        if (c.accepts() && mc.level.getEntity(stage.entity()) instanceof Mob entity) {
+        if (c.accepts() && mc.level.getEntity(stage.entity()) instanceof net.minecraft.world.entity.LivingEntity entity) {
             if (c.ordinaryEntity()) {
                 var id=net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-                if (!id.equals(c.species)) throw PokemonProbe.fail("Wrong tracked entity type "+id+" for "+c);
+                // The genuine Mimic server can present this exact tracked zombie as its synthetic player disguise.
+                boolean disguise=c==PokemonCase.DUNGEON_MIMIC && entity instanceof net.minecraft.client.player.RemotePlayer;
+                if (!disguise && !id.equals(c.species)) throw PokemonProbe.fail("Wrong tracked entity type "+id+" for "+c);
             } else if (!(entity instanceof PokemonEntity pokemon) || !pokemon.getPokemon().getSpecies().getResourceIdentifier().equals(c.species)) {
                 throw PokemonProbe.fail("Client received wrong tracked Pokémon "+c);
             }
