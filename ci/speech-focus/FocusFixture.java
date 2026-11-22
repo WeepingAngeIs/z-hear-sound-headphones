@@ -29,6 +29,10 @@ public final class FocusFixture {
                 "minecraft:ender_dragon", List.of("Ender Dragon"), "cataclysm:ender_guardian", List.of("Ender Guardian"),
                 "minecraft:rabbit", List.of("Rabbit"), "uwudimension:blossom_warden", List.of("Owl Guardian", "UwU Guardian"));
         var grammar = new SpeechGrammar(null, SpeechGrammar.registries(names,entities));
+        boolean mentions = args[1].equals("mentions");
+        if (mentions) try (var out = new DataOutputStream(Files.newOutputStream(dir.resolve("registry.bin")))) {
+            grammar.writeTo(out);
+        }
         if (grammar.code("enderman") != Cue.ENDERMAN.ordinal()+1
                 || !id(grammar, grammar.code("lopunny")).equals("cobblemon:lopunny")) throw new AssertionError("Incorrect names");
         var rows = new ArrayList<String>();
@@ -40,6 +44,7 @@ public final class FocusFixture {
             if (input.read()!=82) throw new AssertionError("English recognizer unavailable");
             for (String row : Files.readAllLines(dir.resolve("manifest.tsv"))) {
                 var f=row.split("\\t",-1);
+                if (mentions && !f[2].startsWith("sentence-") && !List.of("enderman","lopunny","ordinary-chat").contains(f[2])) continue;
                 byte[] pcm=Files.readAllBytes(dir.resolve(f[0]+".pcm"));
                 for (boolean automatic : new boolean[]{false,true}) {
                     var clips=new ArrayList<byte[]>();
@@ -63,6 +68,8 @@ public final class FocusFixture {
                         output.write(clip);
                         output.flush();
                         String reply=id(grammar,input.readUnsignedShort());
+                        if (mentions && !automatic && f[2].startsWith("sentence-") && !reply.equals(f[4]))
+                            Files.write(dir.resolve("miss-" + f[0] + "-" + clips.indexOf(clip) + ".pcm"), clip);
                         maxMillis = Math.max(maxMillis, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
                         if (!reply.equals("neutral")) replies.add(reply);
                     }

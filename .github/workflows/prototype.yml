@@ -122,6 +122,36 @@ jobs:
             recognized-species.txt
             build/speech-species.tsv
           if-no-files-found: error
+  sentence-speech:
+    name: Whole names in connected speech on Windows
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Feed generated sentences through capture, segmentation and the Windows recognizer
+        shell: powershell
+        env:
+          MOBSEAR_SPEECH_CATALOG: build/speech-species.tsv
+        run: |
+          python ci/cobblemon/stage.py build/speech-mods
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $fixture = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'sentence-fixture')
+          ./ci/speech-focus/make.ps1 $fixture.FullName
+          python ci/speech-focus/corpus.py $fixture.FullName
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          javac --release 21 --source-path src/main/java -d ci-classes ci/speech-focus/FocusFixture.java
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          java -cp 'ci-classes;src/main/resources' dev.mobsear.client.FocusFixture $fixture.FullName mentions
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python ci/speech-focus/mentions.py $fixture.FullName
   focused-speech:
     name: Spoken pronunciation and false-positive comparisons
     needs: windows-speech

@@ -115,6 +115,15 @@ try {
     # A second grammar has one registered name between optional passages of real dictation.
     # It is disabled during the original short-command pass and shares the same local engine.
     $nameItems = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
+    $overlapping = @{}
+    foreach ($full in $aliases.Keys) {
+        $parts = $full.Split(' ')
+        for ($n=1; $n -lt $parts.Count; $n++) {
+            foreach ($short in @(($parts[0..($n-1)] -join ' '), ($parts[$n..($parts.Count-1)] -join ' '))) {
+                if ($aliases.ContainsKey($short) -and $aliases[$short] -ne $aliases[$full]) { $overlapping[$short]=$true }
+            }
+        }
+    }
     foreach ($label in $aliases.Keys) {
         if ($aliases[$label] -eq 0 -or $wordBreaks.ContainsKey($label)) { continue }
         $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($label)
@@ -163,6 +172,9 @@ try {
             $units = $label.Split(' ')
             $mw = $mention.Words
             if ($mw.Count -le $units.Length) { return 0 }
+            # A short possible compound such as Owl Guardian cannot fall through to the base Guardian.
+            if ($overlapping.ContainsKey($label) -and $mw.Count -eq $units.Length+1 -and
+                    $mw[0].LexicalForm -notin @('a','an','the','that','this','my','your','one','look','hey','call')) { return 0 }
             for ($i=0; $i -le $mw.Count-$units.Length; $i++) {
                 $last = $i+$units.Length-1
                 $valid = $true
