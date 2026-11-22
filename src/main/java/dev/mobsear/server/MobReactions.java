@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.WrappedGoal;
@@ -129,6 +130,14 @@ public final class MobReactions {
             // Vanilla can acquire a target on the same tick before this goal's next selector cleanup.
             if (!canUse()) return;
             mob.getNavigation().stop();
+            if (!(mob instanceof Zombie)) {
+                // A moving spider's head is clamped relative to its body. Turn the stationary
+                // body as well, so a sound behind it can produce the same visible glance.
+                mob.getMoveControl().setWantedPosition(mob.getX(), mob.getY(), mob.getZ(), 0);
+                float toward = (float)Math.toDegrees(Math.atan2(heardAt.z - mob.getZ(), heardAt.x - mob.getX())) - 90F;
+                mob.setYRot(Mth.approachDegrees(mob.getYRot(), toward, 35F));
+                mob.yBodyRot = Mth.approachDegrees(mob.yBodyRot, toward, 35F);
+            }
             mob.getLookControl().setLookAt(heardAt.x, heardAt.y, heardAt.z, 45.0F, 45.0F);
         }
 

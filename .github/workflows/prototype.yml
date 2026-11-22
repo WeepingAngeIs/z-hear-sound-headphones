@@ -100,6 +100,29 @@ jobs:
           name: recognized-calls
           path: recognized-calls.txt
           if-no-files-found: error
+  integrated:
+    name: Single-player world and local connection on NeoForge 21.1.249
+    needs: windows-speech
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: recognized-calls
+          path: build/cue-proof
+      - name: Exercise calls through the single-player connection
+        env:
+          MOBSEAR_INTEGRATED: '1'
+          MOBSEAR_CUE_PROOF: ${{ github.workspace }}/build/cue-proof/recognized-calls.txt
+        run: xvfb-run -a -s '-screen 0 1024x768x24' bash ci/integrated/run.sh
   multiplayer:
     name: Two NeoForge 21.1.249 clients on a disposable server
     needs: windows-speech

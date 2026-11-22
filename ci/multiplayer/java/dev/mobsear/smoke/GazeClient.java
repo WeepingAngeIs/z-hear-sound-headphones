@@ -83,7 +83,7 @@ final class GazeClient {
     }
 
     @SuppressWarnings("unchecked")
-    private static void supplyDecision(Cue cue) {
+    static void supplyDecision(Cue cue) {
         try {
             var owner = VoiceClient.class.getDeclaredField("instance"); owner.setAccessible(true);
             var session = VoiceClient.class.getDeclaredField("session"); session.setAccessible(true);
@@ -92,7 +92,7 @@ final class GazeClient {
             ((AtomicReference<Cue>)mailbox.get(current)).set(cue);
         } catch (ReflectiveOperationException e) { throw SmokeControl.failure("recognizer mailbox " + e); }
     }
-    private static String overlay(Gui gui) {
+    static String overlay(Gui gui) {
         try {
             var field = Gui.class.getDeclaredField("overlayMessageString"); field.setAccessible(true);
             Component text = (Component)field.get(gui);

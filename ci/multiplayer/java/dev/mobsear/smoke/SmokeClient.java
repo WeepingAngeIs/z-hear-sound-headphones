@@ -26,6 +26,10 @@ public final class SmokeClient {
     private boolean installedSound;
 
     public SmokeClient() {
+        if ("1".equals(System.getenv("MOBSEAR_INTEGRATED"))) {
+            new IntegratedCalls();
+            return;
+        }
         NeoForge.EVENT_BUS.addListener(this::tick);
     }
 

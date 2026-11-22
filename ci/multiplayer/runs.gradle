@@ -11,6 +11,15 @@ neoForge.runs.create('smokeServer') {
     programArgument '--nogui'
     jvmArguments = ['-Xms256m', '-Xmx800m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC']
 }
+if (System.getenv('MOBSEAR_INTEGRATED') == '1') {
+    neoForge.runs.create('smokeIntegrated') {
+        client()
+        gameDirectory = new File(gameRoot, 'smokeIntegrated')
+        programArguments = ['--username', 'HomeFixture', '--uuid', offlineId('HomeFixture'),
+                            '--quickPlaySingleplayer', 'HearFixture', '--width', '854', '--height', '480']
+        jvmArguments = ['-Xms384m', '-Xmx1800m', '-XX:ActiveProcessorCount=3', '-XX:+UseSerialGC']
+    }
+}
 ['smokeSpeaker': 'MicFixtureA', 'smokeListener': 'MicFixtureB'].each { runName, playerName ->
     neoForge.runs.create(runName) {
         client()

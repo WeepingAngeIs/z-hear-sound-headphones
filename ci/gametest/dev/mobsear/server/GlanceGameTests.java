@@ -24,12 +24,12 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 @GameTestHolder("mobsear")
 @PrefixGameTestTemplate(false)
 public final class GlanceGameTests {
-    @GameTest(template = "hearing_floor")
+    @GameTest(template = "hearing_floor", batch = "walking_enderman")
     public static void walkingEndermanGlancesAndResumes(GameTestHelper test) {
         walking(test, EntityType.ENDERMAN, Cue.ENDERMAN);
     }
 
-    @GameTest(template = "hearing_floor")
+    @GameTest(template = "hearing_floor", batch = "walking_spider")
     public static void walkingSpiderGlancesAndResumes(GameTestHelper test) {
         walking(test, EntityType.SPIDER, Cue.SPIDER);
     }
