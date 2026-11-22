@@ -174,6 +174,13 @@ try {
     $spot.Name = 'word spot'
     $spot.Enabled = $false
     $engine.LoadGrammar($spot)
+    try { $proposalThreshold = [int]$engine.QueryRecognizerSetting('CFGConfidenceRejectionThreshold') }
+    catch { $proposalThreshold = $null }
+
+    function Test-CompoundFragment($label, $words, $length) {
+        return $overlapping.ContainsKey($label) -and $words.Count -le $length+2 -and
+            $words[0].LexicalForm -notin @('a','an','the','that','this','my','your','one','look','there','there''s','where','hey','call','see')
+    }
 
     function Read-WholeName($plain) {
         $w = $plain.Words
@@ -186,7 +193,7 @@ try {
                 if (-not $aliases.ContainsKey($joined)) { continue }
                 if ($wordBreaks.ContainsKey($joined) -or $confirm.ContainsKey($joined)) { continue }
                 if ($i -eq 0 -and $j -eq $w.Count-1) { continue }
-                if ($overlapping.ContainsKey($joined) -and $w.Count-($j-$i+1) -le 1) { continue }
+                if (Test-CompoundFragment $joined $w ($j-$i+1)) { continue }
                 $best = $aliases[$joined]
             }
             if ($best -gt 0) { return $best }
@@ -202,8 +209,10 @@ try {
             $activeGrammar.Enabled = $true
             $calls.Enabled = $false
             $background.Enabled = $false
+            if ($null -ne $proposalThreshold) { $engine.UpdateRecognizerSetting('CFGConfidenceRejectionThreshold',0) }
             $engine.SetInputToAudioStream($audio,$format)
             $mention = $engine.Recognize()
+            if ($null -ne $proposalThreshold) { $engine.UpdateRecognizerSetting('CFGConfidenceRejectionThreshold',$proposalThreshold) }
             if ($null -eq $mention -or $mention.Grammar -ne $activeGrammar -or
                     -not $mention.Semantics.ContainsKey('mob')) { return 0 }
             $label = [string]$mention.Semantics['mob'].Value
@@ -212,8 +221,7 @@ try {
             $mw = $mention.Words
             if ($mw.Count -lt $units.Length) { return 0 }
             # A short possible compound such as Owl Guardian cannot fall through to the base Guardian.
-            if ($overlapping.ContainsKey($label) -and $mw.Count -eq $units.Length+1 -and
-                    $mw[0].LexicalForm -notin @('a','an','the','that','this','my','your','one','look','hey','call')) { return 0 }
+            if (Test-CompoundFragment $label $plain.Words $units.Length) { return 0 }
             for ($i=0; $i -le $mw.Count-$units.Length; $i++) {
                 $last = $i+$units.Length-1
                 $valid = $true

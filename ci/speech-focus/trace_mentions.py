@@ -12,7 +12,8 @@ def show(root):
         ("if ($null -eq $mention -or", '("context=" + $mention.Grammar.Name + " " + $mention.Text)'),
         ("$units = $label.Split", '("slot=" + $label + " words=" + (($mention.Words | ForEach-Object { $_.LexicalForm + "/" + $_.Confidence }) -join " "))'),
         ("if (-not ($startEdge", '("edges=" + $startEdge + "," + $endEdge)'),
-        ("if ($null -ne $isolated -and", '("isolated=" + $isolated.Text + "/" + $isolated.Confidence)')]:
+        ("if ($null -ne $isolated -and", '("isolated=" + $isolated.Text + "/" + $isolated.Confidence)'),
+        ("if ($null -ne $closed -and", '("closed=" + $closed.Text + "/" + $closed.Confidence + " span=" + $left + "-" + $right)')]:
         assert script.count(hook) == 1, hook
         script = script.replace(hook, "[Console]::Error.WriteLine(" + event + ")\n            " + hook)
     start = "$pcm = $reader.ReadBytes($length)"
