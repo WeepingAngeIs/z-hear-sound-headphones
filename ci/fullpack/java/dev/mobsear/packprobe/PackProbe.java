@@ -68,6 +68,7 @@ public final class PackProbe {
     private int index, failures, clientTicks;
     private boolean installed, hooked, armed;
     private String lastScreen = "";
+    private final PackOnboarding onboarding=new PackOnboarding();
     private final Path home = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"));
 
     public PackProbe() {
@@ -169,6 +170,7 @@ public final class PackProbe {
             clientTicks++;
             String screen = mc.screen == null ? "none" : mc.screen.getClass().getSimpleName();
             if (!screen.equals(lastScreen)) { System.out.println("ACOUSTIC_SCREEN " + screen); lastScreen=screen; }
+            onboarding.tick(mc);
             if (mc.player==null) { continueWorld(mc); return; }
             if (mc.screen instanceof PauseScreen pause) pause.onClose();
             if (!VoiceClient.connected()) return;

@@ -4,6 +4,11 @@ on:
     branches: [codex/proximity-voice-prototype]
     paths: ['ci/fullpack/**', '.github/workflows/fullpack.yml']
   workflow_dispatch:
+    inputs:
+      with_control:
+        type: boolean
+        description: Also rerun the smaller Cobblemon comparison
+        default: false
 permissions:
   contents: read
   actions: read
@@ -15,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [public-pack, focused-control]
+        profile: ${{ fromJSON(inputs.with_control && '["public-pack","focused-control"]' || '["public-pack"]') }}
     env:
       PYTHONUTF8: '1'
       PYTHONUNBUFFERED: '1'
