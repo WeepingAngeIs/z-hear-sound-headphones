@@ -1,6 +1,7 @@
 """Boot real isolated Linux game clients with the exact released optional mods."""
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -19,6 +20,9 @@ def run(mode):
     env = dict(os.environ, MOBSEAR_POKEMON_ROOT=str(root), LIBGL_ALWAYS_SOFTWARE="true",
                LP_NUM_THREADS="1", ALSOFT_DRIVERS="null")
     roles = ["server", "solo"] if mode == "solo" else ["server", "speaker", "listener"]
+    meminfo=Path("/proc/meminfo").read_text().splitlines()
+    physical=next(line for line in meminfo if line.startswith("MemTotal:"))
+    print(f"Hosted game capacity: {physical.strip()}, G1, server 2800 MiB, solo 4800 MiB, each network client 3200 MiB",flush=True)
     for role in roles:
         for sub in ("tmp", "natives"):
             (root / role / sub).mkdir(parents=True, exist_ok=True)
@@ -56,6 +60,8 @@ def run(mode):
             for name, data in logs.items():
                 if "POKEMON_FIXTURE_FAIL" in data or processes[name].poll() is not None:
                     raise RuntimeError("Game fixture stopped in "+name)
+                if "Client disconnected with reason:" in data or "lost connection: Timed out" in data:
+                    raise RuntimeError("Disconnected from disposable world in "+name+" while waiting for "+marker)
             if marker in logs[role]: return
             time.sleep(2)
         raise RuntimeError("Timeout waiting for "+role+" "+marker)
@@ -91,12 +97,19 @@ def run(mode):
         for f in sorted(root.glob("*.console")):
             print(f.name, flush=True)
             lines=f.read_text(errors="replace").splitlines()
-            selected=[l for l in lines if any(k in l for k in ("POKEMON_", "Caused by:", "Exception in thread", "FATAL", "ERROR", "Crash report"))]
-            for l in selected[-28:]+lines[-9:]: print(l[:450])
+            selected=[l for l in lines if any(k in l for k in ("POKEMON_", "ENTITY_", "Caused by:", "Exception in thread",
+                      "FATAL", "ERROR", "Crash report", "onnection closed", "lost connection", "utOfMemory", "Timed out"))]
+            for l in selected[-36:]+lines[-22:]: print(l[:550])
         raise
     finally:
         for proc in processes.values():
             if proc.poll() is None: os.killpg(proc.pid, signal.SIGTERM)
+        for role in roles:
+            config=root/role/"config/connectivity.json"
+            if config.is_file():
+                raw=config.read_text(errors="replace")
+                settings=dict(re.findall(r'"(logintimeout|disconnectTimeout)"\s*:\s*(\d+)',raw))
+                print("Hosted Connectivity",role,settings,flush=True)
         dest=Path("build/pokemon-evidence"); dest.mkdir(parents=True,exist_ok=True)
         for p in (root/"evidence").glob("*.png"): shutil.copy2(p,dest/p.name)
         if (root/"catalogs").is_dir():

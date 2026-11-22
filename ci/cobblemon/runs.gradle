@@ -2,6 +2,8 @@ sourceSets.main.java.srcDirs('ci/cobblemon/java', 'ci/multiplayer/java')
 sourceSets.main.java.exclude('dev/mobsear/smoke/**')
 sourceSets.main.resources.srcDir('ci/cobblemon/resources')
 def root = new File(providers.environmentVariable('MOBSEAR_POKEMON_ROOT').get())
+def linux = providers.environmentVariable('RUNNER_OS').getOrElse('') == 'Linux'
+def collector = linux ? '-XX:+UseG1GC' : '-XX:+UseSerialGC'
 if (providers.environmentVariable('MOBSEAR_POKEMON_PACK').getOrElse('') == '1') {
     sourceSets.main.resources.srcDir(new File(root, 'lunavee-resources'))
 }
@@ -9,7 +11,7 @@ neoForge.runs.create('pokemonServer') {
     server()
     gameDirectory = new File(root, 'server')
     programArgument '--nogui'
-    jvmArguments = ['-Xms256m', '-Xmx1850m', '-XX:ActiveProcessorCount=2', '-XX:+UseSerialGC']
+    jvmArguments = ['-Xms256m', linux ? '-Xmx2800m' : '-Xmx1850m', '-XX:ActiveProcessorCount=2', collector]
 }
 ['Solo': 'PokemonHome', 'Speaker': 'PokemonCaller', 'Listener': 'PokemonViewer'].each { role, user ->
     neoForge.runs.create('pokemon' + role) {
@@ -20,8 +22,9 @@ neoForge.runs.create('pokemonServer') {
         programArguments = ['--username', user, '--uuid', id.toString(),
                             role == 'Solo' ? '--quickPlaySingleplayer' : '--quickPlayMultiplayer',
                             role == 'Solo' ? 'PokemonFixture' : '127.0.0.1:25579', '--width', '854', '--height', '480']
-        jvmArguments = ['-Xms384m', role == 'Solo' ? '-Xmx3600m' : '-Xmx2400m', '-XX:ActiveProcessorCount=2',
-                        '-XX:+UseSerialGC', "-Djava.io.tmpdir=${new File(dir, 'tmp')}",
+        def heap = role == 'Solo' ? (linux ? '-Xmx4800m' : '-Xmx3600m') : (linux ? '-Xmx3200m' : '-Xmx2400m')
+        jvmArguments = ['-Xms384m', heap, '-XX:ActiveProcessorCount=2',
+                        collector, "-Djava.io.tmpdir=${new File(dir, 'tmp')}",
                         "-Dorg.lwjgl.system.SharedLibraryExtractPath=${new File(dir, 'natives')}"]
     }
 }

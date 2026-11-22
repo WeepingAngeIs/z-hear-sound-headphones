@@ -1,9 +1,11 @@
 """Boot a private, disposable Windows game and exercise the installed recognizer through Java Sound."""
 from pathlib import Path
+from collections import deque
 import os
 import subprocess
 import shutil
 import sys
+import threading
 
 if os.getenv("GITHUB_ACTIONS") != "true" or os.name != "nt":
     raise SystemExit("Hosted Windows only")
@@ -43,9 +45,18 @@ def run_game(name, marker, stop_server=False):
         raise RuntimeError(f"Expected one launch script for {name}: {options}")
     process = subprocess.Popen(["cmd", "/d", "/c", str(options[0])], stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    recent = deque(maxlen=25)
+    def stopped_responding():
+        print(f"Hosted {name} did not reach {marker} before its deadline", flush=True)
+        if process.poll() is None:
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
+    deadline = threading.Timer(420 if stop_server else 600, stopped_responding)
+    deadline.daemon = True
+    deadline.start()
     try:
         for line in process.stdout:
-            if any(key in line for key in ("MOBSEAR_", "POKEMON_", "ERROR", "Exception", "Caused by", "OpenGL", "Starting integrated")):
+            recent.append(line.strip()[:650])
+            if any(key in line for key in ("MOBSEAR_", "POKEMON_", "ERROR", "Exception", "Caused by", "OpenGL", "Starting integrated", "disconnect", "Disconnected")):
                 print(line.strip()[:800], flush=True)
             if "MOBSEAR_SMOKE_FAIL" in line or "POKEMON_FIXTURE_FAIL" in line:
                 break
@@ -56,8 +67,10 @@ def run_game(name, marker, stop_server=False):
                     process.communicate(timeout=90)
                     if process.returncode: raise RuntimeError("Seed server failed to stop cleanly")
                 return
+        print("\n".join(recent), flush=True)
         raise RuntimeError("Game exited before "+marker)
     finally:
+        deadline.cancel()
         if process.poll() is None:
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
 

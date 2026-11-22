@@ -18,6 +18,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -67,6 +68,9 @@ final class IntegratedCalls {
         owner.teleportTo(level,X+.5+c.distance,Y,Z+.5,-90,0);
         subject = (c.enderman ? EntityType.ENDERMAN : EntityType.SPIDER).create(level);
         if (subject == null || !level.isDay()) throw SmokeControl.failure("Expected a daytime world");
+        // Keep the outside control beyond the boundary for the whole synthetic utterance.
+        // A normal spider can wander a block between starting the clip and receiving the cue.
+        if (c.distance > 32) subject.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
         pose();
         subject.setPersistenceRequired();
         if (!level.addFreshEntity(subject)) throw SmokeControl.failure("Failed to add single-player subject");
@@ -104,7 +108,8 @@ final class IntegratedCalls {
                 && g.getGoal().getClass().getName().equals("dev.mobsear.server.MobReactions$ListenGoal"));
         if (Math.abs(Mth.wrapDegrees(subject.getYHeadRot()+90)) <= 25) aligned++;
         boolean inside = c.distance <= 32;
-        if (!inside && claimed) throw SmokeControl.failure("Out-of-range integrated cue acted");
+        if (!inside && subject.distanceToSqr(owner) <= 32 * 32) throw SmokeControl.failure("Outside subject crossed hearing boundary");
+        if (!inside && claimed) throw SmokeControl.failure("Out-of-range integrated cue acted at " + subject.distanceTo(owner));
         if (feedback!=stage || (inside ? !claimed || aligned<6 || seen!=stage : age<80)) return;
         System.out.println("MOBSEAR_INTEGRATED_CASE "+c.label+" distance="+c.distance+" automatic="+c.automatic
                 +" memory-connection=true daytime=true server-listen-goal="+claimed+" alignedTicks="+aligned

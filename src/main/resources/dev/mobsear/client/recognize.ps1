@@ -21,6 +21,7 @@ try {
     if ($vocabulary.Length -ne $size) { exit 3 }
     $aliases = @{}
     $confirm = @{}
+    $wordBreaks = @{}
     $words = [System.Collections.Generic.List[string]]::new()
     foreach ($entry in [Text.Encoding]::ASCII.GetString($vocabulary).Split([char]10)) {
         if ($entry.Length -eq 0) { continue }
@@ -28,7 +29,10 @@ try {
         if ($parts.Count -ne 3) { exit 3 }
         $aliases.Add($parts[2], [uint16]$parts[0])
         $words.Add('call ' + $parts[2])
-        if ($parts[1] -eq '2') { continue }
+        if ($parts[1] -eq '2') {
+            $wordBreaks.Add($parts[2], $true)
+            continue
+        }
         if ($parts[1] -eq '1') { $confirm.Add($parts[2], $true) }
         $words.Add($parts[2])
         $words.Add('hey ' + $parts[2])
@@ -92,9 +96,8 @@ try {
                 $phrase = $result.Text.ToLowerInvariant()
                 if ($phrase.StartsWith('call ')) {
                     if ($result.Confidence -lt 0.82) {
-                        # A marginal explicit call must win the mixed vocabulary first; then
-                        # the command-only pass must independently hear 'call' and select
-                        # the same registered ID. Different official spellings can share an ID.
+                        # Only an explicitly enunciated compound can use this extra check.
+                        # A weak ordinary call must stay rejected even if rescoring repeats it.
                         $engine.SetInputToNull()
                         $stream.Dispose()
                         $stream = [System.IO.MemoryStream]::new($pcm, $false)
@@ -107,7 +110,8 @@ try {
                             if ($null -eq $verified -or $verified.Confidence -lt 0.92 -or
                                     $verified.Grammar.Name -ne 'mob call' -or -not $again.StartsWith('call ') -or
                                     -not $aliases.ContainsKey($firstName) -or -not $aliases.ContainsKey($again.Substring(5)) -or
-                                    $aliases[$firstName] -ne $aliases[$again.Substring(5)]) {
+                                    $aliases[$firstName] -ne $aliases[$again.Substring(5)] -or
+                                    (-not $wordBreaks.ContainsKey($firstName) -and -not $wordBreaks.ContainsKey($again.Substring(5)))) {
                                 $phrase = ''
                             }
                         } finally {

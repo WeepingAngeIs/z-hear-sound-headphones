@@ -64,7 +64,10 @@ public final class PokemonCaseClient {
         mc=Minecraft.getInstance();
         if (!installed) { FixtureSound.install(); installed=true; }
         mc.getToasts().clear();
-        if (mc.player==null || mc.level==null) return;
+        if (mc.player==null || mc.level==null) {
+            if (mc.screen!=null) waitFor(mc.screen.getClass().getSimpleName()+" / "+mc.screen.getTitle().getString());
+            return;
+        }
         if ((!hello || caller) && !VoiceClient.connected()) { waitFor("voice session"); return; }
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
         if (!hello) {

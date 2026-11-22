@@ -55,6 +55,14 @@ TWILIGHT = (
     "https://edge.forgecdn.net/files/7797/302/twilightforest-1.21.1-4.8.3345-universal.jar",
     "493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35",
 )
+CONNECTIVITY_FILES = (
+    ("connectivity-1.21.1-7.6.jar",
+     "https://edge.forgecdn.net/files/7367/221/connectivity-1.21.1-7.6.jar",
+     "2366973ddae5ba00b9ba15a26e5b610a6648038b9f2549bf81b9ae61342b281a"),
+    ("cupboard-1.21.1-4.2.jar",
+     "https://edge.forgecdn.net/files/8889/50/cupboard-1.21.1-4.2.jar",
+     "5162922647fe07c7b9f446870915b57ddd0ae9dcf56b243611130fea30f2f77a"),
+)
 
 MIMIC_JAR = "upsidedown-1.2.0-beta.5.jar"
 MIMIC_FILES = (
@@ -95,7 +103,7 @@ def main():
     dest = destinations[0]
     files = FILES + MEGA_FILES if os.getenv("MOBSEAR_POKEMON_PACK") == "1" else FILES
     if os.getenv("MOBSEAR_ENTITY_PACK") == "1":
-        files += OWL_FILES + (TWILIGHT,) + MIMIC_FILES
+        files += OWL_FILES + (TWILIGHT,) + MIMIC_FILES + CONNECTIVITY_FILES
     elif os.getenv("MOBSEAR_OWL_ACOUSTIC") == "1":
         files += OWL_FILES
     for name, url, sha in files:
