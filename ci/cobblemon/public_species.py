@@ -5,6 +5,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 from urllib.request import urlopen
 from zipfile import ZipFile
 from global_species import collect, species_rows
@@ -82,10 +83,14 @@ def stage(world_root=None, vocabulary=None):
                 digest.update(name.encode() + b"\0" + sha256(blob).digest())
                 write(assets, name, blob)
             assert len(render_files) == 22 and digest.hexdigest() == VISUAL_SHA
-            for lang_path in (ENGLISH, "assets/unyielding/lang/en_us.json"):
+            staged_labels = {}
+            for lang_path in sorted(n for n in jar.namelist() if re.fullmatch(r"assets/[^/]+/lang/en_us\.json", n)):
                 lang = json.loads(jar.read(lang_path))
                 labels = {k: v for k, v in lang.items() if ".species." in k and k.endswith(".name")}
-                write(assets, lang_path, json.dumps(labels).encode())
+                if labels:
+                    write(assets, lang_path, json.dumps(labels).encode())
+                    staged_labels.update(labels)
+            assert staged_labels["cobblemon.species.fairysliggoo.name"] == "Frilligoo"
             for filename in ("CREDITS.txt", "LICENSE-Cobblemon-Eevee.txt"):
                 entry = "META-INF/licenses/imported-pokemon/lunavee/" + filename
                 write(assets, entry, jar.read(entry))
