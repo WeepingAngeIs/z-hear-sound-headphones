@@ -1,0 +1,51 @@
+package dev.mobsear.client;
+
+import dev.mobsear.net.Cue;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+/** Deadline and recovery tests use a worker double, independent of acoustic accuracy. */
+public final class WorkerRecoveryFixture {
+    private static void await(java.util.function.BooleanSupplier check, int seconds) throws Exception {
+        long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
+        while (!check.getAsBoolean() && System.nanoTime()<until) Thread.sleep(25);
+        if (!check.getAsBoolean()) throw new AssertionError("Worker state deadline");
+    }
+
+    private static void submit(SpeechCues speech) {
+        byte[] pcm=new byte[640];
+        for (int i=1;i<pcm.length;i+=2) pcm[i]=8;
+        for (int i=0;i<20;i++) speech.acceptFrame(pcm);
+        speech.endUtterance();
+    }
+
+    public static void main(String[] args) throws Exception {
+        if (!"github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))) throw new IllegalStateException("Hosted only");
+        Path root=Path.of(System.getenv("MOBSEAR_WORKER_FIXTURE"));
+        var cues=new LinkedBlockingQueue<Cue>();
+        try (var speech=new SpeechCues(cues::add)) {
+            speech.setEnabled(true);
+            await(()->speech.status()==SpeechCues.Status.READY,10);
+            submit(speech);
+            await(()->Files.exists(root.resolve("late-returned")),15);
+            if (cues.poll(300,TimeUnit.MILLISECONDS)!=null || speech.status()!=SpeechCues.Status.READY
+                    || speech.lastDecision()==null || speech.lastDecision().timely())
+                throw new AssertionError("A late call dispatched or closed the recognizer");
+            submit(speech);
+            if (cues.poll(4,TimeUnit.SECONDS)!=Cue.ENDERMAN) throw new AssertionError("The next fresh call was lost");
+            Files.createFile(root.resolve("stall"));
+            submit(speech);
+            await(()->Files.exists(root.resolve("recovered")) && speech.status()==SpeechCues.Status.READY,36);
+            if (!cues.isEmpty()) throw new AssertionError("A stalled call was replayed");
+            submit(speech);
+            if (cues.poll(4,TimeUnit.SECONDS)!=Cue.ENDERMAN) throw new AssertionError("Failed to recover the next fresh call");
+            Files.createFile(root.resolve("stall"));
+            submit(speech);
+            await(()->speech.status()==SpeechCues.Status.UNAVAILABLE,32);
+            if (!speech.decoderTimedOut() || !cues.isEmpty()) throw new AssertionError("Final timeout was not identified");
+            System.out.println("MOBSEAR_WORKER_RECOVERY_PASS lateDropped=true nextFresh=true boundedRecovery=1 finalTimeout=true");
+        }
+    }
+}

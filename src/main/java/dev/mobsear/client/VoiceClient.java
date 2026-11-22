@@ -299,7 +299,7 @@ public final class VoiceClient {
         }, id -> {
             ResourceLocation type = ResourceLocation.tryParse(id);
             if (type != null) cue.set(new Packets.EntityCall(type));
-        }, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"), Map.of(), Map.of());
+        }, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"), Map.of(), Map.of(), WindowsSpeechWorker::configure);
         CobblemonNames names;
         final EntityCallNames mobNames = new EntityCallNames();
         Map<String, List<String>> knownSpecies = Map.of(), knownEntities = Map.of();
@@ -309,6 +309,7 @@ public final class VoiceClient {
         boolean monitoring;
         long lastSpeaking;
         long lastMeter;
+        long displayedDecision;
         boolean recognition;
         boolean creative;
         boolean suspended;
@@ -332,8 +333,9 @@ public final class VoiceClient {
                 boolean enabled = prefs.pitchEnabled();
                 int cents = enabled ? prefs.pitchCents() : 0;
                 int reverb = enabled ? prefs.reverbAmount() : 0;
-                if (effects.route(pcm, cents, reverb, frames::offer, ignored -> speech.acceptFrame(original))
-                        && VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
+                boolean queued = effects.route(pcm, cents, reverb, frames::offer);
+                if (recognition) speech.acceptFrame(original, queued);
+                if (queued && VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
             }, () -> {
                 effects.reset();
                 speech.endUtterance();
@@ -415,6 +417,14 @@ public final class VoiceClient {
             for (int i = 0; i < 12 && (frame = frames.poll()) != null; i++) {
                 PacketDistributor.sendToServer(new Packets.Up(frame));
             }
+            var decision = speech.lastDecision();
+            if (decision != null && decision.number() != displayedDecision) {
+                displayedDecision = decision.number();
+                if (prefs.recognitionDiagnostics() && (!decision.matched() || !decision.timely())) {
+                    String key = decision.timely() ? "no_match" : "late_match";
+                    MobCallNotice.diagnoseMiss(Component.translatable("mobsear.speech." + key));
+                }
+            }
             Packets.MobCall ready = cue.getAndSet(null);
             if (ready == null || !recognition) return;
             instance.pendingRequestId = 0;
@@ -455,7 +465,9 @@ public final class VoiceClient {
                 MobCallNotice.show(Component.translatable("mobsear.problem." + key));
             } else if (state != previous && !suspended) {
                 previous = state;
-                String key = speech.startupTimedOut() ? "startup_timeout" : state.name().toLowerCase(java.util.Locale.ROOT);
+                String key = state.name().toLowerCase(java.util.Locale.ROOT);
+                if (speech.startupTimedOut()) key = "startup_timeout";
+                if (speech.decoderTimedOut()) key = "decode_timeout";
                 Component status = Component.translatable("mobsear.speech." + key);
                 if (state == SpeechCues.Status.READY) MobCallNotice.ready(status);
                 else MobCallNotice.show(status);

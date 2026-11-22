@@ -18,21 +18,25 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-/** Opt-in, device-local recognition of short calls, using only transmitted PCM. */
+/** Device-local recognition of opted-in calls supported by transmitted voice. */
 public final class SpeechCues implements AutoCloseable {
     public enum Status { OFF, STARTING, READY, UNAVAILABLE }
+    public record Decision(long number, boolean matched, boolean timely, long ageMillis) {}
 
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeouts();
     private static final long MAX_AGE_NANOS = TimeUnit.SECONDS.toNanos(4);
     private final Consumer<Cue> listener;
     private final Consumer<String> speciesListener;
     private final Consumer<String> entityListener;
+    private final Consumer<Process> configureWorker;
     private final Path aliasFile;
     private SpeechGrammar.Registries catalogs;
     private Map<String, List<String>> entitySource = Map.of();
     private Session session;
     private Status status = Status.OFF;
     private boolean closed, inputPaused;
+    private Decision lastDecision;
+    private long decisionNumber;
 
     public SpeechCues(Consumer<Cue> listener) {
         this(listener, null);
@@ -49,9 +53,16 @@ public final class SpeechCues implements AutoCloseable {
 
     public SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Consumer<String> entityListener,
                       Path aliasFile, Map<String, List<String>> speciesDisplayNames, Map<String, List<String>> entityDisplayNames) {
+        this(listener, speciesListener, entityListener, aliasFile, speciesDisplayNames, entityDisplayNames, process -> {});
+    }
+
+    SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Consumer<String> entityListener,
+               Path aliasFile, Map<String, List<String>> speciesDisplayNames, Map<String, List<String>> entityDisplayNames,
+               Consumer<Process> configureWorker) {
         this.listener = Objects.requireNonNull(listener);
         this.speciesListener = Objects.requireNonNull(speciesListener);
         this.entityListener = Objects.requireNonNull(entityListener);
+        this.configureWorker = Objects.requireNonNull(configureWorker);
         this.aliasFile = aliasFile;
         refreshCatalog(speciesDisplayNames, entityDisplayNames);
     }
@@ -83,8 +94,15 @@ public final class SpeechCues implements AutoCloseable {
         return status;
     }
 
+    /** Transient local timing only. No phrase, audio or identifier is retained here. */
+    public synchronized Decision lastDecision() { return lastDecision; }
+
     public synchronized boolean startupTimedOut() {
         return status == Status.UNAVAILABLE && session != null && session.startupExpired;
+    }
+
+    public synchronized boolean decoderTimedOut() {
+        return status == Status.UNAVAILABLE && session != null && session.decodeExpired;
     }
 
     public synchronized void setEnabled(boolean enabled) {
@@ -92,22 +110,31 @@ public final class SpeechCues implements AutoCloseable {
             Session previous = session;
             session = null;
             status = Status.OFF;
+            lastDecision = null;
             if (previous != null) previous.stop();
         } else if (!closed && status == Status.OFF) {
             if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows")) {
                 status = Status.UNAVAILABLE;
                 return;
             }
-            status = Status.STARTING;
-            session = new Session();
-            session.worker.start();
+            startSession(false);
         }
     }
 
+    private void startSession(boolean recovering) {
+        status = Status.STARTING;
+        session = new Session(recovering);
+        session.worker.start();
+    }
+
     /** Called only with the local speaker's 20 ms PCM16 mono frames at 16 kHz. */
-    public synchronized void acceptFrame(byte[] pcm) {
+    public void acceptFrame(byte[] pcm) {
+        acceptFrame(pcm, true);
+    }
+
+    public synchronized void acceptFrame(byte[] pcm, boolean queuedForVoice) {
         if (!inputPaused && status == Status.READY && pcm.length == Utterances.FRAME_BYTES) {
-            session.utterances.accept(pcm);
+            session.utterances.accept(pcm, queuedForVoice);
         }
     }
 
@@ -120,6 +147,7 @@ public final class SpeechCues implements AutoCloseable {
     public synchronized void setInputPaused(boolean paused) {
         if (inputPaused == paused) return;
         inputPaused = paused;
+        lastDecision = null;
         if (session != null) {
             session.inputRevision++;
             session.utterances.clear();
@@ -180,6 +208,12 @@ public final class SpeechCues implements AutoCloseable {
         private long inputRevision;
         private volatile int startupStep;
         private volatile boolean startupExpired;
+        private volatile boolean decodeExpired;
+        private final boolean recovering;
+
+        Session(boolean recovering) {
+            this.recovering = recovering;
+        }
 
         // Called by the capture thread under the owner's monitor. It never waits for SAPI.
         private void submit(byte[] pcm) {
@@ -208,6 +242,7 @@ public final class SpeechCues implements AutoCloseable {
                     if (session != this) return;
                     helper = child;
                 }
+                configureWorker.accept(child);
                 try (var input = new DataInputStream(child.getInputStream());
                      var progress = new DataInputStream(child.getErrorStream());
                      var output = new DataOutputStream(child.getOutputStream())) {
@@ -222,9 +257,13 @@ public final class SpeechCues implements AutoCloseable {
                             if (!clip.fresh()) continue;
                             int decision = exchange(child, input, output, clip);
                             synchronized (SpeechCues.this) {
-                                if (session == this && !inputPaused && clip.inputRevision == inputRevision && clip.fresh()
-                                        && !grammar.dispatch(decision, listener, speciesListener, entityListener))
-                                    throw new IOException("Invalid speech helper reply");
+                                if (session == this && !inputPaused && clip.inputRevision == inputRevision) {
+                                    long age = System.nanoTime() - clip.endedAt;
+                                    boolean timely = age <= MAX_AGE_NANOS;
+                                    if (timely && !grammar.dispatch(decision, listener, speciesListener, entityListener))
+                                        throw new IOException("Invalid speech helper reply");
+                                    lastDecision = new Decision(++decisionNumber, decision != 0, timely, TimeUnit.NANOSECONDS.toMillis(age));
+                                }
                             }
                         } finally {
                             clip.clear();
@@ -242,7 +281,9 @@ public final class SpeechCues implements AutoCloseable {
                         utterances.clear();
                         clearPending();
                         helper = null;
-                        status = Status.UNAVAILABLE;
+                        // A stalled clip is never replayed. A fresh helper may serve the next call.
+                        if (decodeExpired && !recovering && !closed) startSession(true);
+                        else status = Status.UNAVAILABLE;
                     }
                 }
             }
@@ -273,7 +314,12 @@ public final class SpeechCues implements AutoCloseable {
 
         private int exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip)
                 throws IOException {
-            var deadline = TIMEOUTS.schedule(() -> child.toHandle().destroyForcibly(), 8, TimeUnit.SECONDS);
+            // A late result still expires after four seconds. Give the engine time to finish
+            // the discarded clip before treating it as unresponsive and recycling the worker.
+            var deadline = TIMEOUTS.schedule(() -> {
+                decodeExpired = true;
+                child.toHandle().destroyForcibly();
+            }, 24, TimeUnit.SECONDS);
             try {
                 output.writeInt(Integer.reverseBytes(clip.pcm.length));
                 output.write(clip.pcm);
@@ -297,13 +343,19 @@ public final class SpeechCues implements AutoCloseable {
         private int used;
         private int silenceFrames;
         private boolean tooLong;
+        private boolean sentVoice;
 
         Utterances(Consumer<byte[]> output) {
             this.output = output;
         }
 
         void accept(byte[] frame) {
+            accept(frame, true);
+        }
+
+        void accept(byte[] frame, boolean queuedForVoice) {
             boolean voiced = hasEnergy(frame);
+            sentVoice |= voiced && queuedForVoice;
             if (!voiced && used == 0 && !tooLong) {
                 System.arraycopy(preRoll, FRAME_BYTES, preRoll, 0, preRoll.length - FRAME_BYTES);
                 System.arraycopy(frame, 0, preRoll, preRoll.length - FRAME_BYTES, FRAME_BYTES);
@@ -337,7 +389,9 @@ public final class SpeechCues implements AutoCloseable {
         }
 
         void finish() {
-            if (used > 0 && !tooLong) {
+            // A crowded game tick may drop network frames. Decode the intact word only if
+            // this actual utterance also contributed voiced audio to proximity chat.
+            if (used > 0 && !tooLong && sentVoice) {
                 // Append synthetic silence in memory without delaying the PTT-release endpoint.
                 int padding = (DECODER_TAIL_FRAMES - silenceFrames) * FRAME_BYTES;
                 output.accept(Arrays.copyOf(current, Math.min(current.length, used + padding)));
@@ -351,6 +405,7 @@ public final class SpeechCues implements AutoCloseable {
             used = 0;
             silenceFrames = 0;
             tooLong = false;
+            sentVoice = false;
         }
     }
 }

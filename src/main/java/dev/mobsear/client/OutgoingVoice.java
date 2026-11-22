@@ -1,7 +1,6 @@
 package dev.mobsear.client;
 
 import java.util.Arrays;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /** Pitch and room reflections on the outbound branch of the 16 kHz mono stream. */
@@ -21,7 +20,7 @@ final class OutgoingVoice {
         for (int i = 0; i < HOP; i++) fade[i] = 0.5 - 0.5 * Math.cos(Math.PI * (i + 0.5) / HOP);
     }
 
-    boolean route(byte[] dry, int requestedCents, int reverbAmount, Predicate<byte[]> enqueue, Consumer<byte[]> recognize) {
+    boolean route(byte[] dry, int requestedCents, int reverbAmount, Predicate<byte[]> enqueue) {
         if (dry.length != VoiceAudio.FRAME_BYTES) return false;
         int next = Math.clamp(requestedCents, -1200, 1200);
         if (next != cents) configure(next);
@@ -30,7 +29,6 @@ final class OutgoingVoice {
             reset();
             return false;
         }
-        recognize.accept(dry);
         return true;
     }
 

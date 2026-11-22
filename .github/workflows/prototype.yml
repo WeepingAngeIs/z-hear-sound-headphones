@@ -99,6 +99,14 @@ jobs:
           javac --release 21 --source-path src/main/java -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           java -cp 'ci-classes;src/main/resources' dev.mobsear.client.SpeechCuesFixture --windows-speech
+      - name: Check late decisions and bounded worker recovery with a synthetic worker
+        shell: powershell
+        run: |
+          $env:MOBSEAR_WORKER_FIXTURE=Join-Path $env:RUNNER_TEMP 'speech-timeout-fixture'
+          New-Item -ItemType Directory -Path $env:MOBSEAR_WORKER_FIXTURE | Out-Null
+          javac --release 21 -cp ci-classes -d ci-classes ci/speech-lifecycle/WorkerRecoveryFixture.java
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          java -cp 'ci/speech-lifecycle/resources;ci-classes' dev.mobsear.client.WorkerRecoveryFixture
       - name: Keep the stock synthetic speech pitch demo
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

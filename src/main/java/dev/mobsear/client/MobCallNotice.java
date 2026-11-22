@@ -64,6 +64,11 @@ final class MobCallNotice {
         diagnosticEnd = Minecraft.getInstance().gui.getGuiTicks() + LIFETIME;
     }
 
+    static void diagnoseMiss(Component detail) {
+        if ((confirmed && current() != null) || localMatch() != null) return;
+        diagnose(detail);
+    }
+
     static Component localMatch() {
         if (diagnostic != null && (Minecraft.getInstance().gui.getGuiTicks() >= diagnosticEnd
                 || !VoiceClient.options().recognitionDiagnostics())) diagnostic = null;

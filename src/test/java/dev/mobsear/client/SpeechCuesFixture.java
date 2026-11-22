@@ -68,7 +68,7 @@ public final class SpeechCuesFixture {
             var rendered = new ByteArrayOutputStream(source.length + FRAME);
             for (int offset = 0; offset < source.length; offset += FRAME) {
                 byte[] dry = Arrays.copyOfRange(source, offset, offset + FRAME);
-                outgoing.route(dry, cents, 0, wire -> { rendered.writeBytes(wire); return true; }, raw -> {});
+                outgoing.route(dry, cents, 0, wire -> { rendered.writeBytes(wire); return true; });
             }
             byte[] pcm = Arrays.copyOf(rendered.toByteArray(), source.length);
             if (cents == 0) require(Arrays.equals(source, pcm), "Natural synthetic demonstration changed the input");
@@ -125,6 +125,27 @@ public final class SpeechCuesFixture {
         segments.accept(signal);
         segments.finish();
         require(clips.size() == 2, "Short call after over-length speech");
+        var reference = new ArrayList<byte[]>();
+        var partial = new ArrayList<byte[]>();
+        var dropped = new ArrayList<byte[]>();
+        var intact = new SpeechCues.Utterances(reference::add);
+        var crowded = new SpeechCues.Utterances(partial::add);
+        var noVoicedPackets = new SpeechCues.Utterances(dropped::add);
+        for (int i = 0; i < 24; i++) {
+            byte[] distinct = signal.clone();
+            distinct[3] = (byte) i;
+            intact.accept(distinct);
+            crowded.accept(distinct, i == 6 || i == 15);
+            noVoicedPackets.accept(distinct, false);
+        }
+        for (int i = 0; i < 18; i++) {
+            intact.accept(silence);
+            crowded.accept(silence);
+            noVoicedPackets.accept(silence);
+        }
+        require(partial.size() == 1 && reference.size() == 1 && Arrays.equals(partial.getFirst(), reference.getFirst()),
+                "Network backpressure removed syllables from the local utterance");
+        require(dropped.isEmpty(), "Silence alone on the voice channel authorized a call");
     }
 
     private static void checkSpeciesCatalog() throws IOException {
@@ -426,6 +447,18 @@ public final class SpeechCuesFixture {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25);
         while (speech.status() == SpeechCues.Status.STARTING && System.nanoTime() < deadline) Thread.sleep(25);
         require(speech.status() == SpeechCues.Status.READY, "Recognizer startup");
+        for (int pos = 0; pos < namedEnderman.length; pos += FRAME) {
+            speech.acceptFrame(Arrays.copyOfRange(namedEnderman, pos, pos + FRAME), (pos / FRAME) % 7 == 0);
+        }
+        speech.endUtterance();
+        require(received.poll(8, TimeUnit.SECONDS) == Cue.ENDERMAN, "Crowded voice queue cut off part of Enderman");
+        var previousDecision = speech.lastDecision();
+        for (int pos = 0; pos < namedEnderman.length; pos += FRAME) {
+            speech.acceptFrame(Arrays.copyOfRange(namedEnderman, pos, pos + FRAME), false);
+        }
+        speech.endUtterance();
+        require(received.poll(500, TimeUnit.MILLISECONDS) == null && previousDecision == speech.lastDecision(),
+                "An entirely dropped utterance was decoded");
         for (int cents : new int[]{VoicePreferences.SQUEAKY_CENTS, VoicePreferences.DEEP_CENTS}) {
             var acousticClips = new ArrayList<byte[]>();
             var segmentation = new SpeechCues.Utterances(acousticClips::add);
@@ -433,14 +466,12 @@ public final class SpeechCuesFixture {
             var changed = new java.util.concurrent.atomic.AtomicBoolean();
             for (int offset = 0; offset < zombie.length; offset += FRAME) {
                 byte[] frame = Arrays.copyOfRange(zombie, offset, offset + FRAME);
-                pitch.route(frame, cents, 80, wire -> {
+                boolean queued = pitch.route(frame, cents, 80, wire -> {
                     if (!Arrays.equals(wire, frame)) changed.set(true);
                     return true;
-                }, original -> {
-                    require(original == frame, "The recognizer received a processed pitch frame");
-                    segmentation.accept(original);
-                    speech.acceptFrame(original);
                 });
+                segmentation.accept(frame, queued);
+                speech.acceptFrame(frame, queued);
             }
             require(changed.get(), "Outgoing synthetic speech was never shifted");
             segmentation.finish();
@@ -467,11 +498,11 @@ public final class SpeechCuesFixture {
                 // Gate, noise suppression, pitch and segmentation match the opted-in game path.
                 for (int pos = 0; pos < phrases[i].length; pos += FRAME) {
                     byte[] frame = Arrays.copyOfRange(phrases[i], pos, pos + FRAME);
-                    filter.accept(frame, automatic, 50, true, true, (wire, original) ->
-                        outgoing.route(wire, cents, 0, accepted -> true, ignored -> {
-                            diagnostics.accept(original);
-                            speech.acceptFrame(original);
-                        }), endpoint);
+                    filter.accept(frame, automatic, 50, true, true, (wire, original) -> {
+                        boolean queued = outgoing.route(wire, cents, 0, accepted -> true);
+                        diagnostics.accept(original, queued);
+                        speech.acceptFrame(original, queued);
+                    }, endpoint);
                 }
                 // Open mic must finish by itself. PTT also accepts a key release.
                 if (!automatic) endpoint.run();
