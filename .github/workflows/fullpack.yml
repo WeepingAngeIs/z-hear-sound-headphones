@@ -44,7 +44,7 @@ jobs:
         run: ./gradlew.bat --no-daemon --max-workers=2 --console=plain -I ci/fullpack/probe.gradle acousticPackProbeJar
       - name: Resolve the published Configtopia compiler dependencies
         if: matrix.profile == 'public-pack'
-        run: ./gradlew.bat --no-daemon --max-workers=2 --console=plain -PneoForgeVersion=21.1.255 -I ci/fullpack/probe.gradle configtopiaPublicClasspath
+        run: ./gradlew.bat --no-daemon --max-workers=2 --console=plain '-PneoForgeVersion=21.1.255' -I ci/fullpack/probe.gradle configtopiaPublicClasspath
       - name: Generate synthetic Windows speech and prepare hosted graphics
         shell: powershell
         run: ./ci/fullpack/prepare.ps1
