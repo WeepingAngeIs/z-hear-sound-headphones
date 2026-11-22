@@ -34,6 +34,10 @@ for key, count in sorted(counts.items()):
 if wrong:
     raise SystemExit('Wrong registered cue for generated fixtures: ' + str(wrong))
 
+for row in after:
+    if row['phrase'].startswith('sentence-'):
+        assert row['actual'] == row['expected'], ('Sentence decision', row['fixture'], row['mode'], row['actual'])
+
 for target in ('ENDERMAN', 'cobblemon:lopunny'):
     old = sum(b['expected'] == b['actual'] == target for b in before)
     new = sum(a['expected'] == a['actual'] == target for a in after)

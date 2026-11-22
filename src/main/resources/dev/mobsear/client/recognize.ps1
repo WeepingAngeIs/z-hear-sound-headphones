@@ -64,6 +64,7 @@ try {
     $engine.LoadGrammar($background)
     Send-StartupStep 76
 
+    $lexicon = [ordered]@{}
     if ($english.Culture.Name -eq 'en-US') {
         # Verify alternate pronunciations in a separate engine so they cannot displace
         # thousands of existing registry commands or change the original engine's confidence.
@@ -111,6 +112,111 @@ try {
         }
     }
 
+    # A second grammar has one registered name between optional passages of real dictation.
+    # It is disabled during the original short-command pass and shares the same local engine.
+    $nameItems = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
+    foreach ($label in $aliases.Keys) {
+        if ($aliases[$label] -eq 0 -or $wordBreaks.ContainsKey($label)) { continue }
+        $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($label)
+        $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsNameValueTag]::new('mob', $label))
+        $nameItems.Add($item)
+        if ($lexicon.Contains($label)) {
+            foreach ($phones in $lexicon[$label]) {
+                $token = [System.Speech.Recognition.SrgsGrammar.SrgsToken]::new($label)
+                $token.Pronunciation = $phones
+                $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new()
+                $item.Add($token)
+                $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsNameValueTag]::new('mob', $label))
+                $nameItems.Add($item)
+            }
+        }
+    }
+    $contextRule = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('Mention')
+    $prefixWords = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new(0,1)
+    $prefixWords.Add([System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::Dictation)
+    $suffixWords = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new(0,1)
+    $suffixWords.Add([System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::Dictation)
+    $contextRule.Add($prefixWords)
+    $contextRule.Add($nameItems)
+    $contextRule.Add($suffixWords)
+    $contextDocument = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($contextRule)
+    $contextDocument.Culture = $english.Culture
+    $contextDocument.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
+    $sentence = [System.Speech.Recognition.Grammar]::new($contextDocument)
+    $sentence.Name = 'name in speech'
+    $sentence.Enabled = $false
+    $engine.LoadGrammar($sentence)
+
+    function Find-Mention($plain, [byte[]]$samples) {
+        if ($null -eq $plain -or $plain.Words.Count -lt 2) { return 0 }
+        $audio = [IO.MemoryStream]::new($samples, $false)
+        $engine.SetInputToNull()
+        try {
+            $sentence.Enabled = $true
+            $calls.Enabled = $false
+            $engine.SetInputToAudioStream($audio,$format)
+            $mention = $engine.Recognize()
+            if ($null -eq $mention -or $mention.Grammar.Name -ne 'name in speech' -or
+                    -not $mention.Semantics.ContainsKey('mob')) { return 0 }
+            $label = [string]$mention.Semantics['mob'].Value
+            if (-not $aliases.ContainsKey($label)) { return 0 }
+            $units = $label.Split(' ')
+            $mw = $mention.Words
+            if ($mw.Count -le $units.Length) { return 0 }
+            for ($i=0; $i -le $mw.Count-$units.Length; $i++) {
+                $last = $i+$units.Length-1
+                $valid = $true
+                for ($j=0; $j -lt $units.Length; $j++) {
+                    if ($mw[$i+$j].LexicalForm -ne $units[$j] -or $mw[$i+$j].Confidence -lt 0.60) { $valid=$false; break }
+                }
+                if (-not $valid) { continue }
+                # Check the name's edges against an unconstrained interpretation of the same sound.
+                # This prevents taking 'mob' from inside 'mobility' or 'spider' from 'spidery'.
+                $span = $mention.GetAudioForWordRange($mw[$i],$mw[$last])
+                $left = $span.AudioPosition.TotalMilliseconds
+                $right = $left + $span.Duration.TotalMilliseconds
+                $plainWords = $plain.Words
+                $startEdge = $endEdge = $false
+                for ($k=0; $k -lt $plainWords.Count; $k++) {
+                    $word = $plain.GetAudioForWordRange($plainWords[$k],$plainWords[$k])
+                    if ([Math]::Abs($word.AudioPosition.TotalMilliseconds-$left) -le 75) { $startEdge=$true }
+                    if ([Math]::Abs(($word.AudioPosition+$word.Duration).TotalMilliseconds-$right) -le 75) { $endEdge=$true }
+                }
+                if (-not ($startEdge -and $endEdge)) { continue }
+                $dictation = ' ' + (($plainWords | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) -join ' ') + ' '
+                if ($dictation.Contains(' '+$label+' ')) { return $aliases[$label] }
+                # A made-up name may be absent from dictation. Re-recognize its whole-word audio
+                # with the short command (or pronunciation) grammar competing against ordinary speech.
+                if ($confirm.ContainsKey($label)) { continue }
+                $wordAudio = [IO.MemoryStream]::new()
+                try {
+                    $silence = [byte[]]::new(6400)
+                    $wordAudio.Write($silence,0,$silence.Length)
+                    $span.WriteToAudioStream($wordAudio)
+                    $wordAudio.Write($silence,0,$silence.Length)
+                    $wordAudio.Position=0
+                    $engine.SetInputToNull()
+                    $sentence.Enabled=$false
+                    $calls.Enabled=$true
+                    $verifyEngine = if ($null -ne $pronouncer -and $lexicon.Contains($label)) { $pronouncer } else { $engine }
+                    try {
+                        $verifyEngine.SetInputToAudioStream($wordAudio,$format)
+                        $isolated = $verifyEngine.Recognize()
+                        if ($null -ne $isolated -and $isolated.Text -eq $label -and $isolated.Confidence -ge 0.70) {
+                            return $aliases[$label]
+                        }
+                    } finally { $verifyEngine.SetInputToNull() }
+                } finally { $wordAudio.Dispose() }
+            }
+            return 0
+        } finally {
+            $engine.SetInputToNull()
+            $sentence.Enabled=$false
+            $calls.Enabled=$true
+            $audio.Dispose()
+        }
+    }
+
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
         16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,
         [System.Speech.AudioFormat.AudioChannel]::Mono)
@@ -124,10 +230,10 @@ try {
     $output.Flush()
     while ($true) {
         try { $length = $reader.ReadInt32() } catch [System.IO.EndOfStreamException] { break }
-        if ($length -lt -96000) { exit 3 }
+        if ($length -lt -256000) { exit 3 }
         $detail = $length -lt 0
         if ($detail) { $length = -$length }
-        if ($length -le 0 -or $length -gt 96000 -or $length % 2 -ne 0) { exit 3 }
+        if ($length -le 0 -or $length -gt 256000 -or $length % 2 -ne 0) { exit 3 }
         $pcm = $reader.ReadBytes($length)
         if ($pcm.Length -ne $length) { exit 3 }
         $stream = [System.IO.MemoryStream]::new($pcm, $false)
@@ -136,6 +242,7 @@ try {
         try {
             $engine.SetInputToAudioStream($stream, $format)
             $result = $engine.Recognize()
+            $plain = if ($null -ne $result -and $result.Grammar -eq $background) { $result } else { $null }
             if ($detail -and $null -ne $result) { $guess = $result.Text }
             $minConfidence = 0.58
             # Rescore a rejection or very weak dictation hypothesis with the command grammar.
@@ -269,11 +376,13 @@ try {
                     $match = $null
                 }
             }
+            if ($decision -eq 0 -and $null -ne $plain) { $decision = Find-Mention $plain $pcm }
         } finally {
             $engine.SetInputToNull()
             $stream.Dispose()
             [Array]::Clear($pcm, 0, $length)
             $result = $null
+            $plain = $null
         }
         $output.WriteByte([byte]($decision -shr 8))
         $output.WriteByte([byte]($decision -band 255))

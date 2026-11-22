@@ -28,7 +28,18 @@ $words=@(
     @('menu','enter the menu','neutral'),@('ordinary','the lantern is on the table','neutral'),
     @('honey','more honey','neutral'),@('ending','in the morning','neutral'),
     @('but-any','but any','neutral'),@('anyone-can','but anyone can join','neutral'),
-    @('interment','interment','neutral'),@('low-money','low money','neutral'))
+    @('interment','interment','neutral'),@('low-money','low money','neutral'),
+    @('sentence-lopunny-end',"Hey, look, there's a Lopunny.",'cobblemon:lopunny'),
+    @('sentence-lopunny-middle','That Lopunny is over here.','cobblemon:lopunny'),
+    @('sentence-pikachu-middle','The Pikachu ran past me.','cobblemon:pikachu'),
+    @('sentence-enderman-end','I can see an Enderman.','ENDERMAN'),
+    @('sentence-spider-first','Spider tracks lead down here.','SPIDER'),
+    @('sentence-compound','The cave spider is near the wall.','SPIDER'),
+    @('sentence-long','After we crossed the river and followed the path, I saw a Pikachu by the old stone bridge.','cobblemon:pikachu'),
+    @('sentence-partial-mob','Our mobility is improving.','neutral'),
+    @('sentence-partial-spider','That was spidery handwriting.','neutral'),
+    @('sentence-partial-ender','The bartender mentioned it.','neutral'),
+    @('sentence-ordinary',"Hey, look, there's a lantern.",'neutral'))
 $rows=@()
 try {
     $voiceIndex=0

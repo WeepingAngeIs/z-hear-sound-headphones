@@ -399,12 +399,13 @@ public final class SpeechCues implements AutoCloseable {
         }
     }
 
-    /** A short silence ends a call. Continuous, over-length speech is dropped as a unit. */
+    /** Split connected speech at a quiet word boundary. Never send a clip cut through sustained sound. */
     static final class Utterances {
         static final int FRAME_BYTES = 640;
         private static final int END_SILENCE_FRAMES = 18;
         private static final int DECODER_TAIL_FRAMES = 28;
-        private final byte[] current = new byte[150 * FRAME_BYTES];
+        static final int MAX_FRAMES = 400;
+        private final byte[] current = new byte[MAX_FRAMES * FRAME_BYTES];
         // Preserve quiet initial consonants and give the desktop decoder a stable noise floor.
         private final byte[] preRoll = new byte[10 * FRAME_BYTES];
         private final Consumer<byte[]> output;
@@ -454,7 +455,7 @@ public final class SpeechCues implements AutoCloseable {
                     used += FRAME_BYTES;
                 }
             }
-            if (silenceFrames >= END_SILENCE_FRAMES) finish();
+            if (silenceFrames >= END_SILENCE_FRAMES || (silenceFrames >= 4 && (tooLong || used >= 145 * FRAME_BYTES))) finish();
         }
 
         private static boolean hasEnergy(byte[] frame) {

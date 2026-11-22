@@ -60,7 +60,7 @@ public final class WorkerRecoveryFixture {
             speech.acceptFrame(voice, false);
             speech.endUtterance();
             expectFeedback(speech, SpeechCues.TestStage.NO_VOICE, "");
-            for (int i = 0; i < 160; i++) speech.acceptFrame(voice);
+            for (int i = 0; i < SpeechCues.Utterances.MAX_FRAMES + 10; i++) speech.acceptFrame(voice);
             speech.endUtterance();
             expectFeedback(speech, SpeechCues.TestStage.TOO_LONG, "");
             long before = speech.lastDecision().number();
