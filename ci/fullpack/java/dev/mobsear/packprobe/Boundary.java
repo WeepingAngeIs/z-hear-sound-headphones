@@ -35,6 +35,21 @@ final class Boundary {
         return field(VoiceClient.class, "instance").get(null);
     }
 
+    // Earlier JARs kept this switch on the connection. The current one saves it with the profile.
+    static Boolean savedCalls() throws ReflectiveOperationException {
+        var prefs = VoiceClient.options();
+        try {
+            return (boolean) prefs.getClass().getMethod("localMobCalls").invoke(prefs);
+        } catch (NoSuchMethodException historicalJar) {
+            return null;
+        }
+    }
+
+    static boolean callsEnabled() throws ReflectiveOperationException {
+        Boolean saved = savedCalls();
+        return saved != null ? saved : (boolean) get(client(), "recognition");
+    }
+
     static String readiness() throws ReflectiveOperationException {
         var worker = get(get(client(), "session"), "speech");
         var method = worker.getClass().getDeclaredMethod("status");

@@ -119,7 +119,7 @@ public final class PackProbe {
     private volatile boolean ready, next, fatal, complete;
     private long nextSetup;
     private int index, failures, clientTicks, startupStep = -1;
-    private boolean installed, hooked, armed;
+    private boolean installed, hooked, armed, freshDefaults;
     private String lastScreen = "";
     private String lastDecoderState = "";
     private long armedAt, processAt;
@@ -336,9 +336,17 @@ public final class PackProbe {
                 return;
             }
             if (!armed) {
-                // Use the mod's actual configured binding, including the pack's default key overrides.
-                var toggle=(KeyMapping)Boundary.get(Boundary.client(),"toggle");
-                KeyMapping.click(toggle.getKey());
+                Boolean saved = Boundary.savedCalls();
+                freshDefaults = saved != null;
+                if (freshDefaults) {
+                    if (!saved || !VoiceClient.voiceActivated() || VoiceClient.options().muted() || VoiceClient.options().deafened()
+                            || ((KeyMapping)Boundary.get(Boundary.client(),"talk")).isDown())
+                        throw new IllegalStateException("Unexpected fresh voice or call defaults in the disposable pack");
+                    System.out.println("ACOUSTIC_FRESH_DEFAULTS voiceActivation=true localMobCalls=true muted=false talkKey=false");
+                } else if (!Boundary.callsEnabled()) {
+                    var toggle=(KeyMapping)Boundary.get(Boundary.client(),"toggle");
+                    KeyMapping.click(toggle.getKey());
+                }
                 armed=true;
                 armedAt=System.nanoTime();
                 return;
@@ -376,7 +384,7 @@ public final class PackProbe {
                 System.out.println("ACOUSTIC_CHILD "+desktop.pid());
             }
             if (!state.equals(lastDecoderState)) {
-                System.out.println("ACOUSTIC_RECOGNIZER "+state+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L+" optIn="+Boundary.get(Boundary.client(),"recognition"));
+                System.out.println("ACOUSTIC_RECOGNIZER "+state+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L+" callsEnabled="+Boundary.callsEnabled());
                 lastDecoderState=state;
             }
             if (!state.equals("READY") && !state.equals("UNAVAILABLE")) return;
@@ -400,7 +408,7 @@ public final class PackProbe {
                     if (o.seenAt==0) o.seenAt=System.nanoTime();
                     if (err>60) o.facedAway=true;
                     if (testFeedback) VoiceClient.options().setRecognitionDiagnostics(o.test.detail);
-                    VoiceClient.setVoiceActivated(o.test.openMic);
+                    if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
                     if (o.visitTrial && !o.primed) return;
