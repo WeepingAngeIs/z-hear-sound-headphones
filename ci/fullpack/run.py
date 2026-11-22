@@ -93,7 +93,9 @@ def run():
         assert all(not n.endswith(".class") or n.startswith("dev/mobsear/packprobe/") for n in jar.namelist())
         assert not any(n.startswith(("assets/", "data/")) for n in jar.namelist())
     shutil.copy2(probe,game/"mods"/probe.name)
-    seed_world()
+    native=os.getenv("MOBSEAR_NATIVE_WORLD")=="1"
+    if not native:
+        seed_world()
     (game/"options.txt").write_text("version:3955\nonboardAccessibility:false\npauseOnLostFocus:false\n"
         "tutorialStep:none\nnarrator:0\nrenderDistance:5\nsimulationDistance:5\nenableVsync:false\nmaxFps:30\n"
         "graphicsMode:0\nsoundCategory_master:0.0\nguiScale:2\n", encoding="utf-8")
@@ -105,9 +107,10 @@ def run():
     options=utils.generate_test_options()
     options.update(username="AcousticFixture",executablePath=java,gameDirectory=str(game),
                    jvmArguments=["-Xms1G","-Xmx8G","-XX:+UseG1GC","-XX:ActiveProcessorCount=4"],
-                   customResolution=True,resolutionWidth="854",resolutionHeight="480",quickPlaySingleplayer=world)
+                   customResolution=True,resolutionWidth="854",resolutionHeight="480")
+    if not native: options["quickPlaySingleplayer"]=world
     args=command.get_minecraft_command(version,str(launcher),options)
-    if "--quickPlaySingleplayer" not in args:
+    if not native and "--quickPlaySingleplayer" not in args:
         args.extend(["--quickPlaySingleplayer",world])
     # Command arguments can contain launcher credentials. Only fixed proof markers are published.
     with subprocess.Popen(args,cwd=game,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,
@@ -158,4 +161,9 @@ def run():
 
 
 if __name__=="__main__":
-    run()
+    try:
+        run()
+    except BaseException:
+        (root/"result.txt").write_text("failure",encoding="ascii")
+        raise
+    (root/"result.txt").write_text("success",encoding="ascii")

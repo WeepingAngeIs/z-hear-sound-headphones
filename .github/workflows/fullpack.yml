@@ -26,6 +26,7 @@ jobs:
       PYTHONUNBUFFERED: '1'
       GALLIUM_DRIVER: llvmpipe
       LP_NUM_THREADS: '2'
+      MOBSEAR_NATIVE_WORLD: '1'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -58,8 +59,17 @@ jobs:
         with:
           name: public-pack-checksums
           path: ${{ runner.temp }}/public-pack-checksums.json
+      - name: Start a new single-player world with the installed pack's registries
+        run: python ci/fullpack/watch.py start
+      - name: Observe the native client and integrated server starting
+        run: python ci/fullpack/watch.py 480
+      - name: Save startup progress without game logs or save data
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: startup-${{ matrix.profile }}
+          path: ${{ runner.temp }}/hearing-windows/boot-progress.txt
       - name: Play generated speech in disposable Survival and Creative
-        run: python ci/fullpack/run.py
+        run: python ci/fullpack/watch.py finish
       - name: Save generated-game views only
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -6,14 +6,19 @@ import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.Difficulty;
+import net.minecraft.world.level.GameRules;
 
 /** Complete the pack's normal first-join screens for the one new, hosted test player. */
 final class PackOnboarding {
     private final Set<String> chosen = new HashSet<>();
     private int titleTicks;
-    private boolean opened, declined, tutorial;
+    private boolean opened, declined, tutorial, created;
+    private final boolean fresh="1".equals(System.getenv("MOBSEAR_NATIVE_WORLD"));
 
     void tick(Minecraft mc) throws ReflectiveOperationException {
         if (mc.screen==null) { titleTicks=0; return; }
@@ -31,10 +36,29 @@ final class PackOnboarding {
             if (!opened && mc.screen instanceof TitleScreen title && mc.getOverlay()==null) {
                 if (++titleTicks==80) {
                     opened=true;
-                    mc.createWorldOpenFlows().openWorld("HearPublicPack", ()->mc.setScreen(title));
-                    System.out.println("ACOUSTIC_ONBOARDING opened the generated test save from title");
+                    if (fresh) {
+                        CreateWorldScreen.openFresh(mc,title);
+                        System.out.println("ACOUSTIC_ONBOARDING starting native world creation with pack registries");
+                    } else {
+                        mc.createWorldOpenFlows().openWorld("HearPublicPack", ()->mc.setScreen(title));
+                        System.out.println("ACOUSTIC_ONBOARDING opened the generated test save from title");
+                    }
                 }
             } else titleTicks=0;
+            if (fresh && !created && mc.screen instanceof CreateWorldScreen create) {
+                var state=create.getUiState();
+                state.setName("HearPublicPack");
+                state.setSeed("123");
+                state.setDifficulty(Difficulty.NORMAL);
+                state.getGameRules().getRule(GameRules.RULE_SPAWN_CHUNK_RADIUS).set(0,null);
+                var label=Component.translatable("selectWorld.create").getString();
+                for (var child:create.children()) if (child instanceof Button b && b.visible && b.active && b.getMessage().getString().equals(label)) {
+                    created=true;
+                    b.onPress();
+                    System.out.println("ACOUSTIC_ONBOARDING created new native Survival world");
+                    break;
+                }
+            }
             return;
         }
         if (screen.equals("com.cyberday1.neoorigins.screen.OriginSelectionScreen")) {

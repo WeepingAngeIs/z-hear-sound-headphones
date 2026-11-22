@@ -168,6 +168,8 @@ public final class PackProbe {
                 System.out.println("ACOUSTIC_DEVICE synthetic Java Sound input, zero physical mixers");
             }
             clientTicks++;
+            if (!mc.isWindowActive() && clientTicks%40==0 && mc.getWindow()!=null)
+                org.lwjgl.glfw.GLFW.glfwFocusWindow(mc.getWindow().getWindow());
             String screen = mc.screen == null ? "none" : mc.screen.getClass().getSimpleName();
             if (!screen.equals(lastScreen)) {
                 String key=mc.screen!=null && mc.screen.getTitle().getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t
