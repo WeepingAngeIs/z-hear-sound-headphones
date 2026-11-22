@@ -38,6 +38,10 @@ final class VisualStates {
             for (var state : List.of(MicState.IDLE, MicState.MUTED, MicState.DEAFENED, MicState.SPEAKING)) {
                 all.add(new Case(style, state, "full", style + "-" + state.name().toLowerCase(java.util.Locale.ROOT), false, false));
             }
+            if (style.equals("uwu")) {
+                all.add(new Case(style, MicState.IDLE, "full", "uwu-stopped", false, false));
+                all.add(new Case(style, MicState.MUTED, "full", "uwu-muted-after-speaking", false, false));
+            }
         }
         for (String effects : List.of("reduced", "off"))
             all.add(new Case("uwu", MicState.SPEAKING, effects, "effects-" + effects, false, false));
@@ -103,6 +107,7 @@ final class VisualStates {
         if (namePhase != 0) return;
         if (index == CASES.size()) {
             if (mc.screen instanceof VoiceSettingsScreen) mc.screen.onClose();
+            if (!sender) checkObserverPixels();
             FixtureSound.tone = false;
             VoiceClient.setVoiceActivated(false);
             report(SmokeControl.VISUAL);
@@ -118,8 +123,11 @@ final class VisualStates {
                 prefs.setMicStyle(c.style);
                 prefs.setMuted(c.state == MicState.MUTED);
                 prefs.setDeafened(c.state == MicState.DEAFENED);
-                FixtureSound.tone = c.state == MicState.SPEAKING;
-                VoiceClient.setVoiceActivated(true);
+                FixtureSound.tone = c.state == MicState.SPEAKING || c.name.equals("uwu-muted-after-speaking");
+                if (!VoiceClient.voiceActivated() || !prefs.localMobCalls() ||
+                        java.util.Arrays.stream(mc.options.keyMappings).anyMatch(k -> k.getName().equals("key.mobsear.talk") && k.isDown())) {
+                    throw SmokeControl.failure("Speaker should still be hands-free without the talk key");
+                }
             } else if (c.menu && mc.screen == null && !requestedMenu) {
                 MenuSmoke.pressG();
                 requestedMenu = true;
@@ -134,6 +142,7 @@ final class VisualStates {
                 mc.screen.mouseReleased(x, y, 0);
             }
             if (!sender && c.name.equals("device-meter")) {
+                prefs.setMuted(false);
                 FixtureSound.tone = true;
                 VoiceClient.setTestingMic(true);
             }
@@ -169,6 +178,7 @@ final class VisualStates {
         String style = sender ? VoiceClient.localStyle() : VoiceClient.remoteStyle(SPEAKER);
         if (state != c.state || !style.equals(c.style)) return;
         if (c.state == MicState.SPEAKING && (sender ? VoiceClient.inputLevel() : VoiceClient.remoteLevel(SPEAKER)) <= 0) return;
+        if (!sender && c.name.equals("uwu-speaking") && FixtureSound.played.get() == 0) return;
         if (c.menu) {
             if (sender) { finish(); return; }
             String label = FixtureSound.rowStatus();
@@ -197,6 +207,8 @@ final class VisualStates {
             else if (c.state == MicState.SPEAKING && c.effects.equals("full")) {
                 if (frame == firstFrame) return;
                 write(picture, name + "-next");
+                if (!sender && c.name.equals("uwu-speaking"))
+                    System.out.println("MOBSEAR_DEFAULT_VOICE_WIRE_PASS observer decoded and played hands-free speaker audio");
             } else if (c.state == MicState.SPEAKING) {
                 if (frame != firstFrame) throw SmokeControl.failure("reduced/off glyph moved at steady input");
                 if (System.nanoTime() - firstAt < 450_000_000L) return;
@@ -248,6 +260,48 @@ final class VisualStates {
     }
 
     private boolean recentTag() { return System.nanoTime() - tagAt < 500_000_000L; }
+
+    // Inspect the observer's saved framebuffer, independently of the packet, render event and glyph ID.
+    // The fixture holds both players and the camera still; the right edge is measured from its idle control.
+    private java.util.BitSet pinkPixels(String state) throws IOException {
+        var image = ImageIO.read(output.resolve("nameplate-" + state + ".png").toFile());
+        int left = image.getWidth()/2 + 37, top = image.getHeight()/2 - 57;
+        var mask = new java.util.BitSet(56 * 42);
+        for (int dy = 0; dy < 42; dy++) for (int dx = 0; dx < 56; dx++) {
+            int color = image.getRGB(left + dx, top + dy);
+            int r = color >> 16 & 255, g = color >> 8 & 255, b = color & 255;
+            if (r > 135 && r - g > 25 && b - g > 9 && r > b) mask.set(dy * 56 + dx);
+        }
+        return mask;
+    }
+
+    private void checkObserverPixels() {
+        try {
+            var idle = pinkPixels("uwu-idle");
+            var stopped = pinkPixels("uwu-stopped");
+            var muted = pinkPixels("uwu-muted-after-speaking");
+            if (idle.cardinality() < 40 || !idle.equals(stopped) || muted.cardinality() < 20 ||
+                    muted.equals(stopped) || !muted.equals(pinkPixels("uwu-muted")))
+                throw SmokeControl.failure("The observer's idle and muted mic images did not return to their reference shapes");
+            int right = idle.stream().map(bit -> bit % 56).max().orElseThrow();
+            var space = new java.util.BitSet(56 * 42);
+            for (int row = 0; row < 42; row++) space.set(row * 56 + right + 3, (row + 1) * 56);
+            var current = pinkPixels("uwu-speaking");
+            var next = pinkPixels("uwu-speaking-next");
+            current.and(space);
+            next.and(space);
+            if (current.cardinality() < 2 || next.cardinality() < 2 || current.equals(next))
+                throw SmokeControl.failure("Detached particles did not move across two observer frames");
+            for (String quiet : List.of("uwu-stopped", "uwu-muted-after-speaking", "effects-reduced", "effects-off")) {
+                var particles = pinkPixels(quiet);
+                particles.and(space);
+                if (!particles.isEmpty()) throw SmokeControl.failure("Detached particles remained on the observer: " + quiet);
+            }
+            System.out.println("MOBSEAR_OBSERVER_PIXELS_PASS idle=" + idle.cardinality() + " muted=" + muted.cardinality()
+                    + " movingParticlePixels=" + current.cardinality() + "," + next.cardinality()
+                    + " stopped=0 mutedParticles=0 reduced=0 effectsOff=0");
+        } catch (IOException ex) { throw SmokeControl.failure("Cannot inspect observer framebuffer captures: " + ex); }
+    }
     private static boolean expected(Case c, int frame) {
         if (c.hidden) return frame == -1;
         return switch (c.state) {

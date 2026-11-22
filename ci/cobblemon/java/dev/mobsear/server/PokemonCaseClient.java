@@ -83,13 +83,16 @@ public final class PokemonCaseClient {
             confirmation=null;
             NoticeFixture.clear();
             if (caller && !armed) {
-                KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
+                if (!VoiceClient.options().localMobCalls() || !VoiceClient.voiceActivated()
+                        || VoiceClient.options().muted() || VoiceClient.options().deafened())
+                    throw PokemonProbe.fail("Fresh Cobblemon input and call defaults");
                 armed=true;
             }
         }
         if (acoustic && request.stage()==PokemonProbe.BEFORE) {
-            VoiceClient.setVoiceActivated(c==PokemonCase.EEVEE);
-            KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V), c!=PokemonCase.EEVEE);
+            boolean automatic=c==PokemonCase.PIKACHU || c==PokemonCase.EEVEE;
+            if (c!=PokemonCase.PIKACHU) VoiceClient.setVoiceActivated(automatic);
+            KeyMapping.set(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V), !automatic);
         }
     }
     private void tick(ClientTickEvent.Post ignored) {
@@ -168,7 +171,7 @@ public final class PokemonCaseClient {
                     " camera="+(mc.getCameraEntity()==mc.player)+" callerAt="+mc.player.position()+" arenaLoaded="+mc.level.hasChunkAt(new net.minecraft.core.BlockPos(0,104,8)));
             if (ticks<4 || mc.level.getEntity(stage.entity())==null) return;
             if (c==PokemonCase.PACK_FORM) c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client before call");
-            if (acoustic && c==PokemonCase.PIKACHU && !recognizerReady()) return;
+            if (acoustic && c==PokemonCase.PIKACHU && !NoticeFixture.recognizerReady()) return;
             if ((solo || !caller) && c.beforePicture() && !saved) {
                 if (ticks<35 || mc.screen!=null || mc.getOverlay()!=null) return;
                 capture="before"; return;
@@ -268,7 +271,7 @@ public final class PokemonCaseClient {
         if ((solo || !caller) && c.accepts() && !saved) { capture="after"; return; }
         reply(PokemonProbe.SEEN); acknowledged=true;
         if (acoustic) System.out.println("POKEMON_REAL_SPEECH "+c+" canonical=true client-facing="+aligned+" confirmed="+(confirmation!=null)+
-                " mode="+(c==PokemonCase.EEVEE?"voice-activation":"push-to-talk")+
+                " mode="+(VoiceClient.voiceActivated()?"voice-activation":"push-to-talk")+
                 (c==PokemonCase.OWL_GUARDIAN ? " syntheticVariant="+(scopedGuardian?"explicit-call":"bare-name") : ""));
     }
 
@@ -299,18 +302,6 @@ public final class PokemonCaseClient {
                 button.onPress(); return;
             }
         }
-    }
-    private boolean recognizerReady() {
-        // Inspect only the worker status; the acoustic run never writes the recognition result mailbox.
-        try {
-            var inst=VoiceClient.class.getDeclaredField("instance"); inst.setAccessible(true);
-            var session=VoiceClient.class.getDeclaredField("session"); session.setAccessible(true);
-            Object s=session.get(inst.get(null));
-            var speech=s.getClass().getDeclaredField("speech"); speech.setAccessible(true);
-            Object worker=speech.get(s);
-            var status=worker.getClass().getDeclaredMethod("status"); status.setAccessible(true);
-            return status.invoke(worker).toString().equals("READY");
-        } catch (ReflectiveOperationException ex) { throw PokemonProbe.fail("Cannot read speech readiness "+ex); }
     }
     private String overlay() {
         return NoticeFixture.text();

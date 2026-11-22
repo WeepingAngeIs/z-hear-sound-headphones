@@ -48,8 +48,6 @@ public final class VoiceClient {
     private final VoicePreferences preferences = new VoicePreferences(FMLPaths.CONFIGDIR.get().resolve("mobsear-client.properties"));
     private ClientPacketListener connection;
     private Session session;
-    private boolean recognition;
-    private boolean activation;
     private boolean testMic;
     private boolean horde;
     private MicPresence.Controls advertised;
@@ -60,6 +58,7 @@ public final class VoiceClient {
 
     public VoiceClient(IEventBus bus, ModContainer container) {
         instance = this;
+        preferences.initializeProfile();
         bus.addListener(MobCallNotice::register);
         bus.addListener((RegisterKeyMappingsEvent event) -> {
             event.register(talk);
@@ -83,7 +82,7 @@ public final class VoiceClient {
         var mc = Minecraft.getInstance();
         if (!connected() || ack.requestId() != instance.pendingRequestId || instance.pendingRequestId == 0) return;
         instance.pendingRequestId = 0;
-        if (!instance.recognition || instance.pendingInputRevision != options().inputRevision()
+        if (!options().localMobCalls() || instance.pendingInputRevision != options().inputRevision()
                 || options().muted() || options().deafened()
                 || instance.connection != mc.getConnection() || mc.player == null || !mc.player.isAlive()
                 || mc.player.isSpectator() || mc.player.isCreative() || instance.session.level != mc.level) return;
@@ -110,7 +109,10 @@ public final class VoiceClient {
     }
 
     static void setRecognition(boolean enabled) {
-        instance.recognition = enabled;
+        if (options().localMobCalls() != enabled) {
+            options().setLocalMobCalls(enabled);
+            saveInputChoice();
+        }
         if (!enabled) {
             instance.pendingRequestId = 0;
             MobCallNotice.clearMatch();
@@ -120,16 +122,21 @@ public final class VoiceClient {
 
     public static VoicePreferences options() { return instance.preferences; }
     static Component speechTestPrompt() {
-        if (!connected() || !options().recognitionDiagnostics() || !instance.recognition) return null;
+        if (!connected() || !options().recognitionDiagnostics() || !options().localMobCalls()) return null;
         var session = instance.session;
         if (session.suspended || options().muted() || options().deafened() || session.speech.status() != SpeechCues.Status.READY)
             return null;
         return session.held ? Component.translatable("mobsear.speech.test_wait")
                 : Component.translatable("mobsear.speech.test_ptt", instance.talk.getTranslatedKeyMessage());
     }
-    public static boolean voiceActivated() { return connected() && instance.activation; }
+    public static boolean voiceActivated() { return instance != null && options().voiceActivated(); }
     public static void setVoiceActivated(boolean enabled) {
-        if (connected()) instance.activation = enabled;
+        if (instance == null || options().voiceActivated() == enabled) return;
+        options().setVoiceActivated(enabled);
+        saveInputChoice();
+    }
+    private static void saveInputChoice() {
+        if (!options().save()) MobCallNotice.show(Component.translatable("mobsear.settings.save_error"));
     }
     public static boolean testingMic() { return connected() && instance.testMic; }
     public static void setTestingMic(boolean enabled) {
@@ -185,10 +192,7 @@ public final class VoiceClient {
     private Screen settingsScreen(Screen parent) {
         var mc = Minecraft.getInstance();
         preferences.bindPitchAccount(mc.getUser().getProfileId());
-        var link = mc.getConnection();
-        boolean available = mc.player != null && link != null && link.hasChannel(Packets.Call.TYPE);
-        return new VoiceSettingsScreen(parent, preferences, () -> recognition,
-                available ? VoiceClient::setRecognition : null,
+        return new VoiceSettingsScreen(parent, preferences, preferences::localMobCalls, VoiceClient::setRecognition,
                 uuid -> session != null && session.activity.speaking(uuid, System.nanoTime()));
     }
 
@@ -208,7 +212,7 @@ public final class VoiceClient {
         boolean usable = current != null && mc.level != null && mc.player != null && mc.player.isAlive()
                 && !mc.player.isSpectator() && current.hasChannel(Packets.Up.TYPE);
         while (toggle.consumeClick()) {
-            if (usable && focused) setRecognition(!recognition);
+            if (usable && focused && current.hasChannel(Packets.Call.TYPE)) setRecognition(!preferences.localMobCalls());
         }
         while (mute.consumeClick()) if (usable && focused) {
             preferences.setMuted(!preferences.muted());
@@ -234,6 +238,8 @@ public final class VoiceClient {
         }
         if (inputBlocked) testMic = false;
         if (!talk.isDown()) waitForRelease = false;
+        boolean activation = preferences.voiceActivated();
+        boolean recognition = preferences.localMobCalls() && current.hasChannel(Packets.Call.TYPE);
         boolean held = focused && !inputBlocked && (activation || (talk.isDown() && !waitForRelease));
         if (!focused || inputBlocked) {
             if (talk.isDown()) waitForRelease = true;
@@ -285,8 +291,6 @@ public final class VoiceClient {
     private void disconnect() {
         closeSession();
         connection = null;
-        recognition = false;
-        activation = false;
         testMic = false;
         horde = false;
     }

@@ -157,17 +157,18 @@ final class IntegratedCalls {
             VoiceClient.options().setRecognitionDiagnostics(c.distance>32);
             if (view>=0) NoticeProof.prepare(mc,view);
             if (index==0) {
-                KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
+                if (!VoiceClient.options().localMobCalls() || !VoiceClient.voiceActivated()
+                        || VoiceClient.options().muted() || VoiceClient.options().deafened())
+                    throw SmokeControl.failure("Fresh single-player voice and Local Mob Calls defaults");
                 VoiceClient.options().setNoiseSuppression(true);
             }
-            VoiceClient.setVoiceActivated(c.automatic);
+            if (index!=0) VoiceClient.setVoiceActivated(c.automatic);
             KeyMapping.set(v,!c.automatic);
             FixtureSound.tone=!acoustic;
         }
         var entity=mc.level.getEntity(entityId);
         if (++clientTicks<6 || !(entity instanceof Mob mob) || (view>=0 && !NoticeProof.ready(mc,view))) return;
-        boolean inputReady = acoustic ? (index > 0 || Component.translatable("mobsear.speech.ready").getString()
-                .equals(NoticeFixture.text())) : VoiceClient.localState()==MicState.SPEAKING;
+        boolean inputReady = acoustic ? (index > 0 || NoticeFixture.recognizerReady()) : VoiceClient.localState()==MicState.SPEAKING;
         if (ready<index && inputReady && Math.abs(Mth.wrapDegrees(mob.getYHeadRot()+90))>=90)
             ready=index;
         if (released!=index) return;

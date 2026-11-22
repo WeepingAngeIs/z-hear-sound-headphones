@@ -59,13 +59,14 @@ final class PitchRestartSmoke {
             step++;
         } else if (step == 3 && mc.screen instanceof VoiceSettingsScreen) {
             step++;
-            System.out.println("MOBSEAR_GAME_RESTART_PASS saved-preset custom-slider bypass reset other-settings");
+            System.out.println("MOBSEAR_GAME_RESTART_PASS saved-preset custom-slider bypass reset other-settings PTT calls-off muted");
         }
     }
 
     private static void verifyUnrelated(VoicePreferences prefs) {
         check(prefs.theme().equals("amethyst_stars") && prefs.volume() == 50 && prefs.gain(SPEAKER) == 150,
                 "unrelated settings after restart");
+        check(!prefs.voiceActivated() && !prefs.localMobCalls() && prefs.muted(), "retained upgraded input choices after restart");
     }
     private static void click(String label) {
         var screen = Minecraft.getInstance().screen;

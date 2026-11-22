@@ -26,6 +26,7 @@ public final class VoicePreferencesFixture {
         Path dir = Files.createTempDirectory("mobsear-preferences-");
         Path file = dir.resolve("voice.properties");
         try {
+            checkLaunchModes(dir);
             check(file);
             checkBackdropStrips();
         } finally {
@@ -33,6 +34,57 @@ public final class VoicePreferencesFixture {
             Files.deleteIfExists(dir);
         }
         System.out.println("Voice preferences and device selection fixture passed.");
+    }
+
+    private static void checkLaunchModes(Path dir) throws Exception {
+        Path config = Files.createDirectory(dir.resolve("config"));
+        Path saved = config.resolve("mobsear-client.properties");
+        Path options = dir.resolve("options.txt");
+        Path aliases = config.resolve("mobsear-aliases.properties");
+        try {
+            Files.writeString(options, "guiScale:2\nkey_key.forward:key.keyboard.w\n");
+            var fresh = new VoicePreferences(saved);
+            require(fresh.voiceActivated() && fresh.localMobCalls() && !fresh.muted() && !fresh.deafened(),
+                    "Fresh install uses hands-free voice and local calls without opening a device");
+            fresh.initializeProfile();
+            Files.writeString(options, "key_key.mobsear.talk:key.keyboard.v\n");
+            var restart = new VoicePreferences(saved);
+            require(restart.voiceActivated() && restart.localMobCalls(), "Fresh defaults survive the first restart");
+            for (boolean activation : List.of(true, false)) for (boolean calls : List.of(true, false)) {
+                restart.setVoiceActivated(activation);
+                restart.setLocalMobCalls(calls);
+                restart.setMuted(true);
+                require(restart.save(), "Save explicit modes");
+                restart = new VoicePreferences(saved);
+                require(restart.voiceActivated() == activation && restart.localMobCalls() == calls && restart.muted(),
+                        "Independent input, calls and mute choices survive restart");
+            }
+            String previous = "micMuted=true\ndeafened=true\nsensitivity=77\n";
+            Files.writeString(saved, previous);
+            var upgrade = new VoicePreferences(saved);
+            upgrade.initializeProfile();
+            require(!upgrade.voiceActivated() && !upgrade.localMobCalls() && upgrade.muted() && upgrade.deafened()
+                    && upgrade.sensitivity() == 77 && Files.readString(saved).equals(previous), "0.3.4 settings preserved");
+            Files.delete(saved);
+            require(!new VoicePreferences(saved).voiceActivated() && !new VoicePreferences(saved).localMobCalls(),
+                    "0.3.4 key bindings identify an upgrade without a preferences file");
+            Files.delete(options);
+            Files.writeString(aliases, "# saved mod aliases\n");
+            require(!new VoicePreferences(saved).voiceActivated() && !new VoicePreferences(saved).localMobCalls(),
+                    "0.3.4 alias file identifies an upgrade");
+            Files.delete(aliases);
+            var first = new VoicePreferences(saved);
+            Files.writeString(saved, previous);
+            first.initializeProfile();
+            require(!first.voiceActivated() && !first.localMobCalls() && first.muted()
+                    && Files.readString(saved).equals(previous), "Concurrent first launch honors the existing file");
+            System.out.println("MOBSEAR_PREFS_PASS fresh restart 0.3.4-upgrade independent-opt-outs muted deafened");
+        } finally {
+            Files.deleteIfExists(saved);
+            Files.deleteIfExists(aliases);
+            Files.deleteIfExists(options);
+            Files.deleteIfExists(config);
+        }
     }
 
     private static void checkBackdropStrips() throws Exception {

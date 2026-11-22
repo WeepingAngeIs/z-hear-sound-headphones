@@ -2,6 +2,7 @@ package dev.mobsear.smoke;
 
 import dev.mobsear.MobsEar;
 import dev.mobsear.client.FixtureSound;
+import dev.mobsear.client.VoiceClient;
 import dev.mobsear.net.Packets;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -59,6 +60,13 @@ public final class SmokeClient {
         if (!sender && !SmokeControl.LISTENER.equals(mc.getUser().getName())) {
             throw SmokeControl.failure("unexpected offline username");
         }
+        var prefs = VoiceClient.options();
+        if (prefs.voiceActivated() != sender || prefs.localMobCalls() != sender || prefs.muted() == sender
+                || prefs.deafened() || (!sender && FixtureSound.inputOpens.get() != 0)) {
+            throw SmokeControl.failure("unexpected " + (sender ? "fresh" : "upgraded") + " profile or muted microphone opened");
+        }
+        System.out.println("MOBSEAR_PROFILE_DEFAULTS " + (sender ? "fresh" : "upgrade") + " voiceActivation="
+                + prefs.voiceActivated() + " localCalls=" + prefs.localMobCalls() + " muted=" + prefs.muted());
         var production = MobsEar.playback;
         MobsEar.playback = frame -> {
             if (visuals != null) {

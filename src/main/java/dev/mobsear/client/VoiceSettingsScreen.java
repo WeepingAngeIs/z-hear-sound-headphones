@@ -94,8 +94,8 @@ public final class VoiceSettingsScreen extends Screen {
                 colors, n -> t("volume", n), prefs::setVolume));
         toggle("mute", prefs.muted(), true, prefs::setMuted);
         toggle("deafen", prefs.deafened(), true, prefs::setDeafened);
-        choice("activation", VoiceClient.voiceActivated() ? "voice" : "ptt", VoiceClient.connected(),
-                () -> VoiceClient.setVoiceActivated(!VoiceClient.voiceActivated()));
+        choice("activation", prefs.voiceActivated() ? "voice" : "ptt", true,
+                () -> VoiceClient.setVoiceActivated(!prefs.voiceActivated()));
         addAudio("sensitivity", new VoiceWidgets.Slider(x, y, w, rowHeight, t("sensitivity.label"),
                 prefs.sensitivity(), 100, colors, n -> t("sensitivity", n), prefs::setSensitivity));
         toggle("noise", prefs.noiseSuppression(), true, prefs::setNoiseSuppression);
@@ -169,7 +169,7 @@ public final class VoiceSettingsScreen extends Screen {
     }
 
     private void addMobCalls(int x, int y, int w) {
-        boolean available = changeMobCalls != null && mobCalls != null && minecraft.getConnection() != null;
+        boolean available = changeMobCalls != null && mobCalls != null;
         var detail = available ? (mobCalls.getAsBoolean() ? CommonComponents.OPTION_ON : CommonComponents.OPTION_OFF)
                 : t("needs_world");
         var calls = rowButton("calls", x, y, w, t("calls", detail), t("calls.label"), detail, () -> {

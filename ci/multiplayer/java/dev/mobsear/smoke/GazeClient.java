@@ -41,7 +41,7 @@ final class GazeClient {
             } catch (Exception e) { throw SmokeControl.failure("missing Windows recognizer decisions"); }
             if (!decisions.equals(List.of("ENDERMAN","SPIDER","MOBS","MOBS")))
                 throw SmokeControl.failure("unexpected synthetic recognizer decisions");
-            KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
+            if (!VoiceClient.options().localMobCalls()) KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
             FixtureSound.tone = true;
             VoiceClient.setVoiceActivated(true);
         }

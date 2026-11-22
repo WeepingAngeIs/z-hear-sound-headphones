@@ -4,18 +4,18 @@ A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge
 
 ## Controls
 
-- **Hold V** while playing to speak through your selected microphone. Nearby players running the mod hear you through their selected output. Volume falls linearly with distance. The default range is 32 blocks, and a dimension boundary stops the sound.
-- **Press N** to enable English mob calls for this connection. Wait for **Mob calls ready**, then hold V and say a short phrase such as **hey zombie**. Release V or leave a short pause. In Survival or Adventure, a pink notice above your hearts or armor names the nearby mob that the server confirmed heard you. Press N again to turn recognition off.
+- **Speak while playing** to talk to nearby players. Fresh profiles start unmuted with **Voice activated** and **Local mob calls** on. Open **G → Input mode** to choose **Push-to-talk**, then hold **V** when you want to speak. The input threshold, selected microphone and operating system microphone permission apply. The default voice range is 32 blocks within the same dimension.
+- **N** toggles local English mob calls and saves your choice. When **Mob calls ready** appears, say a short name or phrase such as **hey zombie** and leave a short pause. In Survival or Adventure, a pink notice above your hearts or armor names the nearby mob that the server confirmed heard you.
 - **Speech Test Feedback** in the voice menu is off by default. Turn it on to see when the mod starts listening, which name the recognizer picked, or its best guess when a call is rejected. If it has no guess, the notice reads **No mob name matched**. The guesses appear only on your screen and expire. Only the game's confirmation shows **heard you**.
-- **Press G** to open the menu. Scroll the left controls to select devices, adjust voice volume, enable the local mic meter, switch to voice activation, set its sensitivity, or enable the noise filter. The meter consumes local input only while enabled in this screen. **M** toggles mute. Deafen stops input and playback together. Rebind keys under **Options → Controls → Key Binds → Mobs Hear U**.
+- **Press G** to open the menu. Scroll the left controls to select devices, adjust voice volume, enable the local mic meter, choose an input mode, set its sensitivity, or enable the noise filter. The meter consumes local input only while enabled in this screen. **M** toggles mute. Deafen stops input and playback together. Rebind keys under **Options → Controls → Key Binds → Mobs Hear U**.
 - Scroll the right pane independently to see other online players and set each person's volume from 0–200%. The roster indicates audible speech. The nearby name-tag indicator follows the speaker’s activity.
 - Choose **UwU**, **Dark / Emo**, **Vanilla**, or **Amethyst** on the left. Each family opens on its first animated scene. **Backdrop** cycles through four scenes and the plain Original, and the menu remembers your choice for each family. The eight-frame pixel scenes loop every 3.2 seconds. **Motion → Reduced** or **Off** holds the first scene frame.
 - **Voice Changer** opens its own themed screen. Its slider covers one octave down through natural to one octave up in one-cent increments. **Deep** selects −5 semitones, **Squeaky** selects +7 and **Custom** recalls your last manual setting. **Off** passes through your natural voice and remembers the selection. The preset, last manual position and bypass setting persist for each local Minecraft account, including after a restart. **Reset to Defaults** puts just the changer back at natural with the effect off. The effect processes outgoing player audio locally. Mob recognition continues to hear the original input.
 - Leave **Mic style** on **Theme** to match the menu, or choose a mic independently. Nearby players can see that style beside your visible name tag. A slash marks mute, headphones mark deafen, and a speaking mic brightens. Full motion adds a small shake and short-lived pixel particles. You can choose a local accent and hide your HUD or other players’ mic icons separately.
-- Appearance, device selections, playback volume, filters and individual gains are saved locally in `config/mobsear-client.properties`. Voice activation, the mic test, mob calls and quiet-horror participation require opt-in.
+- Your input mode, Local Mob Calls, mute and deafen choices are saved in `config/mobsear-client.properties` together with your other local settings. Existing settings files from 0.3.4 keep push-to-talk and mob calls off until you change them. That version kept those two switches only for the current connection. The mic test and quiet-horror mode are separately enabled.
 - Speech recognition uses the installed English Microsoft desktop recognizer on Windows. Its availability is checked when enabled. Voice transmission and playback use Java Sound and work independently of that recognizer. The client shows microphone, output and recognizer status in the private pink notice.
 
-| Say while holding V | In-game response |
+| Say while speaking | In-game response |
 | --- | --- |
 | zombie, zombies, zombified piglin | Eligible zombies pause, face you and can switch their target to you. The family includes husks, drowned, zombie villagers and zombified piglins. |
 | mob, mobs | Eligible nearby hostiles look toward you. Zombies, calm Endermen and calm spiders use their normal voice reactions. |
@@ -65,7 +65,7 @@ The mod sends mono 16 kHz PCM over the existing Minecraft connection. A continuo
 | Feature | Mobs Hear U |
 | --- | --- |
 | Proximity and range | Configurable spherical radius, same-dimension routing and distance-dependent volume. Output is mono. |
-| Speaking and listening controls | Rebindable push-to-talk, opt-in voice activation, activation sensitivity, device selection, mic mute, deafen, local mic meter, master and per-player gain. |
+| Speaking and listening controls | Voice activation, rebindable push-to-talk, activation sensitivity, device selection, mic mute, deafen, local mic meter, master and per-player gain. |
 | Noise processing | Optional local 80 Hz high-pass filter and a soft gate. |
 | Transport | PCM over the existing Minecraft connection. Connection security follows the Minecraft session. |
 | Features specific to Simple Voice Chat | Directional 3D audio, whisper, password-protected groups, Opus/UDP transport, RNNoise, automatic microphone gain, speaker test playback, a plugin API and multi-loader/proxy support are outside this build. Recording is excluded by design. |

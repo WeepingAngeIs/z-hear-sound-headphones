@@ -14,6 +14,18 @@ public final class NoticeFixture {
 
     public static void clear() { MobCallNotice.clear(); }
 
+    /** Read the live engine state independently of any temporary on-screen notice. */
+    public static boolean recognizerReady() {
+        try {
+            var client=VoiceClient.class.getDeclaredField("instance"); client.setAccessible(true);
+            var session=VoiceClient.class.getDeclaredField("session"); session.setAccessible(true);
+            Object connection=session.get(client.get(null));
+            if (connection==null) return false;
+            var field=connection.getClass().getDeclaredField("speech"); field.setAccessible(true);
+            return ((SpeechCues)field.get(connection)).status()==SpeechCues.Status.READY;
+        } catch (ReflectiveOperationException ex) { throw new IllegalStateException("Could not read recognizer readiness",ex); }
+    }
+
     /** Replay only the recognizer decision, using the actual client's negotiated outgoing packet. */
     public static void send(Packets.MobCall call) {
         MobCallNotice.clearMatch();

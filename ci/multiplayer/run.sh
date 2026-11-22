@@ -44,6 +44,11 @@ pauseOnLostFocus:false
 OPTIONS
 done
 
+# A genuine pre-0.3.5 file had mute but no input-mode or Local Mob Calls keys.
+# The speaker's config directory stays fresh.
+mkdir -p "$MOBSEAR_SMOKE_DIR/smokeListener/config"
+printf 'micMuted=true\nsensitivity=50\n' > "$MOBSEAR_SMOKE_DIR/smokeListener/config/mobsear-client.properties"
+
 if [[ ${MOBSEAR_PUBLIC_MENU_STACK:-} == 1 ]]; then
   python3 ci/multiplayer/stage_menu_stack.py "$MOBSEAR_SMOKE_DIR/smokeListener/mods"
   mkdir -p "$MOBSEAR_SMOKE_DIR/smokeListener/config"
@@ -129,6 +134,10 @@ wait_for smokeServer 'MOBSEAR_MULTIPLAYER_PASS' 600
 grep -Fq 'MOBSEAR_HORDE_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -F 'MOBSEAR_PROFILE_DEFAULTS fresh voiceActivation=true localCalls=true muted=false' "$MOBSEAR_SMOKE_DIR/smokeSpeaker.console"
+grep -F 'MOBSEAR_PROFILE_DEFAULTS upgrade voiceActivation=false localCalls=false muted=true' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -F 'MOBSEAR_DEFAULT_VOICE_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -F 'MOBSEAR_OBSERVER_PIXELS_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -F 'MOBSEAR_PITCH_AUDIO' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -F 'MOBSEAR_REVERB_RECEIVED' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -F 'MOBSEAR_TRACKED_HEAD' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
@@ -151,6 +160,7 @@ for role in hud nameplate; do
     for state in idle muted deafened speaking speaking-next; do snapshots+=("$role-$family-$state"); done
   done
   snapshots+=("$role-effects-reduced" "$role-effects-off" "$role-hidden")
+  snapshots+=("$role-uwu-stopped" "$role-uwu-muted-after-speaking")
 done
 snapshots+=(nameplate-out-of-range nameplate-team-visible nameplate-team-hidden status-speaking status-quiet gain-zero device-meter)
 snapshots+=(menu-first-open menu-compact menu-voice-changer)

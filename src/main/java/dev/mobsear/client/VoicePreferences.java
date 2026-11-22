@@ -2,7 +2,9 @@ package dev.mobsear.client;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
@@ -29,6 +31,7 @@ public final class VoicePreferences {
     private String pitchPrefix = "";
     private long deviceRevision;
     private long inputRevision;
+    private boolean missingOnLoad;
 
     public VoicePreferences(Path file) {
         this(file, new VoiceDevices());
@@ -60,10 +63,47 @@ public final class VoicePreferences {
         this.sound = sound;
         try (var reader = Files.newBufferedReader(this.file, StandardCharsets.UTF_8)) {
             values.load(reader);
+        } catch (NoSuchFileException freshProfile) {
+            missingOnLoad = true;
+            boolean fresh = !previousInstallation();
+            setVoiceActivated(fresh);
+            setLocalMobCalls(fresh);
         } catch (IOException | IllegalArgumentException | SecurityException unavailable) {
             values.clear();
         }
     }
+
+    // Earlier builds could run without saving preferences. Their aliases or saved key bindings
+    // still identify an upgrade. An existing Minecraft options file by itself means nothing.
+    private boolean previousInstallation() {
+        Path config = file.getParent();
+        if (config == null || config.getParent() == null) return true;
+        try {
+            if (Files.exists(config.resolve("mobsear-aliases.properties"))) return true;
+            try (var lines = Files.lines(config.getParent().resolve("options.txt"), StandardCharsets.UTF_8)) {
+                return lines.anyMatch(line -> line.startsWith("key_key.mobsear."));
+            }
+        } catch (NoSuchFileException absent) {
+            return false;
+        } catch (IOException | java.io.UncheckedIOException | SecurityException unreadable) {
+            return true;
+        }
+    }
+
+    /** Remember the first launch before Minecraft writes this mod's key bindings. */
+    synchronized void initializeProfile() {
+        if (!missingOnLoad) return;
+        missingOnLoad = false;
+        if (!write(true)) {
+            setVoiceActivated(false);
+            setLocalMobCalls(false);
+        }
+    }
+
+    public synchronized boolean voiceActivated() { return flag("voiceActivation", false); }
+    public synchronized void setVoiceActivated(boolean value) { setFlag("voiceActivation", value); }
+    public synchronized boolean localMobCalls() { return flag("localMobCalls", false); }
+    public synchronized void setLocalMobCalls(boolean value) { setFlag("localMobCalls", value); }
 
     public synchronized String theme() {
         return MenuTheme.fromId(values.getProperty("theme")).id();
@@ -248,6 +288,10 @@ public final class VoicePreferences {
 
     /** Replace the previous complete file only after the new one is closed successfully. */
     public synchronized boolean save() {
+        return write(false);
+    }
+
+    private boolean write(boolean firstLaunch) {
         Path temp = null;
         try {
             Path parent = file.getParent();
@@ -257,9 +301,20 @@ public final class VoicePreferences {
             try (var writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
                 values.store(writer, "Mobs Ear client preferences");
             }
-            Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            if (firstLaunch) {
+                try {
+                    Files.move(temp, file);
+                } catch (FileAlreadyExistsException anotherClient) {
+                    values.clear();
+                    try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                        values.load(reader);
+                    }
+                }
+            } else {
+                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            }
             return true;
-        } catch (IOException | SecurityException | UnsupportedOperationException failure) {
+        } catch (IOException | IllegalArgumentException | SecurityException | UnsupportedOperationException failure) {
             return false;
         } finally {
             if (temp != null) {

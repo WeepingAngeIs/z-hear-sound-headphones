@@ -10,6 +10,7 @@ import javax.sound.sampled.Line;
 public final class FixtureSound {
     public static volatile boolean tone;
     public static final AtomicLong played = new AtomicLong();
+    public static final AtomicLong inputOpens = new AtomicLong();
     private static byte[] phrase;
     private static int offset;
 
@@ -50,7 +51,11 @@ public final class FixtureSound {
                 return switch (method.getName()) {
                     case "available" -> System.nanoTime() >= nextFrame ? VoiceAudio.FRAME_BYTES : 0;
                     case "close" -> { open = false; yield null; }
-                    case "open" -> { open = true; yield null; }
+                    case "open" -> {
+                        open = true;
+                        if (cls == javax.sound.sampled.TargetDataLine.class) inputOpens.incrementAndGet();
+                        yield null;
+                    }
                     case "getFormat" -> info.getFormats()[0];
                     case "isOpen", "isRunning", "isActive" -> open;
                     case "getLineInfo" -> info;

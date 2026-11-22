@@ -25,7 +25,7 @@
   "mobsear.settings.deafen.label": "Deafen",
   "mobsear.settings.deafen.hint": "Silence your microphone and incoming voice.",
   "mobsear.settings.activation.label": "Input mode",
-  "mobsear.settings.activation.hint": "Push-to-talk uses your talk key. Voice activation opens the mic in game for this connection.",
+  "mobsear.settings.activation.hint": "Voice activation sends nearby players your voice when you speak. Push-to-talk uses your talk key. Your choice is saved.",
   "mobsear.settings.sensitivity.label": "Sensitivity",
   "mobsear.settings.sensitivity": "Sensitivity · %s%%",
   "mobsear.settings.noise.label": "Noise filter",
@@ -74,7 +74,7 @@
   "mobsear.settings.volume.label": "Voice volume",
   "mobsear.settings.calls": "Local mob calls · %s",
   "mobsear.settings.calls.label": "Local mob calls",
-  "mobsear.settings.calls.hint": "Recognize short mob names on this device while you transmit. Applies to this connection.",
+  "mobsear.settings.calls.hint": "Recognize short mob names on this device while you transmit. Your choice is saved.",
   "mobsear.settings.needs_world": "Join a voice-enabled world",
   "mobsear.settings.theme.uwu": "UwU",
   "mobsear.settings.theme.emo": "Dark / Emo",
@@ -114,6 +114,6 @@
   "mobsear.speech.test_long": "Too long for a mob call",
   "mobsear.speech.test_unsent": "Call skipped · no voice sent",
   "mobsear.speech.late_match": "Voice detected · name check took too long",
-  "mobsear.problem.mic": "Couldn’t open the selected microphone • Release and press your talk key to retry",
+  "mobsear.problem.mic": "Couldn’t open the microphone • Check your device and microphone permission",
   "mobsear.problem.output": "Couldn’t open the selected audio output"
 }

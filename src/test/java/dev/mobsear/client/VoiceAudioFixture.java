@@ -60,9 +60,27 @@ public final class VoiceAudioFixture {
         assertFrame(mixer.mixNext(), FrameMixer.MAX_SPEAKERS);
 
         exerciseGate();
+        exerciseDeniedInput();
         PitchFixture.check();
         exerciseSyntheticDevices();
         System.out.println("Audio fixture passed");
+    }
+
+    private static void exerciseDeniedInput() throws InterruptedException {
+        var opened = new AtomicInteger();
+        var captured = new AtomicInteger();
+        var problems = new ArrayBlockingQueue<VoiceAudio.Problem>(4);
+        try (var audio = new VoiceAudio(frame -> captured.incrementAndGet(), problems::add, format -> {
+            opened.incrementAndGet();
+            throw new SecurityException("Synthetic permission denial");
+        }, format -> { throw new AssertionError("Denied input opened an output device"); })) {
+            audio.setTransmitting(true);
+            check(problems.poll(3, TimeUnit.SECONDS) == VoiceAudio.Problem.MICROPHONE_UNAVAILABLE, "Input permission refusal surfaced");
+            for (int i = 0; i < 20; i++) audio.setTransmitting(true);
+            check(problems.poll(100, TimeUnit.MILLISECONDS) == null && opened.get() == 1 && captured.get() == 0,
+                    "A continuously held input honors denial without capture or fallback");
+        }
+        System.out.println("MOBSEAR_PERMISSION_DENIED_PASS no frames or alternate input");
     }
 
     private static void exerciseGate() {
