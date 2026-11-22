@@ -236,6 +236,10 @@ final class PokemonCaseServer {
                 + " activeTicks="+activeSamples+" headErrorByTick="+angleTrace+" last="+subjectState());
         int count=caller==viewer ? 1:2;
         if (phase==PokemonProbe.BEFORE) {
+            if (subject.isRemoved()) throw PokemonProbe.fail("Native subject disappeared before call "+c+" reason="+subject.getRemovalReason()+" "+subjectState());
+            if (age==100 || age==300) System.out.println("POKEMON_SERVER_TRACK "+c+" id="+subject.getId()+
+                    " present="+(caller.serverLevel().getEntity(subject.getId())==subject)+" distance="+subject.distanceTo(caller)+
+                    " callerRiding="+caller.isPassenger()+" guardianFlight="+caller.getPersistentData().contains("uwu.guardian_flight")+" "+subjectState());
             subject.moveTo(.5,Y,Z+.5,90,0);
             subject.setYHeadRot(90); subject.yBodyRot=90;
             idle(subject);

@@ -100,6 +100,8 @@ public final class PokemonCaseClient {
                 " screen="+(mc.screen==null?"none":mc.screen.getClass().getSimpleName())+" acoustic="+acoustic+
                 " heard="+recognized+" facing="+aligned+" signed="+sent+" target="+mc.level.getEntity(stage.entity()));
         if (stage.stage()==PokemonProbe.BEFORE) {
+            if (ticks==100 || ticks==300) System.out.println("POKEMON_CLIENT_TRACK "+c+" id="+stage.entity()+" entity="+mc.level.getEntity(stage.entity())+
+                    " camera="+(mc.getCameraEntity()==mc.player)+" callerAt="+mc.player.position()+" arenaLoaded="+mc.level.hasChunkAt(new net.minecraft.core.BlockPos(0,104,8)));
             if (ticks<4 || mc.level.getEntity(stage.entity())==null) return;
             if (c==PokemonCase.PACK_FORM) c.checkTrackedForm((PokemonEntity)mc.level.getEntity(stage.entity()),"Client before call");
             if (acoustic && c==PokemonCase.PIKACHU && !recognizerReady()) return;

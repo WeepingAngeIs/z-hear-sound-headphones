@@ -14,9 +14,10 @@ enum PokemonCase {
     NAMED_HOSTILE("minecraft:cave_spider", 22), BROAD_COW("minecraft:cow", 22),
     BOSS_CHARGING("minecraft:wither", 22), BOSS_FIGHTING("minecraft:wither", 22),
     FOREST_DEER("twilightforest:deer", 12), NAGA_COMBAT("twilightforest:naga", 22),
-    OWL_GUARDIAN("uwudimension:blossom_warden", 12), OWL_OFFENDER("uwudimension:blossom_warden", 22),
+    OWL_GUARDIAN("uwudimension:blossom_warden", 12),
     VELVET_IDLE("uwudimension:velvet_vesper", 24), VELVET_GUARD("uwudimension:velvet_vesper", 18),
-    DUNGEON_MIMIC("minecraft:zombie", 20), ORDINARY_ZOMBIE("minecraft:zombie", 20), NAMED_ONLY_ZOMBIE("minecraft:zombie", 20);
+    DUNGEON_MIMIC("minecraft:zombie", 20), ORDINARY_ZOMBIE("minecraft:zombie", 20), NAMED_ONLY_ZOMBIE("minecraft:zombie", 20),
+    OWL_OFFENDER("uwudimension:blossom_warden", 22);
 
     final ResourceLocation species;
     final int distance;
