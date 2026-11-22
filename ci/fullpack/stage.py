@@ -23,8 +23,12 @@ ARTIFACTS = [
      "UwU-Dimension-1.21.1-1.5.0-beta.13-combined-rc.2-playtest.9-integrated.2-weapon-settings.1-villages.1-guardians.1.jar",
      "0fdec5aaba8a4ce77fed7e9ba67b7d9a3f20bf5f066c621a9c60804e096d0346"),
 ]
-OLD = {"UwU-Dimension-1.21.1-1.4.9.jar", "voicechat-neoforge-1.21.1-2.6.23.jar"}
-SUBSTITUTE = "Unyielding-1.2.0.jar"
+OLD = {"UwU-Dimension-1.21.1-1.4.9.jar", "voicechat-neoforge-1.21.1-2.6.23.jar", "Unyielding-1.2.0.jar"}
+CONFIGTOPIA = {
+    "name": "Unyielding-1.2.0-Configtopia.jar", "size": 17203146,
+    "url": "https://mediafilez.forgecdn.net/files/9708/806/Unyielding-1.2.0-Configtopia.jar",
+    "sha512": "03007b8c82545aece68bfcf1fb2e3825f2496bfb50fe46ebf1c3d249aeb7e0e3c76a6bffe04c88df0fe86778c91a881b44fe2a5071b79a1b80ed8f61366d11f4",
+}
 ROOTS = {"config", "datapacks", "resourcepacks"}
 
 
@@ -105,7 +109,8 @@ def main():
     mods.mkdir(parents=True, exist_ok=True)
     profile = public_json("profile.json")
     rows = [row for row in profile["mods"] if row["name"] not in OLD]
-    assert len(rows) == 363 and sum(r["name"] == SUBSTITUTE for r in rows) == 1
+    assert len(rows) == 362
+    rows.append(CONFIGTOPIA)
     if args.focused:
         # These are the same two production dependencies shipped in the pack.
         rows = [r for r in rows if r["name"].lower().startswith(("cobblemon-neoforge-", "kotlinforforge-"))]
@@ -153,7 +158,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read("overrides/" + name))
     assert len(list(mods.glob("*.jar"))) == 366
-    print("PUBLIC RECONSTRUCTION: 365 exact JARs, one public Unyielding 1.2.0 substitution for Configtopia;",
+    print("PUBLIC RECONSTRUCTION: 365 exact JARs, one public Configtopia release (CurseForge 9708806);",
           len(approved), "published override files and", len(profile["additional_packs"]), "pinned add-on packs", flush=True)
 
 
