@@ -18,6 +18,7 @@ import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Skeleton;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
@@ -35,6 +36,7 @@ public final class PackGlanceProbe {
 
     @GameTest(template = "hearing_floor", batch = "pack_angles", timeoutTicks = 3000)
     public static void compareActualLooking(GameTestHelper test) {
+        test.getLevel().setDayTime(6000L);
         for (String id : List.of("aiimprovements", "enhancedai", "insanelib", "lithium", "dangerous", "buffmobs", "infernalmobs")) {
             test.assertTrue(ModList.get().isLoaded(id) == PROFILE.equals("ai"), "Incorrect probe mod set: " + id);
         }
@@ -56,6 +58,7 @@ public final class PackGlanceProbe {
         Vec3 born, source;
         double walkDistance;
         boolean requested, targetChanged;
+        String goalsAtEight;
 
         Trial(GameTestHelper test) {
             this.test = test;
@@ -85,6 +88,19 @@ public final class PackGlanceProbe {
             EntityType<? extends Mob> type = c.spider ? EntityType.SPIDER : EntityType.ENDERMAN;
             mob = type.spawn(test.getLevel(), test.absolutePos(new BlockPos(3, 2, 5)), MobSpawnType.COMMAND);
             test.assertTrue(mob != null, "Could not spawn probe entity through normal spawn hooks");
+            // Natural spawn finalization sometimes adds a skeleton jockey, which owns MOVE and LOOK.
+            // The scenario measures an unmounted spider. Remove only the rider created by this spawn.
+            if (c.spider) {
+                for (var rider : mob.getPassengers()) {
+                    if (rider instanceof Skeleton) {
+                        rider.discard();
+                        System.out.println("PACK_GLANCE removed freshly spawned skeleton jockey");
+                    }
+                }
+            }
+            test.assertTrue(!mob.isVehicle() && !mob.isPassenger(), "Expected an unmounted probe subject");
+            test.assertTrue(test.getLevel().isDay() && test.getLevel().canSeeSky(mob.blockPosition()),
+                    "Expected an outdoor daylight test subject");
             mob.setPersistenceRequired();
             mob.setYRot(-90);
             mob.setYHeadRot(-90);
@@ -124,6 +140,8 @@ public final class PackGlanceProbe {
             double wantPitch = -Math.toDegrees(Math.atan2(to.y, to.horizontalDistance()));
             yaw[tick] = Math.abs(Mth.wrapDegrees(mob.getYHeadRot() - wantYaw));
             pitch[tick] = Math.abs(mob.getXRot() - wantPitch);
+            if (tick == 8) goalsAtEight = mob.goalSelector.getAvailableGoals().stream().filter(w -> w.isRunning())
+                    .map(w -> w.getPriority() + "/" + w.getGoal().getClass().getSimpleName()).toList().toString();
             targetChanged |= mob.getTarget() != null || mob instanceof EnderMan ender
                     && (ender.isAngry() || ender.hasBeenStaredAt() || ender.isCreepy());
         }
@@ -146,7 +164,7 @@ public final class PackGlanceProbe {
             boolean inside = !c.call.equals("quiet") && c.distance <= 32;
             if (REVISION.equals("candidate") && (targetChanged || requested != inside ||
                     (inside && c.walking && (walkDistance <= 0.05 || longest < 6)))) {
-                failures.add(c.toString());
+                failures.add(c + " goals at 8=" + goalsAtEight + " rider=" + mob.getControllingPassenger());
             }
             mob.discard();
         }

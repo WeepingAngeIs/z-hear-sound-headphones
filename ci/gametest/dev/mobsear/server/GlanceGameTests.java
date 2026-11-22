@@ -163,7 +163,15 @@ public final class GlanceGameTests {
         var owner = speaker(test, test.absoluteVec(new Vec3(11.5, 2, 5.5)));
         var caller = speaker(test, test.absoluteVec(new Vec3(-7.5, 6, 5.5)));
         for (var mob : List.of(spider, enderman)) mob.setTarget(owner);
-        for (var mob : List.of(spider, enderman, cow)) mob.getLookControl().setLookAt(owner, 45, 45);
+        for (var mob : List.of(spider, enderman, cow)) {
+            float initial = yaw(mob, owner.getEyePosition());
+            mob.setYRot(initial);
+            mob.setYHeadRot(initial);
+            mob.yBodyRot = initial;
+            mob.getLookControl().setLookAt(owner, 45, 45);
+        }
+        var mobs = List.of(spider, enderman, cow);
+        var goalsBefore = mobs.stream().map(mob -> mob.goalSelector.getAvailableGoals().size()).toList();
         for (Cue cue : List.of(Cue.SPIDER, Cue.ENDERMAN, Cue.MOBS)) MobReactions.handle(caller, cue, 32);
         test.assertTrue(spider.getTarget() == owner && enderman.getTarget() == owner && cow.getTarget() == null,
                 "Voice stole or created a combat target");
@@ -173,8 +181,21 @@ public final class GlanceGameTests {
         test.runAfterDelay(8, () -> {
             for (var mob : List.of(spider, enderman)) {
                 test.assertTrue(mob.getTarget() == owner, "An established target was pacified");
-                test.assertTrue(Math.abs(Mth.wrapDegrees(mob.getYHeadRot() - yaw(mob, caller.getEyePosition()))) > 45,
-                        "Voice turned a fighting mob away from its target");
+            }
+            // A fighting mob can turn or teleport during eight native AI ticks. Measure the
+            // actual effect of a second call from its current position and check both pose owners.
+            for (int i = 0; i < mobs.size(); i++) {
+                var mob = mobs.get(i);
+                float head = mob.getYHeadRot(), body = mob.yBodyRot;
+                var look = mob.getLookControl();
+                var aim = new Vec3(look.getWantedX(), look.getWantedY(), look.getWantedZ());
+                var route = mob.getNavigation().getPath();
+                MobReactions.handle(caller, Cue.MOBS, 32);
+                test.assertTrue(head == mob.getYHeadRot() && body == mob.yBodyRot
+                        && aim.equals(new Vec3(look.getWantedX(), look.getWantedY(), look.getWantedZ()))
+                        && mob.getNavigation().getPath() == route && !NamedMobReactions.isReacting(mob)
+                        && mob.goalSelector.getAvailableGoals().size() == goalsBefore.get(i),
+                        "Voice altered combat or passive behavior for " + mob.getType());
             }
             test.succeed();
         });
