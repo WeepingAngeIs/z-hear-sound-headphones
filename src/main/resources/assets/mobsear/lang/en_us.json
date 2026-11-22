@@ -112,6 +112,7 @@
   "mobsear.speech.test_listening": "Listening locally…",
   "mobsear.speech.test_checking": "Checking the name…",
   "mobsear.speech.no_match": "No mob name matched",
+  "mobsear.speech.word_decoder_error": "The local sentence check could not finish",
   "mobsear.speech.test_guess": "No match · guess “%s”",
   "mobsear.speech.test_long": "Too long for a mob call",
   "mobsear.speech.test_unsent": "Call skipped · no voice sent",

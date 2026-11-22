@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 /** Client tick thread only. Entries accept a fixed event and an optional registered identifier. */
 final class CallDebugLog {
     enum Event {
-        OFF, STARTING, READY, UNAVAILABLE, STARTUP_TIMEOUT, DECODE_TIMEOUT,
+        OFF, STARTING, READY, UNAVAILABLE, STARTUP_TIMEOUT, DECODE_TIMEOUT, WORD_DECODER_ERROR,
         MICROPHONE_UNAVAILABLE, OUTPUT_UNAVAILABLE, NO_MATCH, LATE, DETECTED, HEARD,
         NO_ELIGIBLE_MOB, NO_RECENT_VOICE, COOLDOWN, GAME_MODE, INPUT_BLOCKED,
         SERVER_CHANNEL_UNAVAILABLE, SERVER_REPLY_TIMEOUT

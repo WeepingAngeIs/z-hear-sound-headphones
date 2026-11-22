@@ -21,8 +21,9 @@ import java.util.function.Consumer;
 /** Device-local recognition of opted-in calls supported by transmitted voice. */
 public final class SpeechCues implements AutoCloseable {
     public enum Status { OFF, STARTING, READY, UNAVAILABLE }
-    public record Decision(long number, boolean matched, boolean timely, long ageMillis) {}
-    enum TestStage { LISTENING, CHECKING, NO_MATCH, LATE, TOO_LONG, NO_VOICE }
+    public enum DecoderIssue { NONE, ERROR, TIMEOUT }
+    public record Decision(long number, boolean matched, boolean timely, long ageMillis, DecoderIssue issue) {}
+    enum TestStage { LISTENING, CHECKING, NO_MATCH, LATE, TOO_LONG, NO_VOICE, DECODER_ERROR }
     record TestFeedback(long attempt, TestStage stage, String guess) {}
 
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeouts();
@@ -319,11 +320,18 @@ public final class SpeechCues implements AutoCloseable {
                                 if (session == this && !inputPaused && clip.inputRevision == inputRevision) {
                                     long age = System.nanoTime() - clip.endedAt;
                                     boolean timely = age <= MAX_AGE_NANOS;
-                                    int decision = reply.code;
+                                    DecoderIssue issue = switch (reply.code) {
+                                        case 65534 -> DecoderIssue.ERROR;
+                                        case 65535 -> DecoderIssue.TIMEOUT;
+                                        default -> DecoderIssue.NONE;
+                                    };
+                                    int decision = issue == DecoderIssue.NONE ? reply.code : 0;
                                     if (timely && !grammar.dispatch(decision, listener, speciesListener, entityListener))
                                         throw new IOException("Invalid speech helper reply");
-                                    lastDecision = new Decision(++decisionNumber, decision != 0, timely, TimeUnit.NANOSECONDS.toMillis(age));
+                                    lastDecision = new Decision(++decisionNumber, decision != 0, timely,
+                                            TimeUnit.NANOSECONDS.toMillis(age), issue);
                                     if (!timely) reportTest(clip.testAttempt, TestStage.LATE, "");
+                                    else if (issue != DecoderIssue.NONE) reportTest(clip.testAttempt, TestStage.DECODER_ERROR, "");
                                     else if (decision == 0) reportTest(clip.testAttempt, TestStage.NO_MATCH, reply.guess);
                                     else if (currentTest(clip.testAttempt)) testFeedback = null; // The matched call supplies its display name.
                                 }

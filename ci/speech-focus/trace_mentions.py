@@ -30,3 +30,25 @@ def show(root):
                           env=dict(os.environ,MOBSEAR_LOCAL_WORD_MODEL=str(model)))
     for file,output in zip(files,proc.stderr.decode("utf8","replace").split("NEXT")[1:]):
         print("GENERATED_MENTION_TRACE",file.stem," / ".join(output.strip().splitlines()),flush=True)
+    # Compare beam search and full audio context only for the same generated words the runtime missed.
+    import io
+    import wave
+    from time import monotonic
+    sets = {}
+    for file in files:
+        if any(key in file.name for key in ("lopunny","pikachu","enderman","sentence-long")):
+            key = file.stem.rsplit("-",1)[0]
+            sets[key]=file
+    for file in sets.values():
+        audio=io.BytesIO()
+        with wave.open(audio,"wb") as dest:
+            dest.setparams((1,2,16000,0,"NONE","not compressed"))
+            dest.writeframes(file.read_bytes())
+        for audio_ctx,beam in ((512,5),(0,5)):
+            start=monotonic()
+            output=subprocess.run([str(model/"whisper-cli.exe"),"-m",str(model/"tiny.en.bin"),"-f","-","-of","pipe-only",
+                    "-t","3","-nt","-np","-l","en","-ac",str(audio_ctx),"-bs",str(beam),"--prompt",
+                    "Minecraft, Cobblemon, Pikachu, Lopunny, Enderman, Lanturn, Spider, Cave Spider, Poponee, Buneary, Guardian, Owl Guardian, Endermite, Hoglin, Zoglin."],
+                    input=audio.getvalue(),capture_output=True,timeout=15,check=True)
+            print("GENERATED_SEARCH_COMPARE",file.stem,"ctx",audio_ctx,"beam",beam,"ms",round((monotonic()-start)*1000),
+                  output.stdout.decode("utf8","replace").strip(),flush=True)

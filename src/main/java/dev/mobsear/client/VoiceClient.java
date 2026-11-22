@@ -474,6 +474,7 @@ public final class VoiceClient {
                     case NO_MATCH -> test.guess().isEmpty() ? Component.translatable("mobsear.speech.no_match")
                             : Component.translatable("mobsear.speech.test_guess", Component.literal(test.guess()));
                     case LATE -> Component.translatable("mobsear.speech.late_match");
+                    case DECODER_ERROR -> Component.translatable("mobsear.speech.word_decoder_error");
                     case TOO_LONG -> Component.translatable("mobsear.speech.test_long");
                     case NO_VOICE -> Component.translatable("mobsear.speech.test_unsent");
                 };
@@ -527,7 +528,9 @@ public final class VoiceClient {
             var decision = speech.lastDecision();
             if (decision != null && decision.number() != loggedDecision) {
                 loggedDecision = decision.number();
-                if (!decision.timely()) debug.write(CallDebugLog.Event.LATE, null, 0);
+                if (decision.issue() == SpeechCues.DecoderIssue.ERROR) debug.write(CallDebugLog.Event.WORD_DECODER_ERROR, null, 0);
+                else if (decision.issue() == SpeechCues.DecoderIssue.TIMEOUT) debug.write(CallDebugLog.Event.DECODE_TIMEOUT, null, 0);
+                else if (!decision.timely()) debug.write(CallDebugLog.Event.LATE, null, 0);
                 else if (!decision.matched()) debug.write(CallDebugLog.Event.NO_MATCH, null, 0);
             }
             if (failure != null) {

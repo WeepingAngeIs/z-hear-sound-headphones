@@ -124,7 +124,9 @@ try {
     }
 
     function Find-WholeName([string]$text, $plainWords) {
-        $tokens = @([regex]::Matches($text.ToLowerInvariant(), '[a-z]+(?:''[a-z]+)?') | ForEach-Object { $_.Value })
+        $normalized = $text.ToLowerInvariant().Normalize([Text.NormalizationForm]::FormD) -replace '\p{M}+',''
+        $normalized = $normalized.Replace([string][char]0x2019,'').Replace('''','') -replace '\bmr\b','mister' -replace '\bjr\b','junior'
+        $tokens = @([regex]::Matches($normalized, '[a-z]+') | ForEach-Object { $_.Value })
         if ($tokens.Count -lt 2 -or $tokens.Count -gt 80) { return 0 }
         for ($i=0; $i -lt $tokens.Count; $i++) {
             for ($size=[Math]::Min(8,$tokens.Count-$i); $size -gt 0; $size--) {
@@ -165,14 +167,16 @@ try {
         $start = [Diagnostics.ProcessStartInfo]::new()
         $start.FileName = [IO.Path]::Combine($modelDir,'whisper-cli.exe')
         $start.WorkingDirectory = $modelDir
-        $start.Arguments = '-m tiny.en.bin -f - -t 3 -nt -np -l en -bs 1 -bo 1 -nf -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
+        # The pinned CLI disables its stdout segment callback for stdin unless an output basename
+        # is set. No file-output format is enabled. The segment callback writes only into our pipe.
+        $start.Arguments = '-m tiny.en.bin -f - -of pipe-only -t 3 -nt -np -l en -bs 1 -bo 1 -nf -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
         $start.UseShellExecute = $false
         $start.CreateNoWindow = $true
         $start.RedirectStandardInput = $start.RedirectStandardOutput = $start.RedirectStandardError = $true
         $child = [Diagnostics.Process]::new()
         $child.StartInfo = $start
         try {
-            if (-not $child.Start()) { return 0 }
+            if (-not $child.Start()) { return 65534 }
             $stdout = $child.StandardOutput.ReadToEndAsync()
             $stderr = $child.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
             # Only the WAV header and memory-resident capture are piped to the decoder.
@@ -186,13 +190,13 @@ try {
                 $pipe.Write([Text.Encoding]::ASCII.GetBytes('data'))
                 $pipe.Write([int]$samples.Length); $pipe.Write($samples)
             } finally { $pipe.Dispose() }
-            if (-not $child.WaitForExit(3200)) { $child.Kill(); return 0 }
-            if ($child.ExitCode -ne 0) { return 0 }
+            if (-not $child.WaitForExit(3200)) { $child.Kill(); return 65535 }
+            if ($child.ExitCode -ne 0) { return 65534 }
             $text = $stdout.GetAwaiter().GetResult()
             if ($text.Length -le 500) { return Find-WholeName $text $original }
             return 0
         } catch {
-            return 0
+            return 65534
         } finally {
             try { if (-not $child.HasExited) { $child.Kill() } } catch {}
             $child.Dispose()
