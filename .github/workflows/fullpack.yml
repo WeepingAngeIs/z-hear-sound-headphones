@@ -68,8 +68,23 @@ jobs:
         with:
           name: startup-${{ matrix.profile }}
           path: ${{ runner.temp }}/hearing-windows/boot-progress.txt
+      - name: Observe voice availability after joining the world
+        run: python ci/fullpack/watch.py 780
+      - name: Save the joined world's test stages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: world-progress-${{ matrix.profile }}
+          path: ${{ runner.temp }}/hearing-windows/boot-progress.txt
       - name: Play generated speech in disposable Survival and Creative
         run: python ci/fullpack/watch.py finish
+      - name: Save the public registry vocabulary for the offline comparison
+        if: ${{ !cancelled() && matrix.profile == 'public-pack' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: published-registry-vocabulary
+          path: ${{ runner.temp }}/hearing-windows/public-registry.bin
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Save generated-game views only
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

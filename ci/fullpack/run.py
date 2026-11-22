@@ -158,12 +158,18 @@ def run():
         finally:
             stop.set()
             if process.poll() is None: process.kill()
+            process.wait(timeout=30)
 
 
 if __name__=="__main__":
     try:
         run()
     except BaseException:
-        (root/"result.txt").write_text("failure",encoding="ascii")
+        try:
+            if (root/"public-registry.bin").is_file():
+                from decoder import diagnose
+                diagnose(root,game/"mods/mobsear-0.3.1.jar")
+        finally:
+            (root/"result.txt").write_text("failure",encoding="ascii")
         raise
     (root/"result.txt").write_text("success",encoding="ascii")

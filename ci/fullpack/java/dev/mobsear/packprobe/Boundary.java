@@ -1,8 +1,11 @@
 package dev.mobsear.packprobe;
 
 import dev.mobsear.client.VoiceClient;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
@@ -35,6 +38,30 @@ final class Boundary {
         var method = worker.getClass().getDeclaredMethod("status");
         method.setAccessible(true);
         return method.invoke(worker).toString();
+    }
+
+    static Process desktopProcess() throws ReflectiveOperationException {
+        var speech = get(get(client(), "session"), "speech");
+        synchronized (speech) {
+            var session = get(speech, "session");
+            return session == null ? null : (Process) get(session, "helper");
+        }
+    }
+
+    // Re-create only public registry labels. Never read a player's custom aliases or audio.
+    static byte[] publicVocabulary() throws Exception {
+        var speech = get(get(client(), "session"), "speech");
+        var registry = get(speech, "catalogs");
+        var type = Class.forName("dev.mobsear.client.SpeechGrammar");
+        var constructor = type.getDeclaredConstructor(Path.class, registry.getClass());
+        constructor.setAccessible(true);
+        var method = type.getDeclaredMethod("writeTo", DataOutputStream.class);
+        method.setAccessible(true);
+        var bytes = new ByteArrayOutputStream();
+        try (var output = new DataOutputStream(bytes)) {
+            method.invoke(constructor.newInstance(null, registry), output);
+        }
+        return bytes.toByteArray();
     }
 
     static String notice(String accessor) throws ReflectiveOperationException {

@@ -68,6 +68,9 @@ public final class PackProbe {
     private int index, failures, clientTicks;
     private boolean installed, hooked, armed;
     private String lastScreen = "";
+    private String lastDecoderState = "";
+    private long armedAt, processAt;
+    private Process desktop;
     private final PackOnboarding onboarding=new PackOnboarding();
     private final Path home = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"));
 
@@ -206,15 +209,27 @@ public final class PackProbe {
                 var toggle=(KeyMapping)Boundary.get(Boundary.client(),"toggle");
                 KeyMapping.click(toggle.getKey());
                 armed=true;
+                armedAt=System.nanoTime();
                 return;
             }
             String state=Boundary.readiness();
-            if (!state.equals("READY")) {
-                if (clientTicks%100==0) System.out.println("ACOUSTIC_RECOGNIZER "+state+" optIn="+Boundary.get(Boundary.client(),"recognition"));
-                return;
+            if (desktop != null && !desktop.isAlive()) {
+                System.out.println("ACOUSTIC_DESKTOP_EXIT code="+desktop.exitValue()+" elapsedMs="+(System.nanoTime()-processAt)/1_000_000L);
+                desktop=null;
             }
+            var active=Boundary.desktopProcess();
+            if (active!=null && active!=desktop && active.isAlive()) {
+                desktop=active;
+                processAt=System.nanoTime();
+            }
+            if (!state.equals(lastDecoderState)) {
+                System.out.println("ACOUSTIC_RECOGNIZER "+state+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L+" optIn="+Boundary.get(Boundary.client(),"recognition"));
+                lastDecoderState=state;
+            }
+            if (!state.equals("READY") && !state.equals("UNAVAILABLE")) return;
             if (!ready) {
-                System.out.println("ACOUSTIC_READY integrated=true mode="+mc.gameMode.getPlayerMode()+" loader="+
+                Files.write(home.resolve("public-registry.bin"),Boundary.publicVocabulary());
+                System.out.println("ACOUSTIC_TRIALS decoder="+state+" integrated=true mode="+mc.gameMode.getPlayerMode()+" loader="+
                         ModList.get().getModContainerById("neoforge").orElseThrow().getModInfo().getVersion()+
                         " mod="+ModList.get().getModContainerById("mobsear").orElseThrow().getModInfo().getVersion());
                 ready=true;
