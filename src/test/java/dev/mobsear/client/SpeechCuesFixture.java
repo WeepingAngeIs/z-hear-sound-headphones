@@ -186,6 +186,10 @@ public final class SpeechCuesFixture {
         entities.put("uwudimension:blossom_warden", List.of("Owl Guardian", "Blossom Warden", "UwU Guardian"));
         entities.put("uwudimension:velvet_vesper", List.of("Velvet Vesper"));
         entities.put("mobsear:dungeon_mimic", List.of("Dungeon Mimic"));
+        // English labels verified in the installed TEST versions of Twilight Forest, Cataclysm and The Aether.
+        entities.put("twilightforest:lich", List.of("Twilight Lich", "Lich"));
+        entities.put("cataclysm:ender_guardian", List.of("Ender Guardian"));
+        entities.put("aether:valkyrie_queen", List.of("Valkyrie Queen"));
         var registries = SpeechGrammar.registries(names, entities);
         var vocabulary = registries.species();
         var grammar = new SpeechGrammar(aliasFile, registries);
@@ -224,7 +228,10 @@ public final class SpeechCuesFixture {
                 synthesize("you woo guardian"), synthesize("blossom warden"), synthesize("Velvet Vesper"), synthesize("guardian"),
                 synthesize("call cow"), synthesize("call Owl Guardian"), synthesize("call oo woo guardian"),
                 synthesize("call Mikueon"), synthesize("call"), synthesize("call pokemon"), synthesize("call the garden is beautiful"),
-                synthesize("call Miku Eon"), synthesize("Dungeon Mimic"), synthesize("call Dungeon Mimic")};
+                synthesize("call Miku Eon"), synthesize("Dungeon Mimic"), synthesize("call Dungeon Mimic"),
+                synthesize("Twilight Lich"), synthesize("call Twilight Lich"), synthesize("Ender Guardian"),
+                synthesize("call Ender Guardian"), synthesize("Valkyrie Queen"), synthesize("call Valkyrie Queen"),
+                synthesize("call all bosses"), synthesize("that boss looked at me")};
         int spectreon = grammar.code("spectreon");
         int spectrier = grammar.code("spectrier");
         // For a bare close pair, exact or abstained is valid; qualified calls must return the one correct ID.
@@ -234,7 +241,10 @@ public final class SpeechCuesFixture {
                 {grammar.code("cow"), 0}, {grammar.code("iron golem")}, {grammar.code("owl guardian"), 0}, {grammar.code("owl guardian"), 0},
                 {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("velvet vesper")}, {Cue.GUARDIAN.ordinal() + 1},
                 {grammar.code("cow")}, {grammar.code("owl guardian")}, {grammar.code("owl guardian")}, {grammar.code("mikueon"), 0}, {0}, {0}, {0},
-                {grammar.code("mikueon")}, {grammar.code("dungeon mimic"), 0}, {grammar.code("dungeon mimic")}};
+                {grammar.code("mikueon")}, {grammar.code("dungeon mimic"), 0}, {grammar.code("dungeon mimic")},
+                {grammar.code("twilight lich"), 0}, {grammar.code("twilight lich"), 0},
+                {grammar.code("ender guardian"), 0}, {grammar.code("ender guardian"), 0},
+                {grammar.code("valkyrie queen"), 0}, {grammar.code("valkyrie queen"), 0}, {0}, {0}};
         require("cobblemon:boxtail".equals(vocabulary.get("boxtail")) && "cobblemon:mikueon".equals(vocabulary.get("mikueon")),
                 "Global species pack display names");
         long started = System.nanoTime();
@@ -270,6 +280,9 @@ public final class SpeechCuesFixture {
                 "uwudimension:velvet_vesper")), "Specific synthetic entity-call outcomes " + exactEntities);
         require(grammar.dispatch(result[36], c -> {}, s -> {}, exactEntities::add) && exactEntities.getLast().equals("mobsear:dungeon_mimic"),
                 "Dungeon Mimic must emit only the encounter registry ID");
+        reportBossResult(grammar, "twilightforest:lich", result[37], result[38]);
+        reportBossResult(grammar, "cataclysm:ender_guardian", result[39], result[40]);
+        reportBossResult(grammar, "aether:valkyrie_queen", result[41], result[42]);
         System.out.println("MOBSEAR_REGISTERED_ENTITY_SPEECH_PASS " + exactEntities + " vanillaGuardian=" + result[26]
                 + " bareCow=" + result[19] + " bareOwlGuardian=" + result[21] + " bareOoWooGuardian=" + result[22]);
         var ids = new ArrayBlockingQueue<String>(4);
@@ -304,6 +317,22 @@ public final class SpeechCuesFixture {
                     + names.size() + " normalizedNames=" + vocabulary.size() + " grammarBytes=" + encoded.size()
                     + " javaBuildMs=" + buildMillis + " SAPIReadyMs=" + readyMillis + " startupAnd" + clips.length + "ClipsMs=" + elapsedMillis);
         }
+    }
+
+    private static void reportBossResult(SpeechGrammar grammar, String expectedId, int bare, int scoped) {
+        var results = new ArrayList<String>();
+        for (int decision : new int[]{bare, scoped}) {
+            if (decision == 0) {
+                results.add("neutral");
+                continue;
+            }
+            var target = new ArrayList<String>();
+            require(grammar.dispatch(decision, c -> {}, s -> {}, target::add) && target.equals(List.of(expectedId)),
+                    "Named boss cue emitted wrong type or ID: " + expectedId);
+            results.add("exact");
+        }
+        System.out.println("MOBSEAR_BOSS_SPEECH_RESULT id=" + expectedId + " bare=" + results.getFirst()
+                + " explicitCall=" + results.getLast());
     }
 
     private static void verifyAllRegistryLabels(Map<String, List<String>> names,
