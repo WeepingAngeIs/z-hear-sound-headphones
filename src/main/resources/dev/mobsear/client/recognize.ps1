@@ -61,38 +61,44 @@ try {
         $lexicon = [ordered]@{
             enderman = @('eh n d er m ae n', 'eh n d er m ax n')
             lopunny = @('l aa p ax n iy', 'l aa p ah n iy', 'l ow p ah n iy', 'l aa p b ah n iy')
-            hoglin = @('hh aa g l ih n', 'hh ao g l ih n')
+            hoglin = @('h aa g l ih n', 'h ao g l ih n')
             zoglin = @('z aa g l ih n', 'z ao g l ih n')
         }
-        $choice = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
-        # Keep near neighbors as separate alternatives alongside unconstrained dictation.
-        foreach ($neighbor in @('poponee', 'buneary', 'endermite', 'ender dragon', 'ender guardian',
-                'slender man', 'bunny', 'hold on', 'logged in', 'huddling', 'jogging')) {
-            $choice.Add([System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($neighbor))
-        }
-        foreach ($name in $lexicon.Keys) {
-            if (-not $aliases.ContainsKey($name) -or $aliases[$name] -eq 0) { continue }
-            foreach ($phones in $lexicon[$name]) {
-                foreach ($prefix in @('', 'hey', 'call')) {
-                    $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new()
-                    if ($prefix) { $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsText]::new($prefix)) }
-                    $token = [System.Speech.Recognition.SrgsGrammar.SrgsToken]::new($name)
-                    $token.Pronunciation = $phones
-                    $item.Add($token)
-                    $choice.Add($item)
+        try {
+            $choice = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
+            # Keep near neighbors as separate alternatives alongside unconstrained dictation.
+            foreach ($neighbor in @('poponee', 'buneary', 'endermite', 'ender dragon', 'ender guardian',
+                    'slender man', 'bunny', 'hold on', 'logged in', 'huddling', 'jogging')) {
+                $choice.Add([System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($neighbor))
+            }
+            foreach ($name in $lexicon.Keys) {
+                if (-not $aliases.ContainsKey($name) -or $aliases[$name] -eq 0) { continue }
+                foreach ($phones in $lexicon[$name]) {
+                    foreach ($prefix in @('', 'hey', 'call')) {
+                        $item = [System.Speech.Recognition.SrgsGrammar.SrgsItem]::new()
+                        if ($prefix) { $item.Add([System.Speech.Recognition.SrgsGrammar.SrgsText]::new($prefix)) }
+                        $token = [System.Speech.Recognition.SrgsGrammar.SrgsToken]::new($name)
+                        $token.Pronunciation = $phones
+                        $item.Add($token)
+                        $choice.Add($item)
+                    }
                 }
             }
+            $root = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('Pronunciations')
+            $root.Add($choice)
+            $document = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($root)
+            $document.Culture = $english.Culture
+            $document.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
+            $pronounced = [System.Speech.Recognition.Grammar]::new($document)
+            $pronouncer = [System.Speech.Recognition.SpeechRecognitionEngine]::new($english)
+            $pronouncer.UpdateRecognizerSetting('AdaptationOn', [int]0)
+            $pronouncer.LoadGrammar($pronounced)
+            $pronouncer.LoadGrammar([System.Speech.Recognition.DictationGrammar]::new())
+        } catch {
+            # The ordinary command grammar stays usable if the optional US voice data is unavailable.
+            if ($null -ne $pronouncer) { $pronouncer.Dispose() }
+            $pronouncer = $null
         }
-        $root = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('Pronunciations')
-        $root.Add($choice)
-        $document = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($root)
-        $document.Culture = $english.Culture
-        $document.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
-        $pronounced = [System.Speech.Recognition.Grammar]::new($document)
-        $pronouncer = [System.Speech.Recognition.SpeechRecognitionEngine]::new($english)
-        $pronouncer.UpdateRecognizerSetting('AdaptationOn', [int]0)
-        $pronouncer.LoadGrammar($pronounced)
-        $pronouncer.LoadGrammar([System.Speech.Recognition.DictationGrammar]::new())
     }
 
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(

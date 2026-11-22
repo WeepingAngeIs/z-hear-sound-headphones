@@ -20,6 +20,10 @@ $words=@(
     @('hold-on','hold on','neutral'),@('hanging','I was hanging the lantern','neutral'),
     @('jogging','jogging','neutral'),@('logged-in','I just logged in','neutral'),
     @('huddling','we were huddling together','neutral'),@('ordinary-chat','I was talking to my friend','neutral'),
+    @('logging','logging','neutral'),@('hobbling','hobbling','neutral'),@('hopping','hopping','neutral'),
+    @('hold-it','hold it for me','neutral'),@('hauling','hauling it back','neutral'),
+    @('talking','we were talking outside','neutral'),@('time','how long will it take','neutral'),
+    @('on-my-way','hang on I am coming','neutral'),
     @('bunny','bunny','neutral'),@('slender','slender man','neutral'),@('punny','that was funny','neutral'),
     @('menu','enter the menu','neutral'),@('ordinary','the lantern is on the table','neutral'),
     @('honey','more honey','neutral'),@('ending','in the morning','neutral'))
