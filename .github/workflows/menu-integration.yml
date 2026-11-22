@@ -2,6 +2,7 @@ name: Menu integration
 on:
   push:
     branches: [codex/proximity-voice-prototype, main]
+    paths: ['src/main/java/dev/mobsear/client/**', 'src/main/resources/**', 'ci/multiplayer/**', '.github/workflows/menu-integration.yml', 'build.gradle']
   workflow_dispatch:
 permissions:
   contents: read

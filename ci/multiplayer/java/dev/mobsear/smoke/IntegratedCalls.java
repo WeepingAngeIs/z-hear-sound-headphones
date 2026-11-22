@@ -35,17 +35,19 @@ final class IntegratedCalls {
             new Case("mob-Enderman",2,true,false,24), new Case("mob-Spider",2,false,true,24),
             new Case("mobs-Enderman",3,true,true,24), new Case("outside",2,false,true,33));
     private static final int X = 8, Y = 104, Z = 8;
+    private static final List<String> EXPECTED = List.of("ENDERMAN","SPIDER","MOBS","MOBS");
+    private final boolean acoustic = System.getenv("MOBSEAR_SYNTH_DEVICE") != null;
     private final List<String> decisions;
     // Each counter has a single writer. World entities stay on their owning thread.
     private volatile int stage = -1, ready = -1, released = -1, feedback = -1, seen = -1, entityId;
     private int age, aligned, clientStage = -1, clientTicks, seenTicks;
-    private boolean claimed, installed;
+    private boolean claimed, installed, playedPhrase;
     private Mob subject;
 
     IntegratedCalls() {
-        try { decisions = Files.readAllLines(Path.of(System.getenv("MOBSEAR_CUE_PROOF"))); }
+        try { decisions = acoustic ? EXPECTED : Files.readAllLines(Path.of(System.getenv("MOBSEAR_CUE_PROOF"))); }
         catch (Exception error) { throw SmokeControl.failure("Cannot read Windows fixture decisions"); }
-        if (!decisions.equals(List.of("ENDERMAN","SPIDER","MOBS","MOBS")))
+        if (!decisions.equals(EXPECTED))
             throw SmokeControl.failure("Unexpected Windows fixture decisions");
         NeoForge.EVENT_BUS.addListener(this::server);
         NeoForge.EVENT_BUS.addListener(this::client);
@@ -86,7 +88,7 @@ final class IntegratedCalls {
         var owner = server.getPlayerList().getPlayers().getFirst();
         if (stage < 0) { prepare(owner,0); return; }
         var c = CASES.get(stage);
-        if (++age > 260) throw SmokeControl.failure("Integrated "+c.label+" stalled ready="+ready
+        if (++age > 620) throw SmokeControl.failure("Integrated "+c.label+" stalled ready="+ready
                 +" release="+released+" feedback="+feedback+" clientSeen="+seen+" claimed="+claimed+" aligned="+aligned);
         if (subject.getTarget()!=null || subject instanceof EnderMan e && (e.isCreepy() || e.hasBeenStaredAt() || e.isAngry()))
             throw SmokeControl.failure("Unexpected aggression in single-player: "+c.label);
@@ -105,7 +107,8 @@ final class IntegratedCalls {
         if (!inside && claimed) throw SmokeControl.failure("Out-of-range integrated cue acted");
         if (feedback!=stage || (inside ? !claimed || aligned<6 || seen!=stage : age<80)) return;
         System.out.println("MOBSEAR_INTEGRATED_CASE "+c.label+" distance="+c.distance+" automatic="+c.automatic
-                +" memory-connection=true daytime=true server-listen-goal="+claimed+" alignedTicks="+aligned+" target=none");
+                +" memory-connection=true daytime=true server-listen-goal="+claimed+" alignedTicks="+aligned
+                +" live-windows-decoder="+acoustic+" target=none");
         subject.discard();
         if (stage+1 < CASES.size()) prepare(owner,stage+1);
         else { stage=CASES.size(); System.out.println("MOBSEAR_INTEGRATED_PASS"); }
@@ -125,26 +128,37 @@ final class IntegratedCalls {
         if (clientStage!=index) {
             clientStage=index;
             clientTicks=seenTicks=0;
+            playedPhrase=false;
+            mc.gui.setOverlayMessage(Component.empty(),false);
             if (index==0) {
                 KeyMapping.click(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_N));
                 VoiceClient.options().setNoiseSuppression(true);
             }
             VoiceClient.setVoiceActivated(c.automatic);
             KeyMapping.set(v,!c.automatic);
-            FixtureSound.tone=true;
+            FixtureSound.tone=!acoustic;
         }
         var entity=mc.level.getEntity(entityId);
         if (++clientTicks<6 || !(entity instanceof Mob mob)) return;
-        if (ready<index && VoiceClient.localState()==MicState.SPEAKING && Math.abs(Mth.wrapDegrees(mob.getYHeadRot()+90))>=90)
+        boolean inputReady = acoustic ? (index > 0 || Component.translatable("mobsear.speech.ready").getString()
+                .equals(GazeClient.overlay(mc.gui))) : VoiceClient.localState()==MicState.SPEAKING;
+        if (ready<index && inputReady && Math.abs(Mth.wrapDegrees(mob.getYHeadRot()+90))>=90)
             ready=index;
         if (released!=index) return;
         Cue cue=Cue.valueOf(decisions.get(c.decision));
-        if (FixtureSound.tone) {
-            KeyMapping.set(v,false);
-            FixtureSound.tone=false;
-            GazeClient.supplyDecision(cue);
+        if (!playedPhrase) {
+            playedPhrase=true;
+            if (acoustic) {
+                try { FixtureSound.say(Files.readAllBytes(Path.of(System.getenv("MOBSEAR_SYNTH_DEVICE"), c.decision+".pcm"))); }
+                catch (Exception e) { throw SmokeControl.failure("Missing generated acoustic fixture"); }
+            } else {
+                KeyMapping.set(v,false);
+                FixtureSound.tone=false;
+                GazeClient.supplyDecision(cue);
+            }
             return;
         }
+        if (acoustic && FixtureSound.finishedPhrase()) KeyMapping.set(v,false);
         var name=cue==Cue.MOBS ? Component.translatable("mobsear.speech.hostiles") : Component.translatable("entity.minecraft."+cue.entityPath);
         if (Component.translatable("mobsear.speech.recognized",name).getString().equals(GazeClient.overlay(mc.gui))) feedback=index;
         if (Math.abs(Mth.wrapDegrees(mob.getYHeadRot()+90))<=25) {

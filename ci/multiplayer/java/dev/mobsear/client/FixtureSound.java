@@ -10,6 +10,24 @@ import javax.sound.sampled.Line;
 public final class FixtureSound {
     public static volatile boolean tone;
     public static final AtomicLong played = new AtomicLong();
+    private static byte[] phrase;
+    private static int offset;
+
+    public static synchronized void say(byte[] synthetic) {
+        if (phrase != null) throw new IllegalStateException("Overlapping synthetic phrases");
+        phrase = synthetic;
+        offset = 0;
+    }
+
+    public static synchronized boolean finishedPhrase() { return phrase == null; }
+
+    private static synchronized void fillSpeech(byte[] bytes, int start, int count) {
+        if (phrase == null) return;
+        int used = Math.min(count, phrase.length - offset);
+        System.arraycopy(phrase, offset, bytes, start, used);
+        offset += used;
+        if (offset == phrase.length) phrase = null;
+    }
 
     private FixtureSound() {}
 
@@ -51,6 +69,7 @@ public final class FixtureSound {
                             bytes[start + 2*n + 1] = (byte) (sample >> 8);
                         }
                         if (PitchFixtureAudio.enabled) PitchFixtureAudio.fill(bytes, start, count);
+                        fillSpeech(bytes, start, count);
                         nextFrame = System.nanoTime() + 20_000_000L;
                         yield count;
                     }

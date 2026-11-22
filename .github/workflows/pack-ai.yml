@@ -2,6 +2,7 @@ name: Compare mob hearing with installed AI mods
 on:
   push:
     branches: [codex/proximity-voice-prototype]
+    paths: ['src/main/java/dev/mobsear/server/**', 'src/main/java/dev/mobsear/net/**', 'ci/gametest/**', 'ci/pack-compat/**', '.github/workflows/pack-ai.yml', 'build.gradle']
   workflow_dispatch:
 permissions:
   contents: read

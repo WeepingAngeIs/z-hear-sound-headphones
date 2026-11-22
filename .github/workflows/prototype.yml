@@ -2,6 +2,7 @@ name: Prototype checks
 on:
   push:
     branches: [codex/proximity-voice-prototype, main]
+    paths-ignore: ['ci/windows-world/**', '.github/workflows/windows-world.yml']
   workflow_dispatch:
 permissions:
   contents: read

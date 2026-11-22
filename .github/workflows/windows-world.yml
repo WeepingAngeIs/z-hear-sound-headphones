@@ -1,0 +1,36 @@
+name: Windows single-player spoken calls
+on:
+  push:
+    branches: [codex/proximity-voice-prototype]
+    paths:
+      - '.github/workflows/windows-world.yml'
+      - 'ci/windows-world/**'
+      - 'ci/multiplayer/**'
+      - 'src/main/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acoustic:
+    name: Windows SAPI, synthetic microphone and single-player world
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      MOBSEAR_INTEGRATED: '1'
+      GALLIUM_DRIVER: llvmpipe
+      LP_NUM_THREADS: '2'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Prepare synthetic speech and software OpenGL
+        shell: powershell
+        run: ./ci/windows-world/prepare.ps1
+      - name: Hear fixed synthetic speech in an integrated world
+        run: python ci/windows-world/run.py
