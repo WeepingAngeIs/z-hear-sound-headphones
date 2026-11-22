@@ -130,10 +130,11 @@ grep -Fq 'MOBSEAR_HORDE_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 grep -F 'MOBSEAR_MENU_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -F 'MOBSEAR_PITCH_AUDIO' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+grep -F 'MOBSEAR_REVERB_RECEIVED' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -F 'MOBSEAR_TRACKED_HEAD' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
 grep -Fq 'MOBSEAR_PITCH_WIRE_PASS' "$MOBSEAR_SMOKE_DIR/smokeServer.console"
 mkdir -p build/pitch-previews
-for sample in bypass squeaky deep low-end high-end center restored; do
+for sample in bypass squeaky deep low-end high-end center restored room-dry room-wet; do
   cp "$MOBSEAR_SMOKE_DIR/pitch-audio/received-$sample.wav" build/pitch-previews/
 done
 collect_images

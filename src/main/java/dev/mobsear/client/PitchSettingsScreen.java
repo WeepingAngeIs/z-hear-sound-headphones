@@ -19,7 +19,7 @@ public final class PitchSettingsScreen extends Screen {
     private final ResourceLocation scene;
     private int x, y, widthPanel, heightPanel, controlX, controlW;
     private VoiceWidgets.Button bypass;
-    private VoiceWidgets.Slider slider;
+    private VoiceWidgets.Slider slider, reverb;
     private final Map<String, VoiceWidgets.Button> presets = new LinkedHashMap<>();
 
     PitchSettingsScreen(VoiceSettingsScreen parent, VoicePreferences prefs) {
@@ -34,7 +34,7 @@ public final class PitchSettingsScreen extends Screen {
 
     @Override protected void init() {
         widthPanel = Math.min(340, width - 12);
-        heightPanel = Math.min(184, height - 8);
+        heightPanel = Math.min(194, height - 8);
         x = (width - widthPanel) / 2;
         y = (height - heightPanel) / 2;
         controlX = x + 12;
@@ -58,10 +58,18 @@ public final class PitchSettingsScreen extends Screen {
             int end = (controlW + 2) * (i + 1) / choices.length - 2;
             preset(controlX + start, end - start, choices[i]);
         }
+        reverb = addRenderableWidget(new VoiceWidgets.Slider(controlX, y + 135, controlW, 19,
+                t("pitch.reverb"), prefs.reverbAmount(), 100, colors,
+                v -> t("pitch.reverb.value", reverbLabel(v)), v -> {
+                    prefs.setReverbAmount(v);
+                    if (v > 0) prefs.setPitchEnabled(true);
+                    updateBypass();
+                }, this::reverbLabel));
         updateSelection();
         button(controlX, y + heightPanel - 26, Math.min(125, controlW - 76), t("pitch.reset"), () -> {
             prefs.resetPitch();
             slider.showValue(PITCH_RANGE_CENTS);
+            reverb.showValue(0);
             updateSelection();
         });
         button(controlX + controlW - 67, y + heightPanel - 26, 67, CommonComponents.GUI_BACK, this::onClose);
@@ -71,6 +79,10 @@ public final class PitchSettingsScreen extends Screen {
         int cents = value - PITCH_RANGE_CENTS;
         if (cents == 0) return t("pitch.natural");
         return t("pitch.semitones", String.format(Locale.ROOT, "%+.2f", cents / 100.0));
+    }
+
+    private Component reverbLabel(int value) {
+        return value == 0 ? t("value.off") : t("percent", value);
     }
 
     private void updateBypass() {

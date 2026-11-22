@@ -29,6 +29,8 @@ final class PitchClientSmoke {
             new Setting("low-end", -VoicePreferences.PITCH_RANGE_CENTS, true,false,false,true),
             new Setting("high-end", VoicePreferences.PITCH_RANGE_CENTS, true,false,false,true),
             new Setting("center", 0, true,false,false,true),
+            new Setting("room-dry", 0, false,false,false,true),
+            new Setting("room-wet", 0, true,false,false,true),
             new Setting("mute", VoicePreferences.SQUEAKY_CENTS,true,true,false,false),
             new Setting("deafen", VoicePreferences.SQUEAKY_CENTS,true,false,true,false),
             new Setting("restored", VoicePreferences.SQUEAKY_CENTS,false,false,false,true));
@@ -71,6 +73,8 @@ final class PitchClientSmoke {
             if (sender) {
                 prefs.setPitchCents(sample.cents);
                 prefs.setPitchEnabled(sample.effect);
+                prefs.setReverbAmount(sample.id.startsWith("room-") ? 100 : 0);
+                PitchFixtureAudio.impulses=sample.id.startsWith("room-");
             }
             FixtureSound.tone=false;
             PitchFixtureAudio.enabled=sender;
@@ -103,6 +107,11 @@ final class PitchClientSmoke {
 
     private void verify(Setting s,byte[] pcm) throws IOException {
         pcm=Arrays.copyOf(pcm,32000);  // Exactly one second from the playback line.
+        if (s.id.startsWith("room-")) {
+            verifyRoom(pcm,s.effect);
+            save(s,pcm);
+            return;
+        }
         double expected=200*Math.pow(2,(s.effect?s.cents:0)/1200.0);
         int peak=0;
         double[] samples=new double[pcm.length/2];
@@ -132,7 +141,28 @@ final class PitchClientSmoke {
                 s.id,strongest,expected,peak,samples.length);
         if (Math.abs(strongest-expected)>Math.max(5,expected*.075) || peak<500 || peak>=32767)
             throw SmokeControl.failure("unexpected fundamental or peak for "+s.id+": "+strongest+" Hz, peak="+peak);
-        try (var stream=new AudioInputStream(new ByteArrayInputStream(pcm),new AudioFormat(16000,16,1,true,false),samples.length)) {
+        save(s,pcm);
+    }
+
+    private void verifyRoom(byte[] pcm,boolean wet) {
+        int[] samples=new int[pcm.length/2];
+        for (int i=0;i<samples.length;i++) samples[i]=Math.abs((pcm[2*i]&255) | pcm[2*i+1]<<8);
+        int pulses=0, tailed=0;
+        for (int i=1;i+1450<samples.length;i++) {
+            if (samples[i]<2000 || samples[i-1]>=2000) continue;
+            int reflected=0;
+            for (int j=i+150;j<i+1450;j++) if (samples[j]>15) reflected++;
+            pulses++;
+            if (reflected>=8) tailed++;
+            i+=1450;
+        }
+        System.out.println("MOBSEAR_REVERB_RECEIVED wet="+wet+" directPulses="+pulses+" withRoomTail="+tailed);
+        if (pulses<3 || (wet ? tailed!=pulses : tailed!=0))
+            throw SmokeControl.failure("Receiver impulse response did not match the chosen room amount");
+    }
+
+    private void save(Setting s,byte[] pcm) throws IOException {
+        try (var stream=new AudioInputStream(new ByteArrayInputStream(pcm),new AudioFormat(16000,16,1,true,false),pcm.length/2)) {
             AudioSystem.write(stream,AudioFileFormat.Type.WAVE,folder.resolve("received-"+s.id+".wav").toFile());
         }
     }

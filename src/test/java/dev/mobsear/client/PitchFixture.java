@@ -10,7 +10,8 @@ final class PitchFixture {
     private static final int SAMPLES = VoiceAudio.FRAME_BYTES / 2;
 
     static void check() {
-        var pitch = new OutgoingPitch();
+        checkReverb();
+        var pitch = new OutgoingVoice();
         for (int cents : new int[]{0, VoicePreferences.DEEP_CENTS, VoicePreferences.SQUEAKY_CENTS,
                 -1200, 1200, 317, -239, 0}) {
             checkTone(pitch, cents, 400);
@@ -18,18 +19,52 @@ final class PitchFixture {
         }
         var calls = new AtomicInteger();
         byte[] dry = tone(0, 400);
-        require(!pitch.route(dry, 700, pcm -> false, pcm -> calls.incrementAndGet()) && calls.get() == 0,
+        require(!pitch.route(dry, 700, 0, pcm -> false, pcm -> calls.incrementAndGet()) && calls.get() == 0,
                 "A dropped outbound frame reached recognition");
         var wire = new AtomicReference<byte[]>();
         byte[] silence = new byte[VoiceAudio.FRAME_BYTES];
-        pitch.route(silence, 700, pcm -> { wire.set(pcm); return true; }, pcm -> {});
+        pitch.route(silence, 700, 0, pcm -> { wire.set(pcm); return true; }, pcm -> {});
         require(Arrays.equals(wire.get(), silence), "Previous press leaked through the delay after a dropped frame");
         pitch.reset();
-        pitch.route(dry, 0, pcm -> { wire.set(pcm); return true; }, pcm -> {});
+        pitch.route(dry, 0, 0, pcm -> { wire.set(pcm); return true; }, pcm -> {});
         require(wire.get() == dry, "Returning to natural did not bypass the previous effect");
     }
 
-    private static void checkTone(OutgoingPitch pitch, int cents, int frequency) {
+    private static void checkReverb() {
+        var effect = new OutgoingVoice();
+        byte[] impulse = new byte[VoiceAudio.FRAME_BYTES];
+        impulse[1] = 100;
+        byte[] zero = new byte[impulse.length];
+        byte[] original = impulse.clone();
+        var wire = new AtomicReference<byte[]>();
+        long[] energy = new long[40];
+        for (int f=0; f<energy.length; f++) {
+            byte[] input = f == 0 ? impulse : zero;
+            require(effect.route(input, 0, 100, data -> { wire.set(data); return true; },
+                    data -> require(data == input, "Recognition must receive original PCM")), "Room rejected frame");
+            for (int n=0; n<wire.get().length; n+=2) {
+                int sample = (wire.get()[n]&255) | wire.get()[n+1]<<8;
+                if (f==0 && n==0) require(sample>12000, "Reverb delayed the direct voice");
+                energy[f] += (long)sample*sample;
+            }
+        }
+        require(Arrays.equals(impulse,original) && Arrays.equals(zero,new byte[zero.length]), "Reverb mutated source audio");
+        require(energy[1]>0 && energy[3]>0 && energy[6]>0 && energy[6]<energy[1] && energy[39]==0,
+                "Missing room reflections or a non-decaying tail");
+        for (boolean drop : new boolean[]{false,true}) {
+            effect.route(impulse, 0, 70, data -> true, data -> {});
+            if (drop) {
+                effect.route(zero, 0, 70, data -> false, data -> { throw new AssertionError("Dropped frame recognized"); });
+            } else {
+                effect.route(zero, 0, 0, data -> { require(data==zero,"Bypass must be bit-identical"); return true; }, data -> {});
+            }
+            for (int n=0; n<5; n++) effect.route(zero, 0, 70,
+                    data -> { require(Arrays.equals(data,zero),"Old room tail leaked into next transmission"); return true; }, data -> {});
+        }
+        System.out.println("REVERB_FIXTURE direct onset, decaying reflections, dry recognition, bypass and dropped-frame reset");
+    }
+
+    private static void checkTone(OutgoingVoice pitch, int cents, int frequency) {
         pitch.reset();
         int firstSignal = -1, crossings = 0, previous = 0, peak = 0;
         long squares = 0;
@@ -38,7 +73,7 @@ final class PitchFixture {
         for (int i = 0; i < 55; i++) {
             byte[] dry = tone(i, frequency);
             byte[] copy = dry.clone();
-            require(pitch.route(dry, cents, pcm -> { wire.set(pcm); return true; }, raw -> {
+            require(pitch.route(dry, cents, 0, pcm -> { wire.set(pcm); return true; }, raw -> {
                 require(raw == dry, "Local recognizer did not receive the original PCM");
                 dryFrames.incrementAndGet();
             }), "Valid frame dropped");

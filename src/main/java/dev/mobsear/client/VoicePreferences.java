@@ -24,7 +24,7 @@ public final class VoicePreferences {
     private final Path file;
     private final VoiceDevices sound;
     private final Properties values = new Properties();
-    private static final List<String> PITCH_KEYS = List.of("pitchEnabled", "pitchCents", "pitchPreset");
+    private static final List<String> PITCH_KEYS = List.of("pitchEnabled", "pitchCents", "pitchPreset", "reverbAmount");
     private UUID pitchAccount;
     private String pitchPrefix = "";
     private long deviceRevision;
@@ -136,6 +136,13 @@ public final class VoicePreferences {
     }
     public synchronized void resetPitch() {
         for (String key : PITCH_KEYS) values.remove(pitchPrefix + key);
+    }
+    public synchronized int reverbAmount() {
+        try { return Math.clamp(Integer.parseInt(values.getProperty(pitchPrefix + "reverbAmount", "0")), 0, 100); }
+        catch (NumberFormatException invalid) { return 0; }
+    }
+    public synchronized void setReverbAmount(int amount) {
+        values.setProperty(pitchPrefix + "reverbAmount", Integer.toString(Math.clamp(amount, 0, 100)));
     }
     public synchronized boolean hudVisible() { return flag("hudVisible", true); }
     public synchronized void setHudVisible(boolean value) { setFlag("hudVisible", value); }

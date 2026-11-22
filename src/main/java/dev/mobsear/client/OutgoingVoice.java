@@ -4,8 +4,8 @@ import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-/** Waveform-similarity overlap-add on 16 kHz mono PCM. Only the outbound branch is shifted. */
-final class OutgoingPitch {
+/** Pitch and room reflections on the outbound branch of the 16 kHz mono stream. */
+final class OutgoingVoice {
     private static final int HOP = 80;  // Four 5 ms synthesis hops per network frame.
     private static final int SEARCH = 104;  // ±6.5 ms, enough to find the nearest cycle in typical speech.
     private static final int RING = 1024;
@@ -15,17 +15,18 @@ final class OutgoingPitch {
     private int cents, delay;
     private long written;
     private double ratio;
+    private final RoomReverb room = new RoomReverb();
 
-    OutgoingPitch() {
+    OutgoingVoice() {
         for (int i = 0; i < HOP; i++) fade[i] = 0.5 - 0.5 * Math.cos(Math.PI * (i + 0.5) / HOP);
     }
 
-    boolean route(byte[] dry, int requestedCents, Predicate<byte[]> enqueue, Consumer<byte[]> recognize) {
+    boolean route(byte[] dry, int requestedCents, int reverbAmount, Predicate<byte[]> enqueue, Consumer<byte[]> recognize) {
         if (dry.length != VoiceAudio.FRAME_BYTES) return false;
         int next = Math.clamp(requestedCents, -1200, 1200);
         if (next != cents) configure(next);
         byte[] wire = cents == 0 ? dry : shift(dry);
-        if (!enqueue.test(wire)) {
+        if (!enqueue.test(room.mix(wire, reverbAmount))) {
             reset();
             return false;
         }
@@ -34,7 +35,7 @@ final class OutgoingPitch {
     }
 
     private void configure(int next) {
-        reset();
+        resetPitch();
         cents = next;
         if (next == 0) return;
         ratio = Math.pow(2, next / 1200.0);
@@ -114,6 +115,11 @@ final class OutgoingPitch {
     }
 
     void reset() {
+        resetPitch();
+        room.reset();
+    }
+
+    private void resetPitch() {
         if (cents == 0 && written == 0) return;
         Arrays.fill(samples, 0);
         Arrays.fill(raw, 0);

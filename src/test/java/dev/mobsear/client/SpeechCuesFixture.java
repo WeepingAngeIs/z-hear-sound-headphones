@@ -64,11 +64,11 @@ public final class SpeechCuesFixture {
                 case "deep" -> VoicePreferences.DEEP_CENTS;
                 default -> 0;
             };
-            var outgoing = new OutgoingPitch();
+            var outgoing = new OutgoingVoice();
             var rendered = new ByteArrayOutputStream(source.length + FRAME);
             for (int offset = 0; offset < source.length; offset += FRAME) {
                 byte[] dry = Arrays.copyOfRange(source, offset, offset + FRAME);
-                outgoing.route(dry, cents, wire -> { rendered.writeBytes(wire); return true; }, raw -> {});
+                outgoing.route(dry, cents, 0, wire -> { rendered.writeBytes(wire); return true; }, raw -> {});
             }
             byte[] pcm = Arrays.copyOf(rendered.toByteArray(), source.length);
             if (cents == 0) require(Arrays.equals(source, pcm), "Natural synthetic demonstration changed the input");
@@ -422,11 +422,11 @@ public final class SpeechCuesFixture {
         for (int cents : new int[]{VoicePreferences.SQUEAKY_CENTS, VoicePreferences.DEEP_CENTS}) {
             var acousticClips = new ArrayList<byte[]>();
             var segmentation = new SpeechCues.Utterances(acousticClips::add);
-            var pitch = new OutgoingPitch();
+            var pitch = new OutgoingVoice();
             var changed = new java.util.concurrent.atomic.AtomicBoolean();
             for (int offset = 0; offset < zombie.length; offset += FRAME) {
                 byte[] frame = Arrays.copyOfRange(zombie, offset, offset + FRAME);
-                pitch.route(frame, cents, wire -> {
+                pitch.route(frame, cents, 80, wire -> {
                     if (!Arrays.equals(wire, frame)) changed.set(true);
                     return true;
                 }, original -> {
@@ -455,13 +455,13 @@ public final class SpeechCuesFixture {
                 var clips = new ArrayList<byte[]>();
                 var diagnostics = new SpeechCues.Utterances(clips::add);
                 Runnable endpoint = () -> { speech.endUtterance(); diagnostics.finish(); };
-                var outgoing = new OutgoingPitch();
+                var outgoing = new OutgoingVoice();
                 int cents = automatic ? VoicePreferences.SQUEAKY_CENTS : 0;
                 // Gate, noise suppression, pitch and segmentation match the opted-in game path.
                 for (int pos = 0; pos < phrases[i].length; pos += FRAME) {
                     byte[] frame = Arrays.copyOfRange(phrases[i], pos, pos + FRAME);
                     filter.accept(frame, automatic, 50, true, true, (wire, original) ->
-                        outgoing.route(wire, cents, accepted -> true, ignored -> {
+                        outgoing.route(wire, cents, 0, accepted -> true, ignored -> {
                             diagnostics.accept(original);
                             speech.acceptFrame(original);
                         }), endpoint);

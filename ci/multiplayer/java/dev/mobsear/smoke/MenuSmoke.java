@@ -196,6 +196,7 @@ final class MenuSmoke {
                 check(mc.screen instanceof PitchSettingsScreen && mc.screen.getTitle().getString().equals("Voice Changer"),
                         "missing native Voice Changer submenu");
                 var prefs = VoiceClient.options();
+                check(prefs.reverbAmount()==0, "Reverb must start off");
                 check(!prefs.pitchEnabled() && prefs.pitchCents() == 0 && prefs.pitchPreset().equals("natural"),
                         "unexpected initial pitch preferences");
                 pointer(widget("Deep", false), .5);
@@ -206,6 +207,8 @@ final class MenuSmoke {
                 check(prefs.pitchCents() == 300 && prefs.pitchPreset().equals("custom"),
                         "manual pitch did not select Custom at a quarter octave");
                 pointer(widget("Squeaky", false), .5);
+                pointer(widget("Reverb", true), .75);
+                check(prefs.reverbAmount()==75 && prefs.pitchPreset().equals("squeaky"), "Reverb changed the pitch preset");
                 pointer(widget("Voice effect", true), .5);
                 check(!prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS,
                         "bypass discarded preset");
@@ -220,6 +223,7 @@ final class MenuSmoke {
                 check(mc.screen == pitchParent, "Voice Changer Back lost the parent");
                 pointer(widget("Voice Changer", false), .5);
                 var prefs = VoiceClient.options();
+                check(prefs.reverbAmount()==75, "Reopening lost the selected reverb amount");
                 check(prefs.pitchEnabled() && prefs.pitchCents() == VoicePreferences.SQUEAKY_CENTS,
                         "reopened Voice Changer lost preset");
                 pointer(widget("Custom", false), .5);
@@ -243,7 +247,7 @@ final class MenuSmoke {
                 pointer(widget("Back", false), .5);
                 check(mc.screen == pitchParent && prefs.theme().equals("amethyst_stars") && !prefs.pitchEnabled()
                                 && prefs.pitchCents() == 0 && prefs.pitchPreset().equals("natural")
-                                && prefs.customPitchCents() == 0 && prefs.volume() == 50 && prefs.gain(SPEAKER_ID) == 150,
+                                && prefs.customPitchCents() == 0 && prefs.reverbAmount()==0 && prefs.volume() == 50 && prefs.gain(SPEAKER_ID) == 150,
                         "pitch reset changed unrelated preferences or failed to restore natural bypass");
                 mc.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 check(mc.screen == null && mc.getConnection() == connection, "voice session did not survive settings");

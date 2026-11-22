@@ -38,7 +38,7 @@ final class PitchRestartSmoke {
             // G is a gameplay binding and is consumed without opening settings during the loading transition.
             if (mc.screen != null || !mc.isWindowActive()) return;
             check(!p.pitchEnabled() && p.pitchPreset().equals("squeaky") && p.pitchCents() == VoicePreferences.SQUEAKY_CENTS
-                    && p.customPitchCents() == 300, "restored Squeaky, Custom and bypass");
+                    && p.customPitchCents() == 300 && p.reverbAmount()==75, "restored Squeaky, Custom, reverb and bypass");
             verifyUnrelated(p);
             MenuSmoke.pressG();
             step++;
@@ -53,7 +53,7 @@ final class PitchRestartSmoke {
             click("Custom");
             check(p.pitchEnabled() && p.pitchCents() == 300, "remembered manual setting");
             click("Reset to Defaults");
-            check(!p.pitchEnabled() && p.pitchPreset().equals("natural") && p.customPitchCents() == 0, "reset defaults");
+            check(!p.pitchEnabled() && p.pitchPreset().equals("natural") && p.customPitchCents() == 0 && p.reverbAmount()==0, "reset defaults");
             verifyUnrelated(p);
             click("Back");
             step++;

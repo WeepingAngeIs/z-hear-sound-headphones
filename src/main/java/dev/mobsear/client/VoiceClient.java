@@ -290,7 +290,7 @@ public final class VoiceClient {
         final SpeakingActivity activity = new SpeakingActivity();
         final ArrayBlockingQueue<byte[]> frames = new ArrayBlockingQueue<>(12);
         final CaptureGate gate = new CaptureGate();
-        final OutgoingPitch pitch = new OutgoingPitch();
+        final OutgoingVoice effects = new OutgoingVoice();
         final AtomicReference<Packets.MobCall> cue = new AtomicReference<>();
         final AtomicReference<VoiceAudio.Problem> problem = new AtomicReference<>();
         final SpeechCues speech = new SpeechCues(mob -> cue.set(new Packets.Call(mob)), id -> {
@@ -329,11 +329,13 @@ public final class VoiceClient {
             gate.accept(frame, automatic && !monitoring, prefs.sensitivity(), prefs.noiseSuppression(),
                     recognition && !monitoring, (pcm, original) -> {
                 if (monitoring || !held) return;
-                int cents = prefs.pitchEnabled() ? prefs.pitchCents() : 0;
-                if (pitch.route(pcm, cents, frames::offer, ignored -> speech.acceptFrame(original))
+                boolean enabled = prefs.pitchEnabled();
+                int cents = enabled ? prefs.pitchCents() : 0;
+                int reverb = enabled ? prefs.reverbAmount() : 0;
+                if (effects.route(pcm, cents, reverb, frames::offer, ignored -> speech.acceptFrame(original))
                         && VoiceSignal.meter(VoiceSignal.rms(pcm)) > 0) lastSpeaking = lastMeter;
             }, () -> {
-                pitch.reset();
+                effects.reset();
                 speech.endUtterance();
             });
         }
@@ -350,7 +352,7 @@ public final class VoiceClient {
             if (monitoring == enable) return;
             monitoring = enable;
             gate.reset();
-            pitch.reset();
+            effects.reset();
             audio.setTransmitting(enable);
         }
 
@@ -364,7 +366,7 @@ public final class VoiceClient {
             automatic = voiceActivation;
             held = value;
             gate.reset();
-            pitch.reset();
+            effects.reset();
             lastSpeaking = 0;
             audio.setTransmitting(value);
             if (!value) speech.endUtterance();
@@ -375,7 +377,7 @@ public final class VoiceClient {
             held = false;
             suspended = true;
             gate.reset();
-            pitch.reset();
+            effects.reset();
             lastSpeaking = 0;
             audio.setTransmitting(false);
             speech.setEnabled(false);

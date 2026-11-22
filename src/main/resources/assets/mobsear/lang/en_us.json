@@ -3,6 +3,8 @@
   "mobsear.settings.title": "Proximity Voice",
   "mobsear.settings.pitch.title": "Voice Changer",
   "mobsear.settings.pitch.slider": "Pitch",
+  "mobsear.settings.pitch.reverb": "Reverb",
+  "mobsear.settings.pitch.reverb.value": "Reverb · %s",
   "mobsear.settings.pitch.presets": "Presets",
   "mobsear.settings.pitch.custom": "Custom",
   "mobsear.settings.pitch.reset": "Reset to Defaults",

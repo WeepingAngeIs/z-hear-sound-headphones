@@ -5,6 +5,8 @@ import java.io.ByteArrayOutputStream;
 /** The CI Java Sound device generates a voiced harmonic tone and samples the real playback sink. */
 public final class PitchFixtureAudio {
     public static volatile boolean enabled;
+    public static volatile boolean impulses;
+    private static int pulseSample;
     private static final byte[] PERIOD = new byte[160];
     private static ByteArrayOutputStream captured;
     static {
@@ -17,6 +19,15 @@ public final class PitchFixtureAudio {
     }
     private PitchFixtureAudio() {}
     static void fill(byte[] input, int offset, int count) {
+        if (impulses) {
+            for (int i=offset; i<offset+count; i+=2) {
+                int sample = pulseSample<4 ? (pulseSample<2 ? 14000 : -14000) : 0;
+                input[i]=(byte) sample;
+                input[i+1]=(byte) (sample>>8);
+                if (++pulseSample==2560) pulseSample=0;
+            }
+            return;
+        }
         for (int i = 0; i < count; i++) input[offset+i] = PERIOD[i % PERIOD.length];
     }
     static synchronized void write(byte[] data, int offset, int count) {
