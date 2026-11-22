@@ -210,7 +210,7 @@ if __name__=="__main__":
         try:
             if (root/"public-registry.bin").is_file():
                 from decoder import diagnose
-                mod=root/"candidate/mobsear-0.3.2.jar" if os.environ.get("MOBSEAR_CANDIDATE_RUN") else game/"mods/mobsear-0.3.1.jar"
+                mod,=(game/"mods").glob("mobsear-*.jar")
                 diagnose(root,mod)
         finally:
             (root/"result.txt").write_text("failure",encoding="ascii")

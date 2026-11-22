@@ -45,7 +45,8 @@ jobs:
               profiles.append('public-pack-helper-priority')
           if pin.exists() and json.loads(pin.read_text()).get('graphicsControl'):
               profiles.append('public-pack-software-renderer')
-          if os.environ['SMALL_CONTROL']=='true': profiles.append('focused-control')
+          if os.environ['SMALL_CONTROL']=='true' or (pin.exists() and json.loads(pin.read_text()).get('compareFocused')):
+              profiles.append('focused-control')
           with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as out:
               print('profiles='+json.dumps(profiles),file=out)
       - shell: powershell
@@ -171,7 +172,9 @@ jobs:
           from pathlib import Path
           sys.path.insert(0,'ci/fullpack')
           from confidence import compare
-          compare(Path(os.environ['MOBSEAR_SMOKE_DIR']))
+          root = Path(os.environ['MOBSEAR_SMOKE_DIR'])
+          if (root/'public-registry.bin').is_file():
+              compare(root)
       - name: Save the public registry vocabulary for the offline comparison
         if: ${{ !cancelled() && matrix.profile == 'public-pack' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

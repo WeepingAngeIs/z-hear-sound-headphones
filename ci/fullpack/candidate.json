@@ -4,5 +4,6 @@
   "compareReferences": false,
   "priorityControl": false,
   "graphicsControl": false,
-  "testFeedback": true
+  "testFeedback": true,
+  "compareFocused": true
 }
