@@ -6,6 +6,7 @@ import dev.mobsear.net.Packets;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 
 public final class ServerVoice {
@@ -37,11 +38,18 @@ public final class ServerVoice {
         }
     }
 
-    public static void cue(ServerPlayer speaker, Cue cue, double radius) {
+    private static boolean acceptCall(ServerPlayer speaker) {
         TalkWindow window = sessions.get(speaker);
-        if (eligible(speaker) && !NearbyMics.inputBlocked(speaker) && !speaker.isCreative() && window != null && window.acceptCue(System.nanoTime())) {
-            MobReactions.handle(speaker, cue, radius);
-        }
+        return eligible(speaker) && !NearbyMics.inputBlocked(speaker) && !speaker.isCreative()
+                && window != null && window.acceptCue(System.nanoTime());
+    }
+
+    public static void cue(ServerPlayer speaker, Cue cue, double radius) {
+        if (acceptCall(speaker)) MobReactions.handle(speaker, cue, radius);
+    }
+
+    public static void speciesCue(ServerPlayer speaker, ResourceLocation species, double radius) {
+        if (acceptCall(speaker)) PokemonReactions.hear(speaker, species, radius);
     }
 
     public static void forget(ServerPlayer player) {

@@ -89,7 +89,8 @@ final class GazeClient {
             var session = VoiceClient.class.getDeclaredField("session"); session.setAccessible(true);
             Object current = session.get(owner.get(null));
             var mailbox = current.getClass().getDeclaredField("cue"); mailbox.setAccessible(true);
-            ((AtomicReference<Cue>)mailbox.get(current)).set(cue);
+            ((AtomicReference<net.minecraft.network.protocol.common.custom.CustomPacketPayload>)mailbox.get(current))
+                    .set(new dev.mobsear.net.Packets.Call(cue));
         } catch (ReflectiveOperationException e) { throw SmokeControl.failure("recognizer mailbox " + e); }
     }
     static String overlay(Gui gui) {

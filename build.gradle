@@ -45,6 +45,9 @@ neoForge {
 if (providers.gradleProperty('voiceMultiplayer').isPresent()) {
     apply from: 'ci/multiplayer/runs.gradle'
 }
+if (providers.gradleProperty('cobblemonFixture').isPresent()) {
+    apply from: 'ci/cobblemon/runs.gradle'
+}
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'

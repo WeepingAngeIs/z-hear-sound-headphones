@@ -162,11 +162,19 @@ public final class SpeechCuesFixture {
             require(fields.length == 3, "Pinned species fixture format");
             require(names.put(fields[0], List.of(fields[1], fields[2])) == null, "Duplicate registry ID");
         }
-        require(names.size() == 1025, "Expected complete Cobblemon 1.8.4 English catalog");
+        require(names.size() == 1036, "Expected Cobblemon 1.8.4 and Extra Eeveelutions 1.2 English catalogs");
         long begin = System.nanoTime();
         var vocabulary = SpeechGrammar.speciesPhrases(names);
         var grammar = new SpeechGrammar(aliasFile, vocabulary);
-        require(new java.util.HashSet<>(vocabulary.values()).size() == 1025, "Missing pinned English species");
+        require(new java.util.HashSet<>(vocabulary.values()).size() == names.size(), "Missing pinned English species");
+        require("cobblemon:spectreonee".equals(vocabulary.get("spectreon")), "Add-on display name and registry ID differ");
+        vocabulary.forEach((phrase, id) -> {
+            int code = grammar.code(phrase);
+            require(code > Cue.values().length && grammar.dispatch(code,
+                    unexpected -> { throw new AssertionError("Registry name emitted a vanilla cue"); },
+                    actual -> require(id.equals(actual), "Registry name emitted the wrong species ID")),
+                    "Missing registry decision");
+        });
         require(grammar.code("pikachu") > 255 && grammar.code("nidoran female") != grammar.code("nidoran male"),
                 "Large vocabulary wire index or gender separation");
         long buildMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - begin);
@@ -174,9 +182,11 @@ public final class SpeechCuesFixture {
         grammar.writeTo(new DataOutputStream(encoded));
         byte[] pikachu = synthesize("Pikachu");
         byte[] ditto = synthesize("hey Ditto");
-        byte[][] clips = {pikachu, ditto, synthesize("spider"), synthesize("hey"), synthesize("pokemon"),
-                synthesize("all pokemon"), synthesize("the garden is beautiful"), new byte[16000]};
-        int[] expected = {grammar.code("pikachu"), grammar.code("ditto"), Cue.SPIDER.ordinal() + 1, 0, 0, 0, 0, 0};
+        byte[][] clips = {pikachu, ditto, synthesize("Eevee"), synthesize("Dungeon"), synthesize("Spectreon"), synthesize("spider"),
+                synthesize("hey"), synthesize("pokemon"), synthesize("all pokemon"),
+                synthesize("the garden is beautiful"), synthesize("my little buddy"), new byte[16000]};
+        int[] expected = {grammar.code("pikachu"), grammar.code("ditto"), grammar.code("eevee"), grammar.code("dungeon"),
+                grammar.code("spectreon"), Cue.SPIDER.ordinal() + 1, 0, 0, 0, 0, 0, 0};
         long started = System.nanoTime();
         int[] result = decisions(SpeechCues.launch(), grammar, clips);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
@@ -207,7 +217,7 @@ public final class SpeechCuesFixture {
             if (proof != null) Files.writeString(Path.of(proof), "cobblemon:pikachu\n", StandardCharsets.US_ASCII);
             System.out.println("MOBSEAR_SPECIES_SPEECH_PASS source=Cobblemon-1.8.4 English species="
                     + names.size() + " normalizedNames=" + vocabulary.size() + " grammarBytes=" + encoded.size()
-                    + " javaBuildMs=" + buildMillis + " SAPIReadyMs=" + readyMillis + " startupAndEightClipsMs=" + elapsedMillis);
+                    + " javaBuildMs=" + buildMillis + " SAPIReadyMs=" + readyMillis + " startupAnd" + clips.length + "ClipsMs=" + elapsedMillis);
         }
     }
 

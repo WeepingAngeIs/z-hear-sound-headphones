@@ -17,9 +17,12 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
@@ -178,6 +181,8 @@ public final class VoiceClient {
             session.suspendInput();
             session.monitor(testMic);
         }
+        if (recognition && focused && !inputBlocked && current.hasChannel(Packets.SpeciesCall.TYPE)
+                && ModList.get().isLoaded("cobblemon")) session.refreshSpecies();
         if (session.recognition != recognition) session.enableRecognition(recognition);
         if (focused && !inputBlocked) {
             session.setHeld(held, activation);
@@ -235,9 +240,13 @@ public final class VoiceClient {
         final ArrayBlockingQueue<byte[]> frames = new ArrayBlockingQueue<>(12);
         final CaptureGate gate = new CaptureGate();
         final OutgoingPitch pitch = new OutgoingPitch();
-        final AtomicReference<Cue> cue = new AtomicReference<>();
+        final AtomicReference<CustomPacketPayload> cue = new AtomicReference<>();
         final AtomicReference<VoiceAudio.Problem> problem = new AtomicReference<>();
-        final SpeechCues speech = new SpeechCues(cue::set, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"));
+        final SpeechCues speech = new SpeechCues(mob -> cue.set(new Packets.Call(mob)), id -> {
+            ResourceLocation species = ResourceLocation.tryParse(id);
+            if (species != null) cue.set(new Packets.SpeciesCall(species));
+        }, FMLPaths.CONFIGDIR.get().resolve("mobsear-aliases.properties"), java.util.Map.of());
+        CobblemonNames names;
         final VoiceAudio audio;
         volatile boolean held;
         boolean automatic;
@@ -317,6 +326,11 @@ public final class VoiceClient {
             frames.clear();
         }
 
+        void refreshSpecies() {
+            if (names == null) names = new CobblemonNames();
+            names.refresh(speech);
+        }
+
         synchronized void enableRecognition(boolean enable) {
             recognition = enable;
             gate.reset();
@@ -329,23 +343,28 @@ public final class VoiceClient {
             for (int i = 0; i < 12 && (frame = frames.poll()) != null; i++) {
                 PacketDistributor.sendToServer(new Packets.Up(frame));
             }
-            Cue ready = cue.getAndSet(null);
+            CustomPacketPayload ready = cue.getAndSet(null);
             if (ready == null || !recognition) return;
             var mc = Minecraft.getInstance();
-            var name = ready == Cue.MOBS ? Component.translatable("mobsear.speech.hostiles")
-                    : Component.translatable("entity.minecraft." + ready.entityPath);
+            Component name;
+            if (ready instanceof Packets.SpeciesCall call) {
+                if (names == null || !link.hasChannel(Packets.SpeciesCall.TYPE)) return;
+                name = CobblemonNames.display(call.species());
+                if (name == null) return;
+            } else {
+                Cue mob = ((Packets.Call)ready).cue();
+                name = mob == Cue.MOBS ? Component.translatable("mobsear.speech.hostiles")
+                        : Component.translatable("entity.minecraft." + mob.entityPath);
+                if (!link.hasChannel(Packets.Call.TYPE)) return;
+                if (mob != Cue.ZOMBIE && mob != Cue.MOBS && mob != Cue.ENDERMAN && !link.hasChannel(MicPresence.Controls.TYPE)) return;
+            }
             // Display the fixed cue meaning privately. Never display a recognized phrase or a transcript.
             if (mc.player != null && (mc.player.isCreative() || mc.player.isSpectator())) {
                 mc.gui.setOverlayMessage(Component.translatable("mobsear.speech.recognized_mode", name), false);
                 return;
             }
             mc.gui.setOverlayMessage(Component.translatable("mobsear.speech.recognized", name), false);
-            if (!link.hasChannel(Packets.Call.TYPE)) return;
-            boolean supported = switch (ready) {
-                case ZOMBIE, MOBS, ENDERMAN -> true;
-                default -> link.hasChannel(MicPresence.Controls.TYPE);
-            };
-            if (supported) PacketDistributor.sendToServer(new Packets.Call(ready));
+            PacketDistributor.sendToServer(ready);
         }
 
         void reportStatus(Minecraft mc) {

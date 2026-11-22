@@ -4,12 +4,14 @@ import dev.mobsear.net.Packets;
 import dev.mobsear.net.MicPresence;
 import dev.mobsear.server.NearbyMics;
 import dev.mobsear.server.HordeMode;
+import dev.mobsear.server.PokemonReactions;
 import dev.mobsear.server.ServerVoice;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -25,11 +27,14 @@ public final class MobsEar {
     private static final ModConfigSpec SERVER_CONFIG;
     private static final ModConfigSpec.IntValue radius, hordeCooldown, hordeCap;
     private static final ModConfigSpec.BooleanValue hordeEnabled;
+    private static final ModConfigSpec.DoubleValue pokemonApproachChance;
     private static final WeakHashMap<ServerPlayer, Integer> lastHordeRequest = new WeakHashMap<>();
     static {
         var config = new ModConfigSpec.Builder();
         radius = config.comment("Hearing distance in blocks for players and mob calls.")
                 .defineInRange("voiceRadius", 32, 1, 96);
+        pokemonApproachChance = config.comment("Chance that an eligible wild Cobblemon approaches after a species call. Zero keeps the glance only.")
+                .defineInRange("wildPokemonApproachChance", 0.20, 0.0, 1.0);
         hordeEnabled = config.comment("Offer voluntary stay-quiet encounters to players on this server.")
                 .define("hordeEnabled", false);
         hordeCooldown = config.comment("Minimum seconds between encounters for the same player.")
@@ -44,12 +49,14 @@ public final class MobsEar {
     public static Consumer<Boolean> hordeStatus = optedIn -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
+    public static double wildPokemonApproachChance() { return pokemonApproachChance.getAsDouble(); }
 
     public static HordeMode.Rules hordeRules() {
         return new HordeMode.Rules(hordeAvailable(), hordeCooldown.getAsInt() * 20, hordeCap.getAsInt());
     }
 
     public MobsEar(IEventBus bus, ModContainer container) {
+        PokemonReactions.register();
         container.registerConfig(ModConfig.Type.SERVER, SERVER_CONFIG);
         bus.addListener(this::register);
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) -> {
@@ -94,6 +101,12 @@ public final class MobsEar {
 
     private void register(RegisterPayloadHandlersEvent event) {
         var reg = event.registrar("1").optional();
+        if (ModList.get().isLoaded("cobblemon")) {
+            reg.playToServer(Packets.SpeciesCall.TYPE, Packets.SpeciesCall.CODEC, (packet, context) -> {
+                if (context.player() instanceof ServerPlayer player)
+                    ServerVoice.speciesCue(player, packet.species(), radius.getAsInt());
+            });
+        }
         reg.playToServer(Packets.HordeOpt.TYPE, Packets.HordeOpt.CODEC, (packet, ctx) -> {
             if (ctx.player() instanceof ServerPlayer player) {
                 if (packet.optedIn()) {

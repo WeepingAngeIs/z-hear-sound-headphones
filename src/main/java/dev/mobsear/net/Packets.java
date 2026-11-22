@@ -62,6 +62,20 @@ public final class Packets {
         @Override public Type<Down> type() { return TYPE; }
     }
 
+    public record SpeciesCall(ResourceLocation species) implements CustomPacketPayload {
+        public static final int MAX_ID_LENGTH = 128;
+        public static final Type<SpeciesCall> TYPE = id("species_call");
+        public static final StreamCodec<FriendlyByteBuf, SpeciesCall> CODEC = StreamCodec.of(
+                (buf, packet) -> buf.writeUtf(packet.species.toString(), MAX_ID_LENGTH), buf -> {
+                    String key = buf.readUtf(MAX_ID_LENGTH);
+                    ResourceLocation species = ResourceLocation.tryParse(key);
+                    if (species == null || species.getPath().isEmpty() || !key.equals(species.toString()) || buf.isReadable())
+                        throw new DecoderException("Invalid species identifier");
+                    return new SpeciesCall(species);
+                });
+        @Override public Type<SpeciesCall> type() { return TYPE; }
+    }
+
     public record Call(Cue cue) implements CustomPacketPayload {
         public static final Type<Call> TYPE = id("mob_cue");
         public static final StreamCodec<FriendlyByteBuf, Call> CODEC = StreamCodec.of(
