@@ -32,7 +32,7 @@ public final class SpeechCues implements AutoCloseable {
     private Map<String, List<String>> entitySource = Map.of();
     private Session session;
     private Status status = Status.OFF;
-    private boolean closed;
+    private boolean closed, inputPaused;
 
     public SpeechCues(Consumer<Cue> listener) {
         this(listener, null);
@@ -102,14 +102,25 @@ public final class SpeechCues implements AutoCloseable {
 
     /** Called only with the local speaker's 20 ms PCM16 mono frames at 16 kHz. */
     public synchronized void acceptFrame(byte[] pcm) {
-        if (status == Status.READY && pcm.length == Utterances.FRAME_BYTES) {
+        if (!inputPaused && status == Status.READY && pcm.length == Utterances.FRAME_BYTES) {
             session.utterances.accept(pcm);
         }
     }
 
     /** Flushes the final short phrase even if the player releases PTT mid-frame. */
     public synchronized void endUtterance() {
-        if (status == Status.READY) session.utterances.finish();
+        if (!inputPaused && status == Status.READY) session.utterances.finish();
+    }
+
+    /** Opening a screen silences input immediately while preserving the loaded registry. */
+    public synchronized void setInputPaused(boolean paused) {
+        if (inputPaused == paused) return;
+        inputPaused = paused;
+        if (session != null) {
+            session.inputRevision++;
+            session.utterances.clear();
+            session.clearPending();
+        }
     }
 
     @Override
@@ -126,6 +137,10 @@ public final class SpeechCues implements AutoCloseable {
     }
 
     static Process launch() throws IOException {
+        return launch(false);
+    }
+
+    private static Process launch(boolean trackedStartup) throws IOException {
         String windows = System.getenv("SystemRoot");
         if (windows == null) throw new IOException("Missing Windows system directory");
         Path shell = Path.of(windows, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -136,11 +151,12 @@ public final class SpeechCues implements AutoCloseable {
             var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
                     "-WindowStyle", "Hidden", "-Command", helper)
                     .redirectError(ProcessBuilder.Redirect.DISCARD);
+            process.environment().put("MOBSEAR_STARTUP_STEPS", trackedStartup ? "1" : "0");
             return process.start();
         }
     }
 
-    private record Clip(byte[] pcm, long endedAt) {
+    private record Clip(byte[] pcm, long endedAt, long inputRevision) {
         boolean fresh() {
             return System.nanoTime() - endedAt <= MAX_AGE_NANOS;
         }
@@ -157,11 +173,13 @@ public final class SpeechCues implements AutoCloseable {
         private final Thread worker = Thread.ofPlatform().daemon().name("Mob's Ear speech")
                 .unstarted(this::run);
         private Process helper;
+        private long inputRevision;
+        private volatile int startupStep;
 
         // Called by the capture thread under the owner's monitor. It never waits for SAPI.
         private void submit(byte[] pcm) {
             clearPending();
-            pending.offer(new Clip(pcm, System.nanoTime()));
+            pending.offer(new Clip(pcm, System.nanoTime(), inputRevision));
         }
 
         private void clearPending() {
@@ -180,14 +198,14 @@ public final class SpeechCues implements AutoCloseable {
             Process child = null;
             try {
                 var grammar = new SpeechGrammar(aliasFile, registry);
-                child = launch();
+                child = launch(true);
                 synchronized (SpeechCues.this) {
                     if (session != this) return;
                     helper = child;
                 }
                 try (var input = new DataInputStream(child.getInputStream());
                      var output = new DataOutputStream(child.getOutputStream())) {
-                    if (exchange(child, input, output, grammar, null) != 82) throw new IOException();
+                    prepare(child, input, output, grammar);
                     synchronized (SpeechCues.this) {
                         if (session != this) return;
                         status = Status.READY;
@@ -196,9 +214,10 @@ public final class SpeechCues implements AutoCloseable {
                         Clip clip = pending.take();
                         try {
                             if (!clip.fresh()) continue;
-                            int decision = exchange(child, input, output, grammar, clip);
+                            int decision = exchange(child, input, output, clip);
                             synchronized (SpeechCues.this) {
-                                if (session == this && clip.fresh() && !grammar.dispatch(decision, listener, speciesListener, entityListener))
+                                if (session == this && !inputPaused && clip.inputRevision == inputRevision && clip.fresh()
+                                        && !grammar.dispatch(decision, listener, speciesListener, entityListener))
                                     throw new IOException("Invalid speech helper reply");
                             }
                         } finally {
@@ -223,15 +242,28 @@ public final class SpeechCues implements AutoCloseable {
             }
         }
 
-        private int exchange(Process child, DataInputStream input, DataOutputStream output, SpeechGrammar grammar, Clip clip)
+        private void prepare(Process child, DataInputStream input, DataOutputStream output, SpeechGrammar grammar)
                 throws IOException {
-            var deadline = TIMEOUTS.schedule(() -> { child.toHandle().destroyForcibly(); },
-                    clip == null ? 40 : 8, TimeUnit.SECONDS);
-            try {
-                if (clip == null) {
-                    grammar.writeTo(output);
-                    return input.readUnsignedByte();
+            long limit = System.nanoTime() + TimeUnit.MINUTES.toNanos(3);
+            // Wait for the reader, catalog, desktop engine, loaded grammar and warmed decoder in order.
+            for (int next : new int[]{81, 71, 69, 76, 82}) {
+                long remaining = Math.min(TimeUnit.SECONDS.toNanos(90), limit - System.nanoTime());
+                if (remaining <= 0) throw new IOException("Speech startup expired");
+                var timeout = TIMEOUTS.schedule(() -> child.toHandle().destroyForcibly(), remaining, TimeUnit.NANOSECONDS);
+                try {
+                    if (startupStep == 81) grammar.writeTo(output);
+                    if (input.readUnsignedByte() != next) throw new IOException("Unexpected speech startup stage");
+                    startupStep = next;
+                } finally {
+                    timeout.cancel(false);
                 }
+            }
+        }
+
+        private int exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip)
+                throws IOException {
+            var deadline = TIMEOUTS.schedule(() -> child.toHandle().destroyForcibly(), 8, TimeUnit.SECONDS);
+            try {
                 output.writeInt(Integer.reverseBytes(clip.pcm.length));
                 output.write(clip.pcm);
                 output.flush();

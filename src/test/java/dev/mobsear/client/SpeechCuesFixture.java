@@ -297,6 +297,13 @@ public final class SpeechCuesFixture {
             long readyMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
             speech.refreshSpecies(names);
             require(speech.status() == SpeechCues.Status.READY, "Unchanged registry restarted worker");
+            speech.setInputPaused(true);
+            for (int pos = 0; pos < pikachu.length; pos += FRAME)
+                speech.acceptFrame(Arrays.copyOfRange(pikachu, pos, pos + FRAME));
+            speech.endUtterance();
+            speech.setInputPaused(false);
+            require(speech.status() == SpeechCues.Status.READY && ids.poll(350, TimeUnit.MILLISECONDS) == null,
+                    "A paused microphone produced a call or reloaded the registry");
             for (int pos = 0; pos < pikachu.length; pos += FRAME)
                 speech.acceptFrame(Arrays.copyOfRange(pikachu, pos, pos + FRAME));
             speech.endUtterance();

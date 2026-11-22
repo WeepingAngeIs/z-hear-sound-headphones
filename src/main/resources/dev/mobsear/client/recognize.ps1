@@ -1,9 +1,21 @@
 # The local binary pipe carries a bounded grammar followed by short PCM clips.
-# Only a readiness byte and one unsigned 16-bit decision per request leave the worker.
+# Startup progress and decisions use fixed bytes. No transcribed words leave this worker.
 $ErrorActionPreference = 'Stop'
 $engine = $null
 $pronouncer = $null
 try {
+    $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
+    $output = [Console]::OpenStandardOutput()
+    $tracked = $env:MOBSEAR_STARTUP_STEPS -eq '1'
+    function Send-StartupStep([byte]$step) {
+        if ($tracked) { $output.WriteByte($step); $output.Flush() }
+    }
+    Send-StartupStep 81
+    $size = $reader.ReadInt32()
+    if ($size -le 0 -or $size -gt 8388608) { exit 3 }
+    $vocabulary = $reader.ReadBytes($size)
+    if ($vocabulary.Length -ne $size) { exit 3 }
+    Send-StartupStep 71
     Add-Type -AssemblyName System.Speech
     $english = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() |
         Where-Object {
@@ -14,12 +26,7 @@ try {
     $engine = [System.Speech.Recognition.SpeechRecognitionEngine]::new($english)
     # Disable acoustic adaptation on this in-process engine only.
     $engine.UpdateRecognizerSetting('AdaptationOn', [int]0)
-
-    $reader = [System.IO.BinaryReader]::new([Console]::OpenStandardInput())
-    $size = $reader.ReadInt32()
-    if ($size -le 0 -or $size -gt 8388608) { exit 3 }
-    $vocabulary = $reader.ReadBytes($size)
-    if ($vocabulary.Length -ne $size) { exit 3 }
+    Send-StartupStep 69
     $aliases = @{}
     $confirm = @{}
     $wordBreaks = @{}
@@ -54,6 +61,7 @@ try {
     # The background vocabulary can reject ordinary speech. No transcript leaves this process.
     $background = [System.Speech.Recognition.DictationGrammar]::new()
     $engine.LoadGrammar($background)
+    Send-StartupStep 76
 
     if ($english.Culture.Name -eq 'en-US') {
         # Verify alternate pronunciations in a separate engine so they cannot displace
@@ -111,7 +119,6 @@ try {
     $null = $engine.Recognize()
     $engine.SetInputToNull()
     $warmup.Dispose()
-    $output = [Console]::OpenStandardOutput()
     $output.WriteByte(82)
     $output.Flush()
     while ($true) {

@@ -360,6 +360,7 @@ public final class VoiceClient {
             if (suspended) {
                 monitor(false);
                 suspended = false;
+                speech.setInputPaused(false);
                 if (recognition) speech.setEnabled(true);
             }
             if (held == value && automatic == voiceActivation) return;
@@ -380,7 +381,7 @@ public final class VoiceClient {
             effects.reset();
             lastSpeaking = 0;
             audio.setTransmitting(false);
-            speech.setEnabled(false);
+            speech.setInputPaused(true);
             cue.set(null);
             frames.clear();
         }

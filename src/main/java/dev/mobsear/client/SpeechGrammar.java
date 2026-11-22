@@ -245,7 +245,11 @@ final class SpeechGrammar {
         });
         byte[] bytes = encoded.toString().getBytes(StandardCharsets.US_ASCII);
         output.writeInt(Integer.reverseBytes(bytes.length));
-        output.write(bytes);
         output.flush();
+        // A modpack registry can exceed the capacity of the Windows anonymous pipe.
+        for (int offset = 0; offset < bytes.length; offset += 2048) {
+            output.write(bytes, offset, Math.min(2048, bytes.length - offset));
+            output.flush();
+        }
     }
 }
