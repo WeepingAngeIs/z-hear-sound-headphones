@@ -112,10 +112,20 @@ public final class GlanceGameTests {
         var player = speaker(test, mob.position().add(0, 0, -blocks));
         player.setGameMode(mode);
         test.assertTrue(player.distanceToSqr(mob) == blocks * blocks, "Fixture changed hearing distance");
+        boolean heard = blocks <= 32 && mode == GameType.SURVIVAL;
+        int originalGoalCount = mob.goalSelector.getAvailableGoals().size();
         MobReactions.handle(player, cue, 32);
+        if (!heard) test.assertTrue(mob.goalSelector.getAvailableGoals().size() == originalGoalCount,
+                "An excluded call installed a listening goal");
         test.startSequence().thenExecuteAfter(10, () -> {
-            boolean heard = blocks <= 32 && mode == GameType.SURVIVAL;
-            facing(test, mob, heard ? player.getEyePosition() : forward, cue + " at " + blocks + " in " + mode);
+            String label = cue + " at " + blocks + " in " + mode;
+            if (heard) {
+                facing(test, mob, player.getEyePosition(), label);
+            } else {
+                // Ordinary idle AI may glance sideways; the excluded caller stands directly behind.
+                float error = Math.abs(Mth.wrapDegrees(mob.getYHeadRot() - yaw(mob, player.getEyePosition())));
+                test.assertTrue(error > 60, label + " turned toward the excluded caller, yaw error=" + error);
+            }
             calm(test, mob);
             mob.discard();
         });

@@ -65,7 +65,10 @@ public final class PokemonCaseClient {
         if (!installed) { FixtureSound.install(); installed=true; }
         mc.getToasts().clear();
         if (mc.player==null || mc.level==null) {
-            if (mc.screen!=null) waitFor(mc.screen.getClass().getSimpleName()+" / "+mc.screen.getTitle().getString());
+            if (mc.screen!=null) {
+                waitFor(mc.screen.getClass().getSimpleName()+" / "+mc.screen.getTitle().getString());
+                continueDisposableExperimentalWorld();
+            }
             return;
         }
         if ((!hello || caller) && !VoiceClient.connected()) { waitFor("voice session"); return; }
@@ -168,6 +171,23 @@ public final class PokemonCaseClient {
     private void waitFor(String reason) {
         if (!reason.equals(waiting)) System.out.println("POKEMON_CLIENT_WAIT " + reason);
         waiting=reason;
+    }
+    private void continueDisposableExperimentalWorld() {
+        if (!"true".equals(System.getenv("GITHUB_ACTIONS"))) return;
+        var root=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT")).resolve("solo").toAbsolutePath().normalize();
+        if (!mc.gameDirectory.toPath().toAbsolutePath().normalize().equals(root)) return;
+        String title=mc.screen.getTitle().getString();
+        if (!title.equals(Component.translatable("selectWorld.backupQuestion.experimental").getString())
+                && !title.equals(Component.translatable("selectWorld.experimental.title").getString())
+                && !title.equals(Component.translatable("selectWorld.warning.experimental.title").getString())) return;
+        var allowed=java.util.Set.of(Component.translatable("selectWorld.backupJoinSkipButton").getString(),
+                Component.translatable("gui.proceed").getString(),Component.translatable("gui.yes").getString());
+        for (var widget:mc.screen.children()) {
+            if (widget instanceof net.minecraft.client.gui.components.Button button && button.active && allowed.contains(button.getMessage().getString())) {
+                System.out.println("POKEMON_FIXTURE_CONTINUE public datapacks in disposable solo save");
+                button.onPress(); return;
+            }
+        }
     }
     private boolean recognizerReady() {
         // Inspect only the worker status; the acoustic run never writes the recognition result mailbox.
