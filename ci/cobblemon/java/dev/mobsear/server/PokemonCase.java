@@ -21,6 +21,11 @@ enum PokemonCase {
     boolean walking() { return this==WALKING_PIKACHU || this==WALKING_EEVEE; }
     boolean controlled() { return this == LOOK || this == APPROACH || this == BLOCKED; }
     boolean reusesSubject() { return this == COOLDOWN_HELD || this == COOLDOWN_EXPIRED; }
+    static PokemonCase[] requiredRegistryEntries() {
+        return "1".equals(System.getenv("MOBSEAR_POKEMON_PACK"))
+                ? new PokemonCase[]{PIKACHU,ADDON,NAMESPACE,PACK_FORM,PACK_CUSTOM}
+                : new PokemonCase[]{PIKACHU,ADDON,NAMESPACE};
+    }
     void checkTrackedForm(com.cobblemon.mod.common.entity.pokemon.PokemonEntity entity, String observer) {
         if (this!=PACK_FORM) return;
         var data=entity.getPokemon();

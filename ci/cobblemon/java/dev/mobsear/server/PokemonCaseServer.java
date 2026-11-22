@@ -61,7 +61,7 @@ final class PokemonCaseServer {
             if (arrivals.size() == (solo ? 1 : 2)) {
                 if (caller == null || viewer == null) throw PokemonProbe.fail("Missing genuine participants");
                 var world = caller.serverLevel();
-                for (var id : new PokemonCase[]{PokemonCase.PIKACHU, PokemonCase.ADDON, PokemonCase.NAMESPACE})
+                for (var id : PokemonCase.requiredRegistryEntries())
                     if (PokemonSpecies.getByIdentifier(id.species) == null) throw PokemonProbe.fail("Missing registry " + id.species);
                 world.setDayTime(1000);
                 world.setWeatherParameters(60000,0,false,false);

@@ -67,7 +67,7 @@ public final class PokemonCaseClient {
             }
             var connection=mc.getConnection();
             if (!connection.hasChannel(Packets.SpeciesCall.TYPE)) throw PokemonProbe.fail("Missing negotiated species channel");
-            for (var check:new PokemonCase[]{PokemonCase.PIKACHU,PokemonCase.ADDON,PokemonCase.NAMESPACE})
+            for (var check:PokemonCase.requiredRegistryEntries())
                 if (PokemonSpecies.getByIdentifier(check.species)==null) {
                     waitFor("synced species " + check.species); return;
                 }
