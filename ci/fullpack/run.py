@@ -186,7 +186,7 @@ def run():
                     if message.startswith("ACOUSTIC_COMPLETE "):
                         count=2 if earlier else 13 if os.environ.get("MOBSEAR_TEST_FEEDBACK")=="1" else 11 if os.environ.get("MOBSEAR_EXTRA_NAMES")=="1" else 6
                         if os.environ.get("MOBSEAR_TEST_VISIT")=="1":
-                            count+=1
+                            count+=3
                         assert len(observations)==count
                         if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
                             assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)

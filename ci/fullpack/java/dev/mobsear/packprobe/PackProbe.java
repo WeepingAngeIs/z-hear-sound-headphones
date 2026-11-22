@@ -77,7 +77,11 @@ public final class PackProbe {
                 cases.add(new Trial("Lopunny",16,false,false,false,"hold-on",false));
             }
         }
-        if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
+        if (testVisit) {
+            cases.add(new Trial("Pikachu",12,false,true,true));
+            cases.add(new Trial("Pikachu",12,false,true,true));
+            cases.add(new Trial("Lopunny",16,false,true,true));
+        }
         return cases.toArray(Trial[]::new);
     }
     static final class Observation {
@@ -88,6 +92,7 @@ public final class PackProbe {
         final boolean visitTrial;
         CalledPokemonVisit visit; // Server-thread observer, after native navigation becomes available.
         int arrangeTicks, lastWanderTick, activeSamples;
+        boolean wasActive;
         volatile double serverBestAngle=180;
         volatile String lastNativeState="";
         volatile boolean primed, beside, finished;
@@ -181,8 +186,9 @@ public final class PackProbe {
                         level.setBlockAndUpdate(new BlockPos(-5,y,z), Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
                 }
                 var t = tests[index];
-                // Keep ordinary Pokémon calls in their waking daytime and Endermen in the same night fixture.
-                level.setDayTime(t.name.equals("Enderman") ? 18000 : 1000);
+                // Exercise Pikachu repeatedly at night as well as during daytime.
+                boolean nightPikachu=testVisit && index>=tests.length-3 && index<tests.length-1;
+                level.setDayTime(t.name.equals("Enderman") || nightPikachu ? 18000 : 1000);
                 boolean visitTrial=testVisit && index==tests.length-1;
                 if (visitTrial) {
                     for (int x=-3; x<=19; x++) for (int z=-2; z<=25; z++) {
@@ -270,8 +276,14 @@ public final class PackProbe {
                     double yaw=Math.toDegrees(Math.atan2(p.getZ()-o.subject.getZ(),p.getX()-o.subject.getX()))-90;
                     o.serverBestAngle=Math.min(o.serverBestAngle,Math.abs(Mth.wrapDegrees(o.subject.getYHeadRot()-yaw)));
                 }
-                if (o.subject instanceof PokemonEntity pokemon && (active && o.activeSamples==1 || tick%10==0))
-                    o.lastNativeState=nativeState(pokemon);
+                if (o.subject instanceof PokemonEntity pokemon) {
+                    if (active!=o.wasActive) {
+                        o.lastNativeState=nativeState(pokemon);
+                        System.out.println("ACOUSTIC_POKEMON_STATE trial="+o.number+" active="+active+" samples="+o.activeSamples+
+                                " bestServerAngle="+Math.round(o.serverBestAngle)+" dayTime="+p.serverLevel().getDayTime()+" "+o.lastNativeState);
+                    } else if (tick%10==0) o.lastNativeState=nativeState(pokemon);
+                    o.wasActive=active;
+                }
             }
         } catch (Exception ex) { fail(ex); }
     }
