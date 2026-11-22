@@ -42,6 +42,7 @@ public final class PackProbe {
         Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
+        boolean spokenName() { return !Set.of("hold-on", "fan", "silence").contains(recording); }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
     private final Trial[] tests = trials();
@@ -58,6 +59,8 @@ public final class PackProbe {
         if ("1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"))) {
             cases.add(new Trial("Enderman",24,false,true,true,"enderman-alternate"));
             cases.add(new Trial("Lopunny",16,false,true,false,"lopunny-alternate"));
+            for (String negative : List.of("hold-on","fan","silence"))
+                cases.add(new Trial("Pikachu",12,false,false,false,negative));
         }
         return cases.toArray(Trial[]::new);
     }
@@ -72,7 +75,8 @@ public final class PackProbe {
         boolean recognized, dispatched, confirmed, notice, facedAway, screenshot;
         int aligned, postAckTicks;
         double initialError = -1, closestError = 180;
-        long initialRequest, startedAt, seenAt;
+        long initialRequest, startedAt, seenAt, initialDecision;
+        Boundary.Decision decision;
         long matchedAt, dispatchedAt, turnedAt;
         volatile long acceptedAt;
         final ConcurrentLinkedQueue<byte[]> segments = new ConcurrentLinkedQueue<>();
@@ -282,13 +286,15 @@ public final class PackProbe {
                     o.initialError=err;
                     if (earlier) mc.gui.setOverlayMessage(Component.empty(),false);
                     else o.initialRequest=(long)Boundary.get(Boundary.client(),"lastRequestId");
+                    var prior=Boundary.decision();
+                    o.initialDecision=prior==null ? 0 : prior.number();
                     o.startedAt=System.nanoTime();
                     o.started=true;
                     System.out.println("ACOUSTIC_PLAY sample="+o.test.recording);
                     Boundary.say(Files.readAllBytes(home.resolve("synth").resolve(o.test.recording+".pcm")));
                     return;
                 }
-                if (earlier ? o.acceptedCue : o.confirmed) {
+                if (o.acceptedCue || o.confirmed) {
                     o.postAckTicks++;
                     o.closestError=Math.min(o.closestError,err);
                     if (err<=30) {
@@ -298,6 +304,8 @@ public final class PackProbe {
                 }
             }
             if (!o.started) return;
+            var observed=Boundary.decision();
+            if (observed!=null && observed.number()>o.initialDecision) o.decision=observed;
             if (earlier) {
                 var text=(Component)Boundary.field(net.minecraft.client.gui.Gui.class,"overlayMessageString").get(mc.gui);
                 var originalNotice=Component.translatable("mobsear.speech.recognized",Component.translatable("entity.minecraft.enderman"));
@@ -321,7 +329,8 @@ public final class PackProbe {
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
             if (elapsed<6_000_000_000L && !(o.test.hears && (earlier ? o.recognized : o.notice) && o.aligned>=2 && o.reaction)) return;
-            boolean capture=Boundary.consumed() && Boundary.nonzeroFrames>=2;
+            boolean silent=o.test.recording.equals("silence");
+            boolean capture=Boundary.consumed() && (silent ? Boundary.nonzeroFrames==0 : Boundary.nonzeroFrames>=2);
             int segments=0;
             byte[] generated;
             while ((generated=o.segments.poll())!=null) {
@@ -330,8 +339,13 @@ public final class PackProbe {
                 Files.write(folder.resolve(o.number+"_"+o.test.recording+"_"+segments++ +".pcm"),generated);
             }
             System.out.println("ACOUSTIC_SEGMENTS sample="+o.test.recording+" submitted="+segments);
-            boolean expectWire=!o.test.creative;
-            boolean success=capture && o.wireAudio && o.recognized && o.dispatched==expectWire && o.acceptedCue==expectWire
+            if (o.decision!=null) System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording
+                    +" matched="+o.decision.matched()+" timely="+o.decision.timely()+" decoderAgeMs="+o.decision.ageMillis());
+            else System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording+" returned=false");
+            boolean expectWire=o.test.spokenName() && !o.test.creative;
+            boolean correctDecision=o.test.spokenName() || (silent ? o.decision==null : o.decision!=null && !o.decision.matched() && o.decision.timely());
+            boolean success=capture && o.wireAudio!=silent && o.recognized==o.test.spokenName() && correctDecision
+                    && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2));
             System.out.println("ACOUSTIC_LATENCY "+o.test.recording+" lastVoicedToMatchMs="+milliseconds(Boundary.lastSignalAt,o.matchedAt)

@@ -42,6 +42,24 @@ final class Boundary {
         return method.invoke(worker).toString();
     }
 
+    record Decision(long number, boolean matched, boolean timely, long ageMillis) {}
+
+    static Decision decision() throws ReflectiveOperationException {
+        var speech = get(get(client(), "session"), "speech");
+        java.lang.reflect.Method accessor;
+        try {
+            accessor = speech.getClass().getMethod("lastDecision");
+        } catch (NoSuchMethodException previousVersion) {
+            return null;
+        }
+        var result = accessor.invoke(speech);
+        if (result == null) return null;
+        var type = result.getClass();
+        return new Decision((long) type.getMethod("number").invoke(result),
+                (boolean) type.getMethod("matched").invoke(result), (boolean) type.getMethod("timely").invoke(result),
+                (long) type.getMethod("ageMillis").invoke(result));
+    }
+
     static Process desktopProcess() throws ReflectiveOperationException {
         var speech = get(get(client(), "session"), "speech");
         synchronized (speech) {

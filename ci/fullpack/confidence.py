@@ -1,5 +1,4 @@
 """Compare only generated sound, reporting confidence and timing without transcription."""
-import math
 from difflib import SequenceMatcher
 import os
 from pathlib import Path
@@ -23,9 +22,8 @@ def compare(root):
     rows=public[4:].decode("ascii").splitlines()
     small=[row for row in rows if row.split(":")[2] in old]
     samples={name:(root/"synth"/(name+".pcm")).read_bytes() for name in
-             ("enderman","enderman-alternate","pikachu","lopunny","lopunny-alternate","hold-on")}
-    samples["silence"]=bytes(32000)
-    samples["fan"]=b"".join(struct.pack("<h",round(300*math.sin(2*math.pi*100*i/16000))) for i in range(16000))+bytes(6400)
+             ("enderman","enderman-alternate","pikachu","lopunny","lopunny-alternate","hold-on","silence","fan")}
+    controls={"silence","fan","hold-on"}
     targets={name:name.removesuffix("-alternate") for name in samples}
     for file in sorted((root/"segments").glob("*.pcm")):
         _,source,index=file.stem.split("_")
@@ -52,7 +50,7 @@ def compare(root):
             expected={row.split(":")[2]:int(row.split(":")[0]) for row in registry}
             encoded=("\n".join(registry)+"\n").encode("ascii")
             data=bytearray(struct.pack("<I",len(encoded))+encoded)
-        names=[name for name in samples if targets[name] in expected or name in ("silence","fan","hold-on")]
+        names=[name for name in samples if targets[name] in expected or targets[name] in controls]
         with ZipFile(mod) as jar:
             script=jar.read("dev/mobsear/client/recognize.ps1").decode("utf8").replace("\r\n","\n")
         # Only the generated-test copy gets these stderr probes. No result text is printed.
@@ -94,5 +92,5 @@ $clipNumber=0
             key=targets[name]
             matched=code==expected.get(key,0)
             print(f"ACOUSTIC_CALIBRATION {label} sample={name} expectedDecision={matched}",flush=True)
-            if name in ("silence","fan","hold-on") and label=="corrected-full" and not matched:
+            if key in controls and label=="corrected-full" and not matched:
                 raise AssertionError("Corrected decoder triggered on a negative control")

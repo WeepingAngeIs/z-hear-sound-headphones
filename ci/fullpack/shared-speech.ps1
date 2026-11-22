@@ -35,3 +35,11 @@ foreach ($pair in @(@('ender-unstressed','enderman-alternate'),@('low-punny','lo
     [IO.File]::WriteAllBytes((Join-Path $Destination ($pair[1]+'.pcm')),$padded)
     Write-Output ("Generated " + $pair[1] + " with " + $row.Voice)
 }
+$silence = [byte[]]::new(32000)
+[IO.File]::WriteAllBytes((Join-Path $Destination 'silence.pcm'), $silence)
+$fan = [byte[]]::new(32000 + 6400)
+for ($i = 0; $i -lt 16000; $i++) {
+    $sample = [int16][Math]::Round(300 * [Math]::Sin(2 * [Math]::PI * 100 * $i / 16000))
+    [BitConverter]::GetBytes($sample).CopyTo($fan, 2 * $i)
+}
+[IO.File]::WriteAllBytes((Join-Path $Destination 'fan.pcm'), $fan)

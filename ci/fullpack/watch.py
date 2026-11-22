@@ -29,4 +29,4 @@ report="\n".join(markers)+"\n"
 (root/"boot-progress.txt").write_text(report,encoding="utf8")
 print(report,flush=True)
 if sys.argv[1]=="finish" and (not done.is_file() or done.read_text(encoding="ascii")!="success"):
-    raise SystemExit("The production client did not complete all six generated calls")
+    raise SystemExit("The production client did not pass every generated trial")
