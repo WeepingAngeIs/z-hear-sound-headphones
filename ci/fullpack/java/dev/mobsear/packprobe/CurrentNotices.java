@@ -11,6 +11,7 @@ final class CurrentNotices {
         var link=Minecraft.getInstance().getConnection();
         if (!link.hasChannel(Packets.Heard.TYPE) || !link.hasChannel(Packets.CallRequest.TYPE))
             throw new IllegalStateException("Production request and reply channels missing");
+        if (VoiceClient.options().recognitionDiagnostics()) throw new IllegalStateException("A new tester was already opted in");
         VoiceClient.options().setRecognitionDiagnostics(true);
         var original=MobsEar.callHeard;
         MobsEar.callHeard=reply -> {

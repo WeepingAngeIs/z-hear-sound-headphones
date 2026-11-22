@@ -13,7 +13,7 @@ def compare(root):
         raise RuntimeError("Hosted Windows only")
     earlier=root/"mobsear-0.2.1.jar"
     installed=root/"mobsear-0.3.1.jar"
-    corrected=root/"candidate/mobsear-0.3.2.jar"
+    corrected,=(root/"candidate").glob("mobsear-*.jar")
     labels=subprocess.check_output([str(Path(os.environ["JAVA_HOME"])/"bin/java.exe"),"--class-path",str(earlier),
         str(Path(__file__).with_name("LegacyLabels.java"))],text=True,timeout=30)
     old={row.split(":")[1]:int(row.split(":")[0]) for row in labels.split("|")}

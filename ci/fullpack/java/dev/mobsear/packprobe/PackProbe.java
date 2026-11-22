@@ -9,6 +9,7 @@ import dev.mobsear.server.ServerVoice;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,14 +41,19 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Observes an unmodified production JAR in one genuine, disposable integrated server. */
 @Mod(value="acoustic_pack_probe", dist=Dist.CLIENT)
 public final class PackProbe {
-    record Trial(String name, int range, boolean creative, boolean hears, boolean openMic, String recording) {
+    record Trial(String name, int range, boolean creative, boolean hears, boolean openMic, String recording, boolean detail) {
+        Trial(String name, int range, boolean creative, boolean hears, boolean openMic, String recording) {
+            this(name,range,creative,hears,openMic,recording,true);
+        }
         Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
         boolean spokenName() { return !Set.of("hold-on", "fan", "silence").contains(recording); }
+        String expectedName() { return recording.equals("pikachu") ? "Pikachu" : name; }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
     private final boolean measuredDecisions = "1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"));
+    private final boolean testFeedback = "1".equals(System.getenv("MOBSEAR_TEST_FEEDBACK"));
     private final Trial[] tests = trials();
 
     private Trial[] trials() {
@@ -64,6 +70,10 @@ public final class PackProbe {
             cases.add(new Trial("Lopunny",16,false,true,false,"lopunny-alternate"));
             for (String negative : List.of("hold-on","fan","silence"))
                 cases.add(new Trial("Pikachu",12,false,false,false,negative));
+            if (testFeedback) {
+                cases.add(new Trial("Lopunny",16,false,false,false,"pikachu"));
+                cases.add(new Trial("Lopunny",16,false,false,false,"hold-on",false));
+            }
         }
         return cases.toArray(Trial[]::new);
     }
@@ -76,6 +86,7 @@ public final class PackProbe {
         volatile double callDistance = -1;
         volatile boolean started;
         boolean recognized, dispatched, confirmed, notice, facedAway, screenshot;
+        boolean anyReply, listening, checking, guess, noMatch, privateText, waiting;
         int aligned, postAckTicks, renderedNoticeFrames;
         double initialError = -1, closestError = 180;
         long initialRequest, startedAt, seenAt, initialDecision;
@@ -99,6 +110,10 @@ public final class PackProbe {
     private Process desktop;
     private final PackOnboarding onboarding=new PackOnboarding();
     private final Path home = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"));
+    private final Set<String> testPreviews = new HashSet<>();
+    private boolean observedListening, observedChecking;
+    private String previousPreview = "";
+    private int previewFrames;
 
     public PackProbe() {
         if (!"true".equals(System.getenv("GITHUB_ACTIONS"))) throw new IllegalStateException("Hosted fixture only");
@@ -291,6 +306,7 @@ public final class PackProbe {
                 if (!o.started) {
                     if (o.seenAt==0) o.seenAt=System.nanoTime();
                     if (err>60) o.facedAway=true;
+                    if (testFeedback) VoiceClient.options().setRecognitionDiagnostics(o.test.detail);
                     VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
@@ -324,9 +340,23 @@ public final class PackProbe {
                 o.dispatched |= o.acceptedCue;
             } else {
                 boolean newMatch=!measuredDecisions || o.decision!=null && o.decision.matched() && o.decision.timely();
-                o.recognized |= newMatch && Boundary.notice("localMatch").contains(o.test.name);
+                o.recognized |= newMatch && Boundary.notice("localMatch").contains(o.test.expectedName());
                 o.notice |= o.confirmed && Boundary.notice("current").equals(o.test.name + " heard you");
                 o.dispatched |= (long)Boundary.get(Boundary.client(),"lastRequestId") > o.initialRequest;
+                if (testFeedback) {
+                    String key=Boundary.noticeKey("localMatch");
+                    o.listening |= key.equals("mobsear.speech.test_listening");
+                    o.checking |= key.equals("mobsear.speech.test_checking");
+                    String prompt=Boundary.promptKey();
+                    o.waiting |= prompt.equals("mobsear.speech.test_wait") && Boundary.notice("current").isEmpty();
+                    o.privateText |= !key.isEmpty() || !prompt.isEmpty();
+                    observedListening |= o.listening;
+                    observedChecking |= o.checking;
+                    if (o.decision!=null) {
+                        o.guess |= key.equals("mobsear.speech.test_guess");
+                        o.noMatch |= key.equals("mobsear.speech.no_match");
+                    }
+                }
             }
             if (o.recognized && o.matchedAt==0) o.matchedAt=System.nanoTime();
             if (o.dispatched && o.dispatchedAt==0) o.dispatchedAt=System.nanoTime();
@@ -353,6 +383,17 @@ public final class PackProbe {
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot)));
+            if (testFeedback) {
+                boolean detailOk=!o.test.detail ? !o.privateText : switch(o.test.recording) {
+                    case "hold-on" -> o.guess;
+                    case "fan" -> o.noMatch;
+                    case "silence" -> o.waiting && !o.listening && !o.checking;
+                    default -> o.recognized;
+                };
+                success &= detailOk && o.anyReply==o.test.hears;
+                System.out.printf("ACOUSTIC_TEST_FEEDBACK %d enabled=%s sample=%s nearby=%s listening=%s checking=%s localName=%s rejectedGuess=%s noMatch=%s waiting=%s serverReply=%s passed=%s%n",
+                        o.number,o.test.detail,o.test.recording,o.test.name,o.listening,o.checking,o.recognized,o.guess,o.noMatch,o.waiting,o.anyReply,detailOk);
+            }
             System.out.println("ACOUSTIC_LATENCY "+o.test.recording+" lastVoicedToMatchMs="+milliseconds(Boundary.lastSignalAt,o.matchedAt)
                     +" inputToDispatchMs="+milliseconds(o.startedAt,o.dispatchedAt)+" inputToServerMs="+milliseconds(o.startedAt,o.acceptedAt)
                     +" inputToTurnMs="+milliseconds(o.startedAt,o.turnedAt));
@@ -364,6 +405,7 @@ public final class PackProbe {
             if (!success) failures++;
             if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(false);
             if (o.number+1==tests.length) {
+                if (testFeedback && !(observedListening && observedChecking)) failures++;
                 System.out.println("ACOUSTIC_COMPLETE trials="+tests.length+" failed="+failures);
                 complete=true;
             } else next=true;
@@ -373,6 +415,9 @@ public final class PackProbe {
     private void render(RenderFrameEvent.Post event) {
         var o=current;
         var mc=Minecraft.getInstance();
+        if (testFeedback && o!=null && o.started && !next && !fatal && !complete && mc.screen==null && mc.getOverlay()==null) {
+            try { captureTestPreview(mc,o); } catch (Exception ex) { fail(ex); }
+        }
         if (fatal || complete || next || o==null || o.screenshot || !o.confirmed || !o.notice || o.aligned<2
                 || mc.screen!=null || mc.getOverlay()!=null) return;
         try {
@@ -398,6 +443,27 @@ public final class PackProbe {
         } catch (Exception ex) { fail(ex); }
     }
 
+    private void captureTestPreview(Minecraft mc, Observation o) throws Exception {
+        String key=Boundary.noticeKey("current");
+        String label=switch (key) {
+            case "mobsear.speech.test_listening" -> "listening";
+            case "mobsear.speech.test_checking" -> "checking";
+            case "mobsear.speech.test_guess" -> o.guess ? "rejected-guess" : "";
+            case "mobsear.speech.no_match" -> o.noMatch ? "no-match" : "";
+            case "mobsear.speech.recognized" -> o.recognized && !o.test.name.equals(o.test.expectedName()) ? "other-name" : "";
+            default -> o.test.recording.equals("silence") && key.isEmpty()
+                    && Boundary.promptKey().equals("mobsear.speech.test_wait") ? "waiting" : "";
+        };
+        if (!previousPreview.equals(label)) { previousPreview=label; previewFrames=0; }
+        if (label.isEmpty() || testPreviews.contains(label) || ++previewFrames<2) return;
+        try (var image=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+            var folder=Files.createDirectories(home.resolve("evidence"));
+            image.writeToFile(folder.resolve("test-"+label+".png"));
+        }
+        testPreviews.add(label);
+        System.out.println("ACOUSTIC_TEST_PREVIEW "+label);
+    }
+
     private static long milliseconds(long start,long end) {
         return start==0 || end==0 ? -1 : (end-start)/1_000_000L;
     }
@@ -405,6 +471,7 @@ public final class PackProbe {
     void heard(long request, String id, boolean species) {
         var o=current;
         if (o==null || !o.started || request<=o.initialRequest) return;
+        o.anyReply=true;
         String expected=(o.test.name.equals("Enderman") ? "minecraft:" : "cobblemon:")+o.test.name.toLowerCase(Locale.ROOT);
         if (id.equals(expected) && species==!o.test.name.equals("Enderman")) o.confirmed=true;
     }

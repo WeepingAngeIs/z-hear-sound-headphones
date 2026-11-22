@@ -102,7 +102,7 @@ def run():
         print("ACOUSTIC_EARLIER original packaged 0.2.1",flush=True)
     if build or digest:
         assert build.isdigit() and re.fullmatch(r"[0-9a-f]{64}",digest)
-        checked=root/"candidate/mobsear-0.3.2.jar"
+        checked,=(root/"candidate").glob("mobsear-*.jar")
         assert hashlib.sha256(checked.read_bytes()).hexdigest()==digest, "Different candidate binary"
         with ZipFile(checked) as jar:
             assert not any("Fixture" in name or "/smoke/" in name or "packprobe" in name for name in jar.namelist())
@@ -182,7 +182,7 @@ def run():
                     if message.startswith("ACOUSTIC_RESULT "):
                         observations.append(message)
                     if message.startswith("ACOUSTIC_COMPLETE "):
-                        count=2 if earlier else 11 if os.environ.get("MOBSEAR_EXTRA_NAMES")=="1" else 6
+                        count=2 if earlier else 13 if os.environ.get("MOBSEAR_TEST_FEEDBACK")=="1" else 11 if os.environ.get("MOBSEAR_EXTRA_NAMES")=="1" else 6
                         assert len(observations)==count
                         if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
                             assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)

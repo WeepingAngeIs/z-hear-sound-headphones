@@ -120,6 +120,22 @@ final class Boundary {
         return component == null ? "" : component.getString();
     }
 
+    static String noticeKey(String accessor) throws ReflectiveOperationException {
+        var method = Class.forName("dev.mobsear.client.MobCallNotice").getDeclaredMethod(accessor);
+        method.setAccessible(true);
+        var component = (Component) method.invoke(null);
+        return component != null && component.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text
+                ? text.getKey() : "";
+    }
+
+    static String promptKey() throws ReflectiveOperationException {
+        var method = VoiceClient.class.getDeclaredMethod("speechTestPrompt");
+        method.setAccessible(true);
+        var component = (Component) method.invoke(null);
+        return component != null && component.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text
+                ? text.getKey() : "";
+    }
+
     static void install() throws ReflectiveOperationException {
         var deviceType = Class.forName("dev.mobsear.client.VoiceDevices");
         var factoryType = Class.forName("dev.mobsear.client.VoiceDevices$DefaultLine");
