@@ -52,7 +52,7 @@ def seed_world():
         try:
             for line in process.stdout:
                 if "Done (" in line:
-                    process.stdin.write("stop\n")
+                    process.stdin.write("gamerule spawnChunkRadius 0\nstop\n")
                     process.stdin.flush()
                     break
             process.communicate(timeout=80)
@@ -63,6 +63,26 @@ def seed_world():
     (game / "saves").mkdir(exist_ok=True)
     shutil.move(seed/world,game/"saves"/world)
     print("Fresh flat Survival save created by official Minecraft 1.21.1; hosted integrated server opens it", flush=True)
+
+
+def progress_snapshot(pid):
+    # White-list stack frames and heap sizes. Launcher arguments, player data and speech never enter the report.
+    jcmd=str(Path(java).with_name("jcmd.exe"))
+    for action in ("GC.heap_info","Thread.print"):
+        try:
+            result=subprocess.run([jcmd,str(pid),action],capture_output=True,text=True,errors="replace",timeout=18)
+        except (OSError,subprocess.TimeoutExpired):
+            print("ACOUSTIC_BOOT_DIAGNOSTIC unavailable",action,flush=True)
+            continue
+        if action=="GC.heap_info":
+            for line in result.stdout.splitlines():
+                if "heap" in line and "used" in line: print("ACOUSTIC_HEAP",line.strip()[:125],flush=True)
+            continue
+        for block in re.split(r"\r?\n\r?\n",result.stdout):
+            first=block.splitlines()[0] if block else ""
+            if not first.startswith(('"Server thread"','"Render thread"')): continue
+            frames=re.findall(r"(?m)^\s+at ([\w@.$/+:-]+)\(",block)[:24]
+            print("ACOUSTIC_BOOT_THREAD",first.split('"')[1]," | ".join(frames),flush=True)
 
 
 def run():
@@ -96,6 +116,7 @@ def run():
         stop=threading.Event()
         def monitor():
             start=time.monotonic()
+            sampled=set()
             while not stop.wait(8):
                 crash=next((game/"crash-reports").glob("crash-*.txt"),None)
                 if crash:
@@ -105,8 +126,13 @@ def run():
                             print(line.strip()[:330],flush=True)
                     process.kill()
                     return
-                if time.monotonic()-start>1500:
-                    print("Hosted client reached the 25 minute in-game deadline",flush=True)
+                age=int(time.monotonic()-start)
+                for minute in (4,8,14,22,29):
+                    if age>=minute*60 and minute not in sampled:
+                        sampled.add(minute)
+                        progress_snapshot(process.pid)
+                if age>1920:
+                    print("Hosted client reached the 32 minute in-game deadline",flush=True)
                     process.kill()
                     return
         watcher=threading.Thread(target=monitor,daemon=True)
@@ -120,7 +146,8 @@ def run():
                         assert re.fullmatch(r"ACOUSTIC_COMPLETE trials=6 failed=0",message), "One or more acoustic trials failed"
                         return
                     if message.startswith("ACOUSTIC_FATAL "): raise RuntimeError(message[:600])
-                elif any(x in line for x in ("Starting integrated minecraft server", "Initializing Minecraft", "Loading Minecraft", "OpenGL Version")):
+                elif any(x in line for x in ("Starting integrated minecraft server", "Initializing Minecraft", "Loading Minecraft",
+                                             "OpenGL Version", "Preparing start region", "Preparing spawn area", "Time elapsed:")):
                     print(line.strip()[:330], flush=True)
                 elif any(x in line for x in ("Caused by:", "Exception in thread", "Error occurred during", "Error: Could not", "LoadingFailedException")):
                     recent.append(line.strip()[:400])

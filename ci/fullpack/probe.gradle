@@ -10,5 +10,12 @@ allprojects {
             archiveFileName = 'ci-acoustic-observer.jar'
             destinationDirectory = rootProject.layout.buildDirectory.dir('pack-probe')
         }
+        tasks.register('configtopiaPublicClasspath') {
+            dependsOn('createMinecraftArtifacts')
+            doLast {
+                def path = rootProject.layout.buildDirectory.file('public-configtopia-classpath.txt').get().asFile
+                path.text = sourceSets.main.compileClasspath.asPath
+            }
+        }
     }
 }

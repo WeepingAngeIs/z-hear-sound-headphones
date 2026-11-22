@@ -169,7 +169,12 @@ public final class PackProbe {
             }
             clientTicks++;
             String screen = mc.screen == null ? "none" : mc.screen.getClass().getSimpleName();
-            if (!screen.equals(lastScreen)) { System.out.println("ACOUSTIC_SCREEN " + screen); lastScreen=screen; }
+            if (!screen.equals(lastScreen)) {
+                String key=mc.screen!=null && mc.screen.getTitle().getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t
+                        ? t.getKey() : "";
+                System.out.println("ACOUSTIC_SCREEN " + screen + " " + key);
+                lastScreen=screen;
+            }
             onboarding.tick(mc);
             if (mc.player==null) { continueWorld(mc); return; }
             if (mc.screen instanceof PauseScreen pause) pause.onClose();

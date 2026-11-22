@@ -62,8 +62,7 @@ def checked_file(row, dest):
     raise RuntimeError("No hash-matching public download for " + row["name"])
 
 
-def action_jar(row, mods):
-    repo, run, label, name, expected = row
+def action_member(repo, run, label, name, expected):
     url = f"https://api.github.com/repos/WeepingAngeIs/{repo}/actions/runs/{run}/artifacts?per_page=100"
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "MobsHearU-public-tests"}
     if os.getenv("ACTIONS_READ_TOKEN"):
@@ -89,7 +88,12 @@ def action_jar(row, mods):
         jar = archive.read(entries[0])
     if hashlib.sha256(jar).hexdigest() != expected:
         raise RuntimeError("Public artifact differs from the TEST binary: " + name)
-    (mods / name).write_bytes(jar)
+    return jar
+
+
+def action_jar(row, mods):
+    repo, run, label, name, expected = row
+    (mods / name).write_bytes(action_member(*row))
     print("EXACT_PUBLIC_ARTIFACT", repo, run, name, expected, flush=True)
 
 
@@ -110,7 +114,6 @@ def main():
     profile = public_json("profile.json")
     rows = [row for row in profile["mods"] if row["name"] not in OLD]
     assert len(rows) == 362
-    rows.append(CONFIGTOPIA)
     if args.focused:
         # These are the same two production dependencies shipped in the pack.
         rows = [r for r in rows if r["name"].lower().startswith(("cobblemon-neoforge-", "kotlinforforge-"))]
@@ -123,6 +126,14 @@ def main():
     if args.focused:
         print("FOCUSED: 3 exact production JARs", flush=True)
         return
+    from configtopia import reconstruct
+    cache = Path(os.environ["RUNNER_TEMP"]) / "public-configtopia-inputs"
+    cache.mkdir(exist_ok=True)
+    published = cache / CONFIGTOPIA["name"]
+    checked_file(CONFIGTOPIA, published)
+    candidate, description = reconstruct(published, cache, read_url, action_member)
+    import shutil
+    shutil.copyfile(candidate, mods / CONFIGTOPIA["name"])
     for row in profile["additional_packs"]:
         assert safe_name(row["path"]) and PurePosixPath(row["path"]).parts[0] in ROOTS
         checked_file(row, args.game / row["path"])
@@ -158,7 +169,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read("overrides/" + name))
     assert len(list(mods.glob("*.jar"))) == 366
-    print("PUBLIC RECONSTRUCTION: 365 exact JARs, one public Configtopia release (CurseForge 9708806);",
+    print("PUBLIC RECONSTRUCTION:", description,
           len(approved), "published override files and", len(profile["additional_packs"]), "pinned add-on packs", flush=True)
 
 
