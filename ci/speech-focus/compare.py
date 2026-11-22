@@ -27,3 +27,16 @@ for key, count in sorted(counts.items()):
     print('FOCUS_TOTAL', *key, count)
 if wrong:
     raise SystemExit('Wrong registered cue for generated fixtures: ' + str(wrong))
+
+for target in ('ENDERMAN', 'cobblemon:lopunny'):
+    old = sum(b['expected'] == b['actual'] == target for b in before)
+    new = sum(a['expected'] == a['actual'] == target for a in after)
+    print('FOCUS_ACCEPTANCE', target, 'baseline='+str(old), 'candidate='+str(new))
+    assert new >= old, 'Previously reliable name regressed: ' + target
+    for mode in ('ptt', 'activation'):
+        rows = [a for a in after if a['expected'] == target and a['mode'] == mode]
+        assert sum(a['actual'] == target for a in rows) >= len(rows) // 2, (target, mode)
+    for phrase in (('ender-stressed', 'ender-unstressed') if target == 'ENDERMAN' else ('lop-schwa', 'low-punny')):
+        assert counts['candidate', phrase, 'exact'] >= 2, 'Pronunciation lost: ' + phrase
+for neighbor in ('buneary', 'endermite', 'poponee', 'hoglin', 'zoglin'):
+    assert counts['candidate', neighbor, 'exact'] >= max(1, counts['baseline', neighbor, 'exact'] - 1), neighbor

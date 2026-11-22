@@ -2,6 +2,7 @@
 # Only a readiness byte and one unsigned 16-bit decision per request leave the worker.
 $ErrorActionPreference = 'Stop'
 $engine = $null
+$pronouncer = $null
 try {
     Add-Type -AssemblyName System.Speech
     $english = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() |
@@ -46,18 +47,29 @@ try {
     $builder = [System.Speech.Recognition.GrammarBuilder]::new()
     $builder.Culture = $english.Culture
     $builder.Append($phrases)
+    $calls = [System.Speech.Recognition.Grammar]::new($builder)
+    $calls.Name = 'mob call'
+    $calls.Priority = 1
+    $engine.LoadGrammar($calls)
+    # The background vocabulary can reject ordinary speech. No transcript leaves this process.
+    $background = [System.Speech.Recognition.DictationGrammar]::new()
+    $engine.LoadGrammar($background)
+
     if ($english.Culture.Name -eq 'en-US') {
-        # Fictional compound names have several pronunciations. Keep their written result,
-        # ID and confidence checks identical for all pronunciations of the same name.
+        # Verify alternate pronunciations in a separate engine so they cannot displace
+        # thousands of existing registry commands or change the original engine's confidence.
         $lexicon = [ordered]@{
             enderman = @('eh n d er m ae n', 'eh n d er m ax n')
             lopunny = @('l aa p ax n iy', 'l aa p ah n iy', 'l ow p ah n iy', 'l aa p b ah n iy')
+            hoglin = @('hh aa g l ih n', 'hh ao g l ih n')
+            zoglin = @('z aa g l ih n', 'z ao g l ih n')
         }
-        $document = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($builder)
-        $document.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
         $choice = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
-        $existing = [System.Speech.Recognition.SrgsGrammar.SrgsRuleRef]::new($document.Root)
-        $choice.Add([System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($existing))
+        # Keep near neighbors as separate alternatives alongside unconstrained dictation.
+        foreach ($neighbor in @('poponee', 'buneary', 'endermite', 'ender dragon', 'ender guardian',
+                'slender man', 'bunny', 'hold on', 'logged in', 'huddling', 'jogging')) {
+            $choice.Add([System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($neighbor))
+        }
         foreach ($name in $lexicon.Keys) {
             if (-not $aliases.ContainsKey($name) -or $aliases[$name] -eq 0) { continue }
             foreach ($phones in $lexicon[$name]) {
@@ -71,20 +83,17 @@ try {
                 }
             }
         }
-        $root = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('RegisteredCalls')
+        $root = [System.Speech.Recognition.SrgsGrammar.SrgsRule]::new('Pronunciations')
         $root.Add($choice)
-        $document.Rules.Add($root)
-        $document.Root = $root
-        $calls = [System.Speech.Recognition.Grammar]::new($document)
-    } else {
-        $calls = [System.Speech.Recognition.Grammar]::new($builder)
+        $document = [System.Speech.Recognition.SrgsGrammar.SrgsDocument]::new($root)
+        $document.Culture = $english.Culture
+        $document.PhoneticAlphabet = [System.Speech.Recognition.SrgsGrammar.SrgsPhoneticAlphabet]::Sapi
+        $pronounced = [System.Speech.Recognition.Grammar]::new($document)
+        $pronouncer = [System.Speech.Recognition.SpeechRecognitionEngine]::new($english)
+        $pronouncer.UpdateRecognizerSetting('AdaptationOn', [int]0)
+        $pronouncer.LoadGrammar($pronounced)
+        $pronouncer.LoadGrammar([System.Speech.Recognition.DictationGrammar]::new())
     }
-    $calls.Name = 'mob call'
-    $calls.Priority = 1
-    $engine.LoadGrammar($calls)
-    # The background vocabulary can reject ordinary speech. No transcript leaves this process.
-    $background = [System.Speech.Recognition.DictationGrammar]::new()
-    $engine.LoadGrammar($background)
 
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(
         16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,
@@ -183,6 +192,28 @@ try {
                     }
                 }
             }
+            # Check only rejections, the measured Poponee/Lopunny collision, and a positive Hoglin.
+            # Suppress unconfirmed Hoglin and conflicting species decisions during ordinary speech.
+            if ($null -ne $pronouncer -and ($decision -eq 0 -or $decision -eq $aliases['poponee'] -or $decision -eq $aliases['hoglin'])) {
+                $checkStream = [System.IO.MemoryStream]::new($pcm, $false)
+                try {
+                    $pronouncer.SetInputToAudioStream($checkStream, $format)
+                    $match = $pronouncer.Recognize()
+                    $name = if ($null -ne $match) { $match.Text.ToLowerInvariant() -replace '^(hey|call) ', '' } else { '' }
+                    $confident = $null -ne $match -and $match.Grammar -eq $pronounced -and $match.Confidence -ge 0.83
+                    if ($decision -eq $aliases['hoglin'] -and (-not $confident -or $name -ne 'hoglin')) {
+                        $decision = 0
+                    } elseif ($decision -eq 0 -and $confident -and $lexicon.Contains($name) -and $aliases.ContainsKey($name)) {
+                        $decision = $aliases[$name]
+                    } elseif ($decision -eq $aliases['poponee'] -and $confident -and $name -eq 'lopunny') {
+                        $decision = 0
+                    }
+                } finally {
+                    $pronouncer.SetInputToNull()
+                    $checkStream.Dispose()
+                    $match = $null
+                }
+            }
         } finally {
             $engine.SetInputToNull()
             $stream.Dispose()
@@ -197,4 +228,5 @@ try {
     exit 1
 } finally {
     if ($null -ne $engine) { $engine.Dispose() }
+    if ($null -ne $pronouncer) { $pronouncer.Dispose() }
 }
