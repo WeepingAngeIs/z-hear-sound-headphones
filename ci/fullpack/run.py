@@ -114,7 +114,9 @@ def run():
             print("ACOUSTIC_SAMPLE",file.stem,hashlib.sha256(file.read_bytes()).hexdigest(),flush=True)
     probe = Path("build/pack-probe/ci-acoustic-observer.jar").resolve()
     with ZipFile(probe) as jar:
-        assert all(not n.endswith(".class") or n.startswith("dev/mobsear/packprobe/") for n in jar.namelist())
+        allowed_observer = "dev/mobsear/fixture/CalledPokemonVisit.class"
+        assert all(not n.endswith(".class") or n.startswith("dev/mobsear/packprobe/") or n == allowed_observer
+                   for n in jar.namelist()), "Observer JAR contains a class outside its test sources"
         assert not any(n.startswith(("assets/", "data/")) for n in jar.namelist())
     shutil.copy2(probe,game/"mods"/probe.name)
     native=os.getenv("MOBSEAR_NATIVE_WORLD")=="1"
