@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
-          java-version: '21.0.9+10'
+          java-version: '21'
           cache: gradle
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -52,6 +52,12 @@ jobs:
         env:
           ACTIONS_READ_TOKEN: ${{ github.token }}
         run: python ci/fullpack/stage.py "${{ runner.temp }}/hearing-windows/game" ${{ matrix.profile == 'focused-control' && '--focused' || '' }}
+      - name: Save the checksum comparison only
+        if: matrix.profile == 'public-pack'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-pack-checksums
+          path: ${{ runner.temp }}/public-pack-checksums.json
       - name: Play generated speech in disposable Survival and Creative
         run: python ci/fullpack/run.py
       - name: Save generated-game views only

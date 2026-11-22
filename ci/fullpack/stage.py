@@ -169,6 +169,11 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read("overrides/" + name))
     assert len(list(mods.glob("*.jar"))) == 366
+    proof={"profile":description,"modCount":366,"verifiedPublicBaseMods":362,
+           "publicActionsJars":{row[3]:row[4] for row in ARTIFACTS},
+           "configtopiaSha256":hashlib.sha256((mods/CONFIGTOPIA["name"]).read_bytes()).hexdigest(),
+           "publishedOverrides":len(approved)+len(variants),"separatePacks":len(profile["additional_packs"])}
+    (Path(os.environ["RUNNER_TEMP"])/"public-pack-checksums.json").write_text(json.dumps(proof,indent=2),encoding="utf-8")
     print("PUBLIC RECONSTRUCTION:", description,
           len(approved), "published override files and", len(profile["additional_packs"]), "pinned add-on packs", flush=True)
 

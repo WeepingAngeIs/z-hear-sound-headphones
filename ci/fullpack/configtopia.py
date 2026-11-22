@@ -53,7 +53,12 @@ def reconstruct(published, cache, fetch, member):
           "-d",str(classes),*map(str,sources)]
     arguments=cache/"compile-args.txt"
     arguments.write_text("\n".join('"'+arg.replace("\\","/")+'"' for arg in args),encoding="utf-8")
-    javac=Path(os.environ["JAVA_HOME"])/"bin/javac.exe"
+    archive=fetch("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.9%2B10/OpenJDK21U-jdk_x64_windows_hotspot_21.0.9_10.zip")
+    assert sha256(archive).hexdigest()=="1c67df516e9795c0b09f5714bfe151da2e3cc988082042f5bbb60d75e4e63fb5"
+    with ZipFile(BytesIO(archive)) as zip_jdk:
+        zip_jdk.extractall(cache/"compiler")
+    del archive
+    javac,=(cache/"compiler").glob("*/bin/javac.exe")
     status=subprocess.run([str(javac),"@"+str(arguments)]).returncode
     fallback="365 exact JARs; public Configtopia release 9708806 substituted"
     if status:
