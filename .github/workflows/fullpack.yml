@@ -8,15 +8,45 @@ permissions:
   contents: read
   actions: read
 jobs:
-  inventory:
-    name: Verify public pack downloads against TEST
+  acoustic:
+    name: Production 0.3.1 speech / ${{ matrix.profile }}
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [public-pack, focused-control]
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      GALLIUM_DRIVER: llvmpipe
+      LP_NUM_THREADS: '2'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - name: Download published JARs, overrides and add-on packs by checksum
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install the production launcher library
+        run: python -m pip install --disable-pip-version-check minecraft-launcher-lib==8.0 requests==2.32.5
+      - name: Build the separate test observer
+        run: ./gradlew.bat --no-daemon --max-workers=2 --console=plain -I ci/fullpack/probe.gradle acousticPackProbeJar
+      - name: Generate synthetic Windows speech and prepare hosted graphics
+        shell: powershell
+        run: ./ci/fullpack/prepare.ps1
+      - name: Restore public inputs by checksum
         env:
           ACTIONS_READ_TOKEN: ${{ github.token }}
-        run: python ci/fullpack/stage.py "${{ runner.temp }}/pack-check/game"
+        run: python ci/fullpack/stage.py "${{ runner.temp }}/hearing-windows/game" ${{ matrix.profile == 'focused-control' && '--focused' || '' }}
+      - name: Play generated speech in disposable Survival and Creative
+        run: python ci/fullpack/run.py
+      - name: Save generated-game views only
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: heard-in-${{ matrix.profile }}
+          path: ${{ runner.temp }}/hearing-windows/evidence/*.png
+          if-no-files-found: ignore

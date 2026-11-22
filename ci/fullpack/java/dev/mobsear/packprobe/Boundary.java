@@ -1,0 +1,106 @@
+package dev.mobsear.packprobe;
+
+import dev.mobsear.client.VoiceClient;
+import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Supplier;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.Line;
+import net.minecraft.network.chat.Component;
+
+/** The only test input is a generated PCM stream delivered through the Java Sound line. */
+final class Boundary {
+    private static byte[] speech;
+    private static int offset;
+    static volatile int nonzeroFrames;
+
+    static Field field(Class<?> type, String name) throws ReflectiveOperationException {
+        var f = type.getDeclaredField(name);
+        f.setAccessible(true);
+        return f;
+    }
+
+    static Object get(Object receiver, String name) throws ReflectiveOperationException {
+        return field(receiver.getClass(), name).get(receiver);
+    }
+
+    static Object client() throws ReflectiveOperationException {
+        return field(VoiceClient.class, "instance").get(null);
+    }
+
+    static String readiness() throws ReflectiveOperationException {
+        var worker = get(get(client(), "session"), "speech");
+        var method = worker.getClass().getDeclaredMethod("status");
+        method.setAccessible(true);
+        return method.invoke(worker).toString();
+    }
+
+    static String notice(String accessor) throws ReflectiveOperationException {
+        var method = Class.forName("dev.mobsear.client.MobCallNotice").getDeclaredMethod(accessor);
+        method.setAccessible(true);
+        var component = (Component) method.invoke(null);
+        return component == null ? "" : component.getString();
+    }
+
+    static void install() throws ReflectiveOperationException {
+        var deviceType = Class.forName("dev.mobsear.client.VoiceDevices");
+        var factoryType = Class.forName("dev.mobsear.client.VoiceDevices$DefaultLine");
+        var factory = Proxy.newProxyInstance(factoryType.getClassLoader(), new Class<?>[]{factoryType},
+                (proxy, method, args) -> line((DataLine.Info) args[0]));
+        var constructor = deviceType.getDeclaredConstructor(Supplier.class, factoryType);
+        constructor.setAccessible(true);
+        var prefs = VoiceClient.options();
+        field(prefs.getClass(), "sound").set(prefs, constructor.newInstance((Supplier<List<?>>) List::of, factory));
+    }
+
+    static synchronized void say(byte[] input) {
+        if (speech != null) throw new IllegalStateException("Overlapping test phrases");
+        speech = input;
+        offset = 0;
+        nonzeroFrames = 0;
+    }
+
+    static synchronized boolean consumed() { return speech == null; }
+
+    private static synchronized void fill(byte[] dest, int start, int count) {
+        Arrays.fill(dest, start, start + count, (byte) 0);
+        if (speech == null) return;
+        int copy = Math.min(count, speech.length - offset);
+        System.arraycopy(speech, offset, dest, start, copy);
+        for (int i = start; i < start + copy; i++) {
+            if (dest[i] != 0) { nonzeroFrames++; break; }
+        }
+        offset += copy;
+        if (offset == speech.length) speech = null;
+    }
+
+    private static Line line(DataLine.Info info) {
+        var type = info.getLineClass();
+        return (Line) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, new java.lang.reflect.InvocationHandler() {
+            long next;
+            boolean open;
+            @Override public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) {
+                return switch (method.getName()) {
+                    case "available" -> System.nanoTime() >= next ? 640 : 0;
+                    case "close" -> { open = false; yield null; }
+                    case "open" -> { open = true; yield null; }
+                    case "isOpen", "isRunning", "isActive" -> open;
+                    case "getFormat" -> info.getFormats()[0];
+                    case "getLineInfo" -> info;
+                    case "write" -> args[2];
+                    case "read" -> {
+                        fill((byte[]) args[0], (int) args[1], (int) args[2]);
+                        next = System.nanoTime() + 20_000_000L;
+                        yield args[2];
+                    }
+                    case "toString" -> "Generated speech line";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> null;
+                };
+            }
+        });
+    }
+}

@@ -148,8 +148,12 @@ def main():
             target = args.game / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(body)
+        for name in variants.keys() - changes.keys():
+            target = args.game / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(archive.read("overrides/" + name))
     assert len(list(mods.glob("*.jar"))) == 366
-    print("PUBLIC RECONSTRUCTION: 365 exact JARs, one public Unyielding 1.2.0 substitution for Configtopia;", 
+    print("PUBLIC RECONSTRUCTION: 365 exact JARs, one public Unyielding 1.2.0 substitution for Configtopia;",
           len(approved), "published override files and", len(profile["additional_packs"]), "pinned add-on packs", flush=True)
 
 

@@ -1,0 +1,13 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+[[mods]]
+modId="acoustic_pack_probe"
+version="1"
+displayName="Disposable acoustic observer"
+[[dependencies.acoustic_pack_probe]]
+modId="mobsear"
+type="required"
+versionRange="[0.3.1]"
+ordering="AFTER"
+side="CLIENT"

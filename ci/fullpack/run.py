@@ -1,0 +1,134 @@
+"""Boot an official Windows production client with the unchanged public 0.3.1 JAR."""
+from collections import deque
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import threading
+import time
+from zipfile import ZipFile
+
+from minecraft_launcher_lib import command, mod_loader, utils
+import requests
+
+if os.getenv("GITHUB_ACTIONS") != "true" or os.getenv("RUNNER_ENVIRONMENT") != "github-hosted" or os.name != "nt":
+    raise SystemExit("Disposable GitHub Windows runner required")
+root = Path(os.environ["MOBSEAR_SMOKE_DIR"]).resolve()
+game = root / "game"
+launcher = root / "launcher"
+world = "HearPublicPack"
+java = str(Path(os.environ["JAVA_HOME"]) / "bin/java.exe")
+
+
+def checked_response(url):
+    response = requests.get(url, timeout=120)
+    response.raise_for_status()
+    return response
+
+
+def seed_world():
+    listing = checked_response("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").json()
+    version = next(v for v in listing["versions"] if v["id"] == "1.21.1")
+    metadata = checked_response(version["url"]).content
+    assert hashlib.sha1(metadata).hexdigest() == version["sha1"]
+    entry = json.loads(metadata)["downloads"]["server"]
+    binary = checked_response(entry["url"]).content
+    assert hashlib.sha1(binary).hexdigest() == entry["sha1"]
+    seed = root / "seed"
+    seed.mkdir()
+    (seed / "server.jar").write_bytes(binary)
+    (seed / "eula.txt").write_text("eula=true\n")
+    (seed / "server.properties").write_text(
+        "server-ip=127.0.0.1\nserver-port=0\nonline-mode=false\nlevel-type=minecraft:flat\n"
+        f"level-name={world}\ngamemode=survival\ndifficulty=normal\nlevel-seed=123\ngenerate-structures=false\n"
+        "view-distance=3\nsimulation-distance=3\n")
+    with subprocess.Popen([java,"-Xmx1300m","-jar","server.jar","nogui"],cwd=seed,stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors="replace") as process:
+        timer=threading.Timer(240, process.kill)
+        timer.start()
+        try:
+            for line in process.stdout:
+                if "Done (" in line:
+                    process.stdin.write("stop\n")
+                    process.stdin.flush()
+                    break
+            process.communicate(timeout=80)
+            assert process.returncode == 0 and (seed/world/"level.dat").is_file(), "Disposable seed failed"
+        finally:
+            timer.cancel()
+            if process.poll() is None: process.kill()
+    (game / "saves").mkdir(exist_ok=True)
+    shutil.move(seed/world,game/"saves"/world)
+    print("Fresh flat Survival save created by official Minecraft 1.21.1; hosted integrated server opens it", flush=True)
+
+
+def run():
+    expected = "850e97492f40e7dc206dcc56decaab81c0c4bf129f063dffd90a638b2d414174"
+    assert hashlib.sha256((game/"mods/mobsear-0.3.1.jar").read_bytes()).hexdigest() == expected
+    probe = Path("build/pack-probe/ci-acoustic-observer.jar").resolve()
+    with ZipFile(probe) as jar:
+        assert all(not n.endswith(".class") or n.startswith("dev/mobsear/packprobe/") for n in jar.namelist())
+        assert not any(n.startswith(("assets/", "data/")) for n in jar.namelist())
+    shutil.copy2(probe,game/"mods"/probe.name)
+    seed_world()
+    (game/"options.txt").write_text("version:3955\nonboardAccessibility:false\npauseOnLostFocus:false\n"
+        "tutorialStep:none\nnarrator:0\nrenderDistance:5\nsimulationDistance:5\nenableVsync:false\nmaxFps:30\n"
+        "graphicsMode:0\nsoundCategory_master:0.0\nguiScale:2\n", encoding="utf-8")
+    launcher.mkdir(exist_ok=True)
+    loader=mod_loader.get_mod_loader("neoforge")
+    version=loader.get_installed_version("1.21.1","21.1.249")
+    print("Provisioning official production NeoForge 21.1.249 launcher", flush=True)
+    loader.install("1.21.1",str(launcher),loader_version="21.1.249",java=java)
+    options=utils.generate_test_options()
+    options.update(username="AcousticFixture",executablePath=java,gameDirectory=str(game),
+                   jvmArguments=["-Xms1G","-Xmx8G","-XX:+UseG1GC","-XX:ActiveProcessorCount=4"],
+                   customResolution=True,resolutionWidth="854",resolutionHeight="480",quickPlaySingleplayer=world)
+    args=command.get_minecraft_command(version,str(launcher),options)
+    if "--quickPlaySingleplayer" not in args:
+        args.extend(["--quickPlaySingleplayer",world])
+    # Command arguments can contain launcher credentials. Only fixed proof markers are published.
+    with subprocess.Popen(args,cwd=game,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,
+                          encoding="utf-8",errors="replace") as process:
+        recent=deque(maxlen=12)
+        stop=threading.Event()
+        def monitor():
+            start=time.monotonic()
+            while not stop.wait(8):
+                crash=next((game/"crash-reports").glob("crash-*.txt"),None)
+                if crash:
+                    print("Hosted game created a crash report", flush=True)
+                    for line in crash.read_text(encoding="utf-8",errors="replace").splitlines():
+                        if any(tag in line for tag in ("Failure message:", "Caused by:", "Exception message:", "Suspected Mod:", "Mod File:")):
+                            print(line.strip()[:330],flush=True)
+                    process.kill()
+                    return
+                if time.monotonic()-start>1500:
+                    print("Hosted client reached the 25 minute in-game deadline",flush=True)
+                    process.kill()
+                    return
+        watcher=threading.Thread(target=monitor,daemon=True)
+        watcher.start()
+        try:
+            for line in process.stdout:
+                if "ACOUSTIC_" in line:
+                    message=line[line.index("ACOUSTIC_"):].strip()
+                    print(message[:900],flush=True)
+                    if message.startswith("ACOUSTIC_COMPLETE "):
+                        assert re.fullmatch(r"ACOUSTIC_COMPLETE trials=6 failed=0",message), "One or more acoustic trials failed"
+                        return
+                    if message.startswith("ACOUSTIC_FATAL "): raise RuntimeError(message[:600])
+                elif any(x in line for x in ("Starting integrated minecraft server", "Initializing Minecraft", "Loading Minecraft", "OpenGL Version")):
+                    print(line.strip()[:330], flush=True)
+                elif any(x in line for x in ("Caused by:", "Exception in thread", "Error occurred during", "Error: Could not", "LoadingFailedException")):
+                    recent.append(line.strip()[:400])
+            raise RuntimeError("Hosted game exited before the final evidence marker: "+" | ".join(recent))
+        finally:
+            stop.set()
+            if process.poll() is None: process.kill()
+
+
+if __name__=="__main__":
+    run()

@@ -1,0 +1,14 @@
+allprojects {
+    plugins.withId('java') {
+        def probe = sourceSets.create('acousticPackProbe') {
+            java.srcDirs = [rootProject.file('ci/fullpack/java')]
+            compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        }
+        tasks.register('acousticPackProbeJar', Jar) {
+            from probe.output
+            from(rootProject.file('ci/fullpack/neoforge.mods.toml')) { into 'META-INF' }
+            archiveFileName = 'ci-acoustic-observer.jar'
+            destinationDirectory = rootProject.layout.buildDirectory.dir('pack-probe')
+        }
+    }
+}
