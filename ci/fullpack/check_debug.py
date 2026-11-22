@@ -1,5 +1,20 @@
 """Inspect only the mod's fixed-format lines in a disposable generated-speech Minecraft log."""
 import re
+from difflib import SequenceMatcher
+
+def verify_capture(root):
+    def audible(pcm):
+        return [pcm[i:i+640] for i in range(0,len(pcm),640) if any(pcm[i:i+640])]
+    source=audible((root/"synth/pikachu.pcm").read_bytes())
+    assert source
+    for trial in (1,3,11,20,21):
+        parts=sorted((root/"segments").glob(f"{trial}_pikachu_*.pcm"))
+        captured=[frame for file in parts for frame in audible(file.read_bytes())]
+        spans=SequenceMatcher(None, source, captured, autojunk=False).get_matching_blocks()
+        print("ACOUSTIC_PIKACHU_INPUT", "trial="+str(trial),"original="+str(len(source)),
+              "submitted="+str(len(captured)),"spans="+str([(m.a,m.b,m.size) for m in spans if m.size]),flush=True)
+        assert captured==source, f"Pikachu trial {trial} lost or changed part of the generated word"
+    print("ACOUSTIC_PIKACHU_INPUT_PASS all nonzero frames identical on open mic and push-to-talk",flush=True)
 
 def verify(path):
     enabled = False

@@ -1,11 +1,11 @@
 {
-  "run": 45075179528,
-  "sha256": "414991d13280d5198e409bb428e52cafde0bc49d3594fc0fd93a6d6624bb307c",
+  "run": 45076657511,
+  "sha256": "705aeabd4c688aee6cc926dfe060ae2e2040b1b616f6a9bb6d0e631c075fa4c0",
   "compareReferences": false,
   "priorityControl": false,
   "graphicsControl": false,
   "testFeedback": true,
   "testVisit": true,
   "testSentences": true,
-  "compareFocused": false
+  "compareFocused": true
 }
