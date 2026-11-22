@@ -87,7 +87,29 @@ def progress_snapshot(pid):
 
 def run():
     expected = "850e97492f40e7dc206dcc56decaab81c0c4bf129f063dffd90a638b2d414174"
-    assert hashlib.sha256((game/"mods/mobsear-0.3.1.jar").read_bytes()).hexdigest() == expected
+    installed=game/"mods/mobsear-0.3.1.jar"
+    assert hashlib.sha256(installed.read_bytes()).hexdigest() == expected
+    build=os.environ.get("MOBSEAR_CANDIDATE_RUN","")
+    digest=os.environ.get("MOBSEAR_CANDIDATE_SHA256","")
+    earlier=os.environ.get("MOBSEAR_EARLIER")=="1"
+    if earlier:
+        reference=root/"mobsear-0.2.1.jar"
+        assert hashlib.sha256(reference.read_bytes()).hexdigest()=="e435bf303a1c63f21882af058aa76b7e84bbba7157ff5efc5b5b2b16e71fc0e5"
+        assert not build and not digest
+        installed.rename(root/installed.name)
+        shutil.copy2(reference,game/"mods"/reference.name)
+        print("ACOUSTIC_EARLIER original packaged 0.2.1",flush=True)
+    if build or digest:
+        assert build.isdigit() and re.fullmatch(r"[0-9a-f]{64}",digest)
+        checked=root/"candidate/mobsear-0.3.2.jar"
+        assert hashlib.sha256(checked.read_bytes()).hexdigest()==digest, "Different candidate binary"
+        with ZipFile(checked) as jar:
+            assert not any("Fixture" in name or "/smoke/" in name or "packprobe" in name for name in jar.namelist())
+        installed.rename(root/installed.name)
+        shutil.copy2(checked,game/"mods"/checked.name)
+        print(f"ACOUSTIC_CANDIDATE canonicalBuild={build} sha256={digest}",flush=True)
+    for subject in ("enderman","pikachu","lopunny"):
+        print("ACOUSTIC_SAMPLE",subject,hashlib.sha256((root/"synth"/(subject+".pcm")).read_bytes()).hexdigest(),flush=True)
     probe = Path("build/pack-probe/ci-acoustic-observer.jar").resolve()
     with ZipFile(probe) as jar:
         assert all(not n.endswith(".class") or n.startswith("dev/mobsear/packprobe/") for n in jar.namelist())
@@ -140,13 +162,22 @@ def run():
                     return
         watcher=threading.Thread(target=monitor,daemon=True)
         watcher.start()
+        observations=[]
         try:
             for line in process.stdout:
                 if "ACOUSTIC_" in line:
                     message=line[line.index("ACOUSTIC_"):].strip()
                     print(message[:900],flush=True)
+                    if message.startswith("ACOUSTIC_RESULT "):
+                        observations.append(message)
                     if message.startswith("ACOUSTIC_COMPLETE "):
-                        assert re.fullmatch(r"ACOUSTIC_COMPLETE trials=6 failed=0",message), "One or more acoustic trials failed"
+                        count=2 if earlier else 6
+                        assert len(observations)==count
+                        if os.environ.get("MOBSEAR_INSTALLED_REFERENCE")=="1":
+                            assert all(re.search(r'captureFrames=[1-9]\d* serverAudio=true',row) for row in observations)
+                            print("ACOUSTIC_REFERENCE installed 0.3.1 observed",message.split(" ",1)[1],flush=True)
+                        else:
+                            assert message==f"ACOUSTIC_COMPLETE trials={count} failed=0", "One or more acoustic trials failed"
                         return
                     if message.startswith("ACOUSTIC_FATAL "): raise RuntimeError(message[:600])
                 elif any(x in line for x in ("Starting integrated minecraft server", "Initializing Minecraft", "Loading Minecraft",
@@ -166,7 +197,7 @@ if __name__=="__main__":
         run()
     except BaseException:
         try:
-            if (root/"public-registry.bin").is_file():
+            if (root/"public-registry.bin").is_file() and not os.environ.get("MOBSEAR_CANDIDATE_RUN"):
                 from decoder import diagnose
                 diagnose(root,game/"mods/mobsear-0.3.1.jar")
         finally:

@@ -2,7 +2,6 @@ package dev.mobsear.packprobe;
 
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
-import dev.mobsear.MobsEar;
 import dev.mobsear.client.VoiceClient;
 import dev.mobsear.net.Packets;
 import dev.mobsear.server.NearbyMics;
@@ -37,7 +36,10 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 @Mod(value="acoustic_pack_probe", dist=Dist.CLIENT)
 public final class PackProbe {
     record Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {}
-    static final Trial[] TESTS = {
+    private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
+    private final Trial[] tests = earlier ? new Trial[]{
+        new Trial("Enderman",24,false,true,true), new Trial("Enderman",24,false,true,false)
+    } : new Trial[]{
         new Trial("Enderman", 24, false, true, true),
         new Trial("Pikachu", 12, false, true, true),
         new Trial("Lopunny", 16, false, true, true),
@@ -65,7 +67,7 @@ public final class PackProbe {
     private volatile Observation current;
     private volatile boolean ready, next, fatal, complete;
     private long nextSetup;
-    private int index, failures, clientTicks;
+    private int index, failures, clientTicks, startupStep = -1;
     private boolean installed, hooked, armed;
     private String lastScreen = "";
     private String lastDecoderState = "";
@@ -115,7 +117,7 @@ public final class PackProbe {
                 nextSetup = System.nanoTime() + 2_000_000_000L;
                 next = false;
             }
-            if (index == TESTS.length) { complete = true; return; }
+            if (index == tests.length) { complete = true; return; }
             if (current == null) {
                 if (System.nanoTime() < nextSetup) return;
                 if (index == 0) {
@@ -126,7 +128,7 @@ public final class PackProbe {
                     for (int x=-6; x<=46; x++) for (int z=-5; z<=5; z++)
                         level.setBlockAndUpdate(new BlockPos(x,159,z), Blocks.SEA_LANTERN.defaultBlockState());
                 }
-                var t = TESTS[index];
+                var t = tests[index];
                 p.setGameMode(t.creative ? GameType.CREATIVE : GameType.SURVIVAL);
                 p.teleportTo(level, t.range+.5, 160, .5, 90, 5);
                 p.setDeltaMovement(0,0,0);
@@ -185,19 +187,11 @@ public final class PackProbe {
             if (mc.screen instanceof PauseScreen pause) pause.onClose();
             if (!VoiceClient.connected()) return;
             if (!hooked) {
-                if (mc.getSingleplayerServer()==null || !mc.getConnection().getConnection().isMemoryConnection()
-                        || !mc.getConnection().hasChannel(Packets.Heard.TYPE) || !mc.getConnection().hasChannel(Packets.CallRequest.TYPE))
-                    throw new IllegalStateException("Integrated connection or production channels missing");
-                VoiceClient.options().setRecognitionDiagnostics(true);
-                var original=MobsEar.callHeard;
-                MobsEar.callHeard=reply -> {
-                    original.accept(reply);
-                    var o=current;
-                    if (o==null || !o.started || reply.requestId()<=o.initialRequest) return;
-                    String id=(o.test.name.equals("Enderman") ? "minecraft:" : "cobblemon:")+o.test.name.toLowerCase(Locale.ROOT);
-                    if (reply.id().toString().equals(id) && reply.species()==!o.test.name.equals("Enderman"))
-                        o.confirmed=true;
-                };
+                if (mc.getSingleplayerServer()==null || !mc.getConnection().getConnection().isMemoryConnection())
+                    throw new IllegalStateException("Expected integrated connection");
+                if (earlier) {
+                    if (!mc.getConnection().hasChannel(Packets.Call.TYPE)) throw new IllegalStateException("Missing original call channel");
+                } else CurrentNotices.install(this);
                 hooked=true;
             }
             if (!mc.isWindowActive() || mc.isPaused() || mc.screen!=null) {
@@ -213,6 +207,13 @@ public final class PackProbe {
                 return;
             }
             String state=Boundary.readiness();
+            if (!earlier && "1".equals(System.getenv("MOBSEAR_TRACK_STARTUP"))) {
+                int step=Boundary.startupProgress();
+                if (step!=startupStep) {
+                    System.out.println("ACOUSTIC_STARTUP_STEP "+step+" elapsedMs="+(System.nanoTime()-armedAt)/1_000_000L);
+                    startupStep=step;
+                }
+            }
             if (desktop != null && !desktop.isAlive()) {
                 System.out.println("ACOUSTIC_DESKTOP_EXIT code="+desktop.exitValue()+" elapsedMs="+(System.nanoTime()-processAt)/1_000_000L);
                 desktop=null;
@@ -228,7 +229,7 @@ public final class PackProbe {
             }
             if (!state.equals("READY") && !state.equals("UNAVAILABLE")) return;
             if (!ready) {
-                Files.write(home.resolve("public-registry.bin"),Boundary.publicVocabulary());
+                if (!earlier) Files.write(home.resolve("public-registry.bin"),Boundary.publicVocabulary());
                 System.out.println("ACOUSTIC_TRIALS decoder="+state+" integrated=true mode="+mc.gameMode.getPlayerMode()+" loader="+
                         ModList.get().getModContainerById("neoforge").orElseThrow().getModInfo().getVersion()+
                         " mod="+ModList.get().getModContainerById("mobsear").orElseThrow().getModInfo().getVersion());
@@ -246,22 +247,30 @@ public final class PackProbe {
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
                     o.initialError=err;
-                    o.initialRequest=(long)Boundary.get(Boundary.client(),"lastRequestId");
+                    if (earlier) mc.gui.setOverlayMessage(Component.empty(),false);
+                    else o.initialRequest=(long)Boundary.get(Boundary.client(),"lastRequestId");
                     o.startedAt=System.nanoTime();
                     o.started=true;
                     Boundary.say(Files.readAllBytes(home.resolve("synth").resolve(o.test.name.toLowerCase(Locale.ROOT)+".pcm")));
                     return;
                 }
-                if (o.confirmed) {
+                if (earlier ? o.acceptedCue : o.confirmed) {
                     o.postAckTicks++;
                     o.closestError=Math.min(o.closestError,err);
                     if (err<=30) o.aligned++;
                 }
             }
             if (!o.started) return;
-            o.recognized |= Boundary.notice("localMatch").contains(o.test.name);
-            o.notice |= Boundary.notice("current").equals(o.test.name + " heard you");
-            o.dispatched |= (long)Boundary.get(Boundary.client(),"lastRequestId") > o.initialRequest;
+            if (earlier) {
+                var text=(Component)Boundary.field(net.minecraft.client.gui.Gui.class,"overlayMessageString").get(mc.gui);
+                var originalNotice=Component.translatable("mobsear.speech.recognized",Component.translatable("entity.minecraft.enderman"));
+                o.recognized |= text!=null && text.getString().equals(originalNotice.getString());
+                o.dispatched |= o.acceptedCue;
+            } else {
+                o.recognized |= Boundary.notice("localMatch").contains(o.test.name);
+                o.notice |= Boundary.notice("current").equals(o.test.name + " heard you");
+                o.dispatched |= (long)Boundary.get(Boundary.client(),"lastRequestId") > o.initialRequest;
+            }
             if (o.notice && o.aligned>=2 && !o.screenshot) {
                 try (var pic=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
                     var evidence=home.resolve("evidence");
@@ -272,11 +281,11 @@ public final class PackProbe {
             }
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
-            if (elapsed<6_000_000_000L && !(o.test.hears && o.notice && o.aligned>=2 && o.reaction)) return;
+            if (elapsed<6_000_000_000L && !(o.test.hears && (earlier ? o.recognized : o.notice) && o.aligned>=2 && o.reaction)) return;
             boolean capture=Boundary.consumed() && Boundary.nonzeroFrames>=2;
             boolean expectWire=!o.test.creative;
             boolean success=capture && o.wireAudio && o.recognized && o.dispatched==expectWire && o.acceptedCue==expectWire
-                    && o.confirmed==o.test.hears && o.notice==o.test.hears && o.reaction==o.test.hears && !o.targeted
+                    && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2));
             System.out.printf(Locale.ROOT,
                     "ACOUSTIC_RESULT %s %s mode=%s input=%s arranged=%d callDistance=%.1f captureFrames=%d serverAudio=%s localMatch=%s dispatch=%s serverAccepted=%s response=%s reply=%s notice=%s away=%s startAngle=%.1f bestAfter=%.1f facingTicks=%d attackTarget=%s%n",
@@ -285,11 +294,18 @@ public final class PackProbe {
                     o.confirmed,o.notice,o.facedAway,o.initialError,o.closestError,o.aligned,o.targeted);
             if (!success) failures++;
             if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(false);
-            if (o.number+1==TESTS.length) {
-                System.out.println("ACOUSTIC_COMPLETE trials="+TESTS.length+" failed="+failures);
+            if (o.number+1==tests.length) {
+                System.out.println("ACOUSTIC_COMPLETE trials="+tests.length+" failed="+failures);
                 complete=true;
             } else next=true;
         } catch (Exception ex) { fail(ex); }
+    }
+
+    void heard(long request, String id, boolean species) {
+        var o=current;
+        if (o==null || !o.started || request<=o.initialRequest) return;
+        String expected=(o.test.name.equals("Enderman") ? "minecraft:" : "cobblemon:")+o.test.name.toLowerCase(Locale.ROOT);
+        if (id.equals(expected) && species==!o.test.name.equals("Enderman")) o.confirmed=true;
     }
 
     private void continueWorld(Minecraft mc) {

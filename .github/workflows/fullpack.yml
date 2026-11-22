@@ -1,10 +1,16 @@
-name: Installed 0.3.1 public-pack speech test
+name: Public-pack Survival speech test
 on:
   push:
     branches: [codex/proximity-voice-prototype]
     paths: ['ci/fullpack/**', '.github/workflows/fullpack.yml']
   workflow_dispatch:
     inputs:
+      candidate_run:
+        type: string
+        description: Optional canonical production build run to test in place of installed 0.3.1
+      candidate_sha256:
+        type: string
+        description: Exact JAR digest from that production build
       with_control:
         type: boolean
         description: Also rerun the smaller Cobblemon comparison
@@ -13,20 +19,57 @@ permissions:
   contents: read
   actions: read
 jobs:
+  speech:
+    name: Generate the shared recordings once
+    runs-on: windows-2022
+    timeout-minutes: 5
+    outputs:
+      profiles: ${{ steps.cases.outputs.profiles }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Select the requested comparisons
+        id: cases
+        shell: python
+        env:
+          SMALL_CONTROL: ${{ inputs.with_control }}
+        run: |
+          import json, os
+          from pathlib import Path
+          profiles=['public-pack']
+          pin=Path('ci/fullpack/candidate.json')
+          if pin.exists() and json.loads(pin.read_text())['compareReferences']:
+              profiles.extend(['earlier-public-pack','installed-public-pack'])
+          if os.environ['SMALL_CONTROL']=='true': profiles.append('focused-control')
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as out:
+              print('profiles='+json.dumps(profiles),file=out)
+      - shell: powershell
+        run: ./ci/fullpack/shared-speech.ps1 "${{ runner.temp }}/comparison-pcm"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: generated-comparison-input
+          path: ${{ runner.temp }}/comparison-pcm/*.pcm
+          if-no-files-found: error
   acoustic:
-    name: Production 0.3.1 speech / ${{ matrix.profile }}
+    name: ${{ matrix.profile }} / Survival generated speech
+    needs: speech
     runs-on: windows-2022
     timeout-minutes: 65
     strategy:
       fail-fast: false
       matrix:
-        profile: ${{ fromJSON(inputs.with_control && '["public-pack","focused-control"]' || '["public-pack"]') }}
+        profile: ${{ fromJSON(needs.speech.outputs.profiles) }}
     env:
       PYTHONUTF8: '1'
       PYTHONUNBUFFERED: '1'
       GALLIUM_DRIVER: llvmpipe
       LP_NUM_THREADS: '2'
       MOBSEAR_NATIVE_WORLD: '1'
+      MOBSEAR_CANDIDATE_RUN: ${{ inputs.candidate_run }}
+      MOBSEAR_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
+      MOBSEAR_EARLIER: ${{ matrix.profile == 'earlier-public-pack' && '1' || '0' }}
+      MOBSEAR_INSTALLED_REFERENCE: ${{ matrix.profile == 'installed-public-pack' && '1' || '0' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -44,11 +87,16 @@ jobs:
       - name: Build the separate test observer
         run: ./gradlew.bat --no-daemon --max-workers=2 --console=plain -I ci/fullpack/probe.gradle acousticPackProbeJar
       - name: Resolve the published Configtopia compiler dependencies
-        if: matrix.profile == 'public-pack'
+        if: matrix.profile != 'focused-control'
         run: ./gradlew.bat --no-daemon --max-workers=2 --console=plain '-PneoForgeVersion=21.1.255' -I ci/fullpack/probe.gradle configtopiaPublicClasspath
       - name: Generate synthetic Windows speech and prepare hosted graphics
         shell: powershell
-        run: ./ci/fullpack/prepare.ps1
+        run: ./ci/windows-world/prepare.ps1
+      - name: Use identical audio samples in every comparison
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: generated-comparison-input
+          path: ${{ runner.temp }}/hearing-windows/synth
       - name: Restore public inputs by checksum
         env:
           ACTIONS_READ_TOKEN: ${{ github.token }}
@@ -59,6 +107,34 @@ jobs:
         with:
           name: public-pack-checksums
           path: ${{ runner.temp }}/public-pack-checksums.json
+      - name: Select the exact production file for the comparison
+        id: subject
+        shell: python
+        run: |
+          import json, os, re
+          from pathlib import Path
+          build = os.environ.get('MOBSEAR_CANDIDATE_RUN','')
+          digest = os.environ.get('MOBSEAR_CANDIDATE_SHA256','')
+          pin = Path('ci/fullpack/candidate.json')
+          if os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
+              item = json.loads(pin.read_text(encoding='utf8'))
+              build, digest = str(item['run']), item['sha256']
+          if os.environ['MOBSEAR_EARLIER']=='1' or os.environ['MOBSEAR_INSTALLED_REFERENCE']=='1':
+              build, digest = '', ''
+          if build or digest:
+              assert build.isdigit() and re.fullmatch(r'[0-9a-f]{64}',digest)
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf8') as f:
+              print('MOBSEAR_CANDIDATE_RUN='+build,'MOBSEAR_CANDIDATE_SHA256='+digest,'MOBSEAR_TRACK_STARTUP='+('1' if build else '0'),sep='\n',file=f)
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as f:
+              print('build='+build,file=f)
+      - name: Retrieve the exact packaged candidate from its production build
+        if: steps.subject.outputs.build != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mobs-hear-u
+          run-id: ${{ steps.subject.outputs.build }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/hearing-windows/candidate
       - name: Start a new single-player world with the installed pack's registries
         run: python ci/fullpack/watch.py start
       - name: Observe the native client and integrated server starting

@@ -134,6 +134,10 @@ def main():
     candidate, description = reconstruct(published, cache, read_url, action_member)
     import shutil
     shutil.copyfile(candidate, mods / CONFIGTOPIA["name"])
+    if os.environ.get("MOBSEAR_EARLIER") == "1":
+        name="mobsear-0.2.1.jar"
+        digest="e435bf303a1c63f21882af058aa76b7e84bbba7157ff5efc5b5b2b16e71fc0e5"
+        (args.game.parent/name).write_bytes(action_member("z-hear-sound-headphones",44970878305,"mobs-hear-u",name,digest))
     for row in profile["additional_packs"]:
         assert safe_name(row["path"]) and PurePosixPath(row["path"]).parts[0] in ROOTS
         checked_file(row, args.game / row["path"])

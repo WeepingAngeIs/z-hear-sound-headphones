@@ -48,6 +48,14 @@ final class Boundary {
         }
     }
 
+    static int startupProgress() throws ReflectiveOperationException {
+        var speech=get(get(client(),"session"),"speech");
+        synchronized (speech) {
+            var session=get(speech,"session");
+            return session==null ? -1 : (int)get(session,"startupStep");
+        }
+    }
+
     // Re-create only public registry labels. Never read a player's custom aliases or audio.
     static byte[] publicVocabulary() throws Exception {
         var speech = get(get(client(), "session"), "speech");
