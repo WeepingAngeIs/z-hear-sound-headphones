@@ -240,7 +240,7 @@ public final class PackProbe {
                     if (!o.reaction && tick-o.lastWanderTick>2)
                         throw new IllegalStateException("Lopunny was not still wandering when it heard its name");
                     o.finished=o.visit.observe(active,false,tick);
-                    o.beside=o.visit.staying();
+                    o.beside=o.visit.stayedTwoSeconds();
                 }
             }
             if (o.started) {
@@ -415,7 +415,7 @@ public final class PackProbe {
             if (o.dispatched && o.dispatchedAt==0) o.dispatchedAt=System.nanoTime();
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
-            long observationLimit=o.visitTrial ? 50_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
+            long observationLimit=o.visitTrial ? 90_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
             boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot;
             if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");

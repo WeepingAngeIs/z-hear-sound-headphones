@@ -9,7 +9,7 @@ enum PokemonCase {
     ADDON("acideon", 18), NAMESPACE("hearfixture:chimekin", 18), NEAR_EDGE("pikachu", 31),
     FAR("eevee", 36), WRONG("eevee", 15), OWNER("pikachu", 12), OFFLINE_OWNER("eevee", 12),
     BATTLE("pikachu", 12), CAPTURE("eevee", 12), PASSIVE("pikachu", 12),
-    BLOCKED("eevee", 10), COOLDOWN_PRIME("pikachu", 2), COOLDOWN_HELD("pikachu", 2), COOLDOWN_EXPIRED("pikachu", 2),
+    BLOCKED("eevee", 10), COOLDOWN_PRIME("pikachu", 2), COOLDOWN_HELD("pikachu", 2), COOLDOWN_EXPIRED("pikachu", 12),
     WALKING_PIKACHU("pikachu", 14), WALKING_EEVEE("eevee", 14), WALKING_LOPUNNY("lopunny", 16),
     AGGRO("pikachu", 12), NEW_AGGRO("eevee", 12), INTERRUPTED("eevee", 10),
     PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8), GLOBAL_PACK("boxtail", 8),
@@ -42,7 +42,7 @@ enum PokemonCase {
     boolean mimicCase() { return nativeMimic() || this==ORDINARY_ZOMBIE || this==NAMED_ONLY_ZOMBIE; }
     boolean guardPicture() { return this==BOSS_CHARGING || this==NAGA_COMBAT || this==OWL_OFFENDER || this==VELVET_GUARD; }
     boolean beforePicture() { return this==PIKACHU || this==LOPUNNY || this==NAMED_COW || this==FOREST_DEER || this==OWL_GUARDIAN || this==VELVET_IDLE || nativeMimic(); }
-    boolean walking() { return this==WALKING_PIKACHU || this==WALKING_EEVEE || this==WALKING_LOPUNNY; }
+    boolean walking() { return this==WALKING_PIKACHU || this==WALKING_EEVEE || this==WALKING_LOPUNNY || this==COOLDOWN_EXPIRED; }
     boolean controlled() { return this == LOOK || this == APPROACH || this == BLOCKED; }
     boolean reusesSubject() { return this == COOLDOWN_HELD || this == COOLDOWN_EXPIRED; }
     static PokemonCase[] requiredRegistryEntries() {

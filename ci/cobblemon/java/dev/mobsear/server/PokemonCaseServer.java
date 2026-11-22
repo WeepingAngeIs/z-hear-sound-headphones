@@ -38,6 +38,8 @@ final class PokemonCaseServer {
     private WalkingDeer deerWalk;
     private CalledPokemonVisit visit;
     private Mob subject;
+    private Mob firstListener;
+    private UUID firstListenerId;
     private PokemonEntity witness;
     private EmptyPokeBallEntity ball;
     private PlayerPartyStore ownedStore;
@@ -142,8 +144,15 @@ final class PokemonCaseServer {
                         " mutedOrDeafened="+NearbyMics.inputBlocked(p)+" "+subjectState());
             }
             previousRequestTime=requestTime;
-            if (c==PokemonCase.COOLDOWN_PRIME) firstCall=now;
+            if (c==PokemonCase.COOLDOWN_PRIME) {
+                firstCall=now;
+                firstListener=subject;
+                firstListenerId=subject.getUUID();
+            }
             if (c.reusesSubject()) {
+                if (subject!=firstListener || subject!=caller.serverLevel().getEntity(firstListenerId)
+                        || !((PokemonEntity)subject).getPokemon().isWild())
+                    throw PokemonProbe.fail("The repeat call did not reach the same living wild Pokémon");
                 gap=now-firstCall;
                 if ((c==PokemonCase.COOLDOWN_HELD && (gap<45 || gap>=100)) || (c==PokemonCase.COOLDOWN_EXPIRED && gap<105))
                     throw PokemonProbe.fail("Unexpected repeated-call interval " + gap);
@@ -163,7 +172,9 @@ final class PokemonCaseServer {
         deerWalk = null;
         visit = null;
         var world = caller.serverLevel();
-        caller.teleportTo(world,c.distance+.5,Y,Z+.5,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
+        double callX=c.reusesSubject() ? subject.getX()+c.distance : c.distance+.5;
+        double callZ=c.reusesSubject() ? subject.getZ() : Z+.5;
+        caller.teleportTo(world,callX,Y,callZ,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
         caller.setDeltaMovement(0,0,0);
         caller.hurtMarked=true;
         if (viewer!=caller) {
@@ -184,7 +195,7 @@ final class PokemonCaseServer {
             if (c==PokemonCase.OWNER) setOwner(caller.getUUID());
         }
         if (subject==null) throw PokemonProbe.fail("Could not create actual subject");
-        subject.moveTo(.5,Y,Z+.5,90,0);
+        if (!c.reusesSubject()) subject.moveTo(.5,Y,Z+.5,90,0);
         subject.setPersistenceRequired();
         if (!c.reusesSubject() && !world.addFreshEntity(subject)) throw PokemonProbe.fail("Could not spawn actual subject");
         if (c==PokemonCase.COOLDOWN_HELD) {
@@ -258,7 +269,7 @@ final class PokemonCaseServer {
                     " present="+(caller.serverLevel().getEntity(subject.getId())==subject)+" distance="+subject.distanceTo(caller)+
                     " callerRiding="+caller.isPassenger()+" guardianFlight="+caller.getPersistentData().contains("uwu.guardian_flight")+" "+subjectState()+
                     (c.ordinaryEntity()?" "+NamedCases.nativeState(c,subject):""));
-            if (deerWalk==null && visit==null) {
+            if (deerWalk==null && visit==null && !c.reusesSubject()) {
                 subject.moveTo(.5,Y,Z+.5,90,0);
                 subject.setYHeadRot(90); subject.yBodyRot=90;
                 idle(subject);
@@ -269,7 +280,10 @@ final class PokemonCaseServer {
             }
             if (age<36 || acknowledgements.size()!=count) return;
             if (c.walking()) {
-                if (visit==null) visit=new CalledPokemonVisit((PokemonEntity)subject,caller,8);
+                if (visit==null) {
+                    int stroll=c==PokemonCase.COOLDOWN_EXPIRED ? (subject.getZ()>Z+.5 ? -6 : 6) : 8;
+                    visit=new CalledPokemonVisit((PokemonEntity)subject,caller,stroll);
+                }
                 if (!visit.isWandering()) {
                     if (age>180) throw PokemonProbe.fail("Native Pokémon did not walk before the call "+c);
                     return;
@@ -368,6 +382,9 @@ final class PokemonCaseServer {
         }
         if ((c==PokemonCase.INTERRUPTED || c==PokemonCase.NEW_AGGRO) && !released) return;
         if (age < (c.controlled()?45:27)) return;
+        if (c.reusesSubject()) System.out.printf(java.util.Locale.ROOT,
+                "POKEMON_REPEAT_PASS sameWildEntity=true sinceFirstCallTicks=%d accepted=%s completedVisit=%s witness=%s%n",
+                gap,reacted,visitDone,witnessReacted);
         if (deerWalk!=null) {
             if (!deerWalk.verify()) return;
             nativeTravel=deerWalk.travelDuring();

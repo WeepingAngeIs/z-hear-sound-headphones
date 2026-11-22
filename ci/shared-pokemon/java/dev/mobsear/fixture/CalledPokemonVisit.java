@@ -4,7 +4,6 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.ai.behavior.RandomStroll;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.phys.Vec3;
@@ -16,7 +15,7 @@ public final class CalledPokemonVisit {
     private final Vec3 initial;
     private final BlockPos wanderTarget;
     private Vec3 previous, rested;
-    private int stopped, bestStop, nearTicks, arrivedAt = -1, releaseTick = -1;
+    private int stopped, bestStop, nearTicks, arrivedAt = -1, releaseTick = -1, nativeRouteTick = -1;
     private boolean movedCaller, approached, resumed;
     private double beforeCall;
 
@@ -40,6 +39,7 @@ public final class CalledPokemonVisit {
     }
 
     public boolean observe(boolean active, boolean moveCaller, int tick) {
+        if (resumed) return true;
         var position = mob.position();
         var delta = position.subtract(previous);
         previous = position;
@@ -71,17 +71,17 @@ public final class CalledPokemonVisit {
                     throw new IllegalStateException("Early release: held intervals="+nearTicks+" distance="+distance);
                 releaseTick=tick;
             }
-            if (position.distanceTo(rested)>.65) resumed=true;
-            // If the normal idle schedule has not picked a walk yet, exercise the game's native idle behavior.
-            if (!resumed && tick-releaseTick>=30 && tick%10==0 && mob.getNavigation().isDone()
-                    && !mob.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET))
-                RandomStroll.stroll(.8F).tryStart(caller.serverLevel(),mob,caller.serverLevel().getGameTime());
+            // Observe only. The Pokémon must select a new native route and travel along it unaided.
+            if (nativeRouteTick<0 && !mob.getNavigation().isDone() && mob.getNavigation().getPath()!=null)
+                nativeRouteTick=tick;
+            if (nativeRouteTick>=0 && position.distanceTo(rested)>.65) resumed=true;
         }
         if (resumed) System.out.printf(java.util.Locale.ROOT,
-                "POKEMON_VISIT_PASS species=%s wanderBefore=%.2f stoppedFacingTicks=%d approached=true callerMoved=%s staySamples=%d besideAtRelease=true nativeTravelAfter=%.2f%n",
-                mob.getPokemon().getSpecies().getResourceIdentifier(),beforeCall,bestStop,movedCaller,nearTicks,position.distanceTo(rested));
+                "POKEMON_VISIT_PASS species=%s wanderBefore=%.2f stoppedFacingTicks=%d approached=true callerMoved=%s staySamples=%d besideAtRelease=true unaided=true nativeRouteAfterTicks=%d nativeTravelAfter=%.2f%n",
+                mob.getPokemon().getSpecies().getResourceIdentifier(),beforeCall,bestStop,movedCaller,nearTicks,
+                nativeRouteTick-releaseTick,position.distanceTo(rested));
         return resumed;
     }
 
-    public boolean staying() { return nearTicks >= 15 && releaseTick < 0; }
+    public boolean stayedTwoSeconds() { return nearTicks >= 40; }
 }

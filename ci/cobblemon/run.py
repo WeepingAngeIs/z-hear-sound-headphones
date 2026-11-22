@@ -135,7 +135,7 @@ def run(mode):
             shutil.copytree(root/"catalogs",Path("build/pokemon-catalogs"),dirs_exist_ok=True)
         for log in root.glob("*.console"):
             for line in log.read_text(errors="replace").splitlines():
-                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_VISIT_PASS","POKEMON_BOXTAIL_","ENTITY_NAME_CASE_PASS","ENTITY_DEER_ROUTE","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
+                if any(k in line for k in ("POKEMON_CASE_PASS","POKEMON_VISIT_PASS","POKEMON_REPEAT_PASS","POKEMON_BOXTAIL_","ENTITY_NAME_CASE_PASS","ENTITY_DEER_ROUTE","ENTITY_REGISTRY_PASS","POKEMON_CLIENT_READY","POKEMON_PACK_FORM_","POKEMON_REGISTRY_PASS","MOBSEAR_POKEMON_")): print(line[:450])
 
 
 if __name__ == "__main__":

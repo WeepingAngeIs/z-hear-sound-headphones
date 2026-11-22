@@ -240,7 +240,7 @@ public final class PokemonCaseClient {
                     double distance=entity.distanceTo(player);
                     if (aligned && distance>6 && !visitTurn && capture==null) capture="turn";
                     visitNearTicks=distance<=2.8 ? visitNearTicks+1 : 0;
-                    if (visitNearTicks>=15 && !visitBeside && capture==null) capture="beside";
+                    if (visitNearTicks>=40 && !visitBeside && capture==null) capture="beside";
                 }
             }
         }
