@@ -134,6 +134,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Compare on-device alternatives using only the generated corpus
+        if: contains(github.event.head_commit.message, '[speech comparison]')
+        shell: powershell
+        run: |
+          $fixtures = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'public-synth-only')
+          ./ci/speech-focus/make.ps1 $fixtures.FullName
+          py -3.11 -m pip install --quiet sherpa-onnx==1.12.23 sentencepiece==0.2.1 numpy==2.2.6
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          py -3.11 ci/speech-focus/compare_engines.py $fixtures.FullName
       - name: Feed generated sentences through capture, segmentation and the Windows recognizer
         shell: powershell
         env:
