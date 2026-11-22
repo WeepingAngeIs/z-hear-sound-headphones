@@ -26,7 +26,9 @@ $words=@(
     @('on-my-way','hang on I am coming','neutral'),
     @('bunny','bunny','neutral'),@('slender','slender man','neutral'),@('punny','that was funny','neutral'),
     @('menu','enter the menu','neutral'),@('ordinary','the lantern is on the table','neutral'),
-    @('honey','more honey','neutral'),@('ending','in the morning','neutral'))
+    @('honey','more honey','neutral'),@('ending','in the morning','neutral'),
+    @('but-any','but any','neutral'),@('anyone-can','but anyone can join','neutral'),
+    @('interment','interment','neutral'),@('low-money','low money','neutral'))
 $rows=@()
 try {
     $voiceIndex=0

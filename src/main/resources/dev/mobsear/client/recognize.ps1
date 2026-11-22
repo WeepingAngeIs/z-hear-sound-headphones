@@ -93,7 +93,8 @@ try {
             $pronouncer = [System.Speech.Recognition.SpeechRecognitionEngine]::new($english)
             $pronouncer.UpdateRecognizerSetting('AdaptationOn', [int]0)
             $pronouncer.LoadGrammar($pronounced)
-            $pronouncer.LoadGrammar([System.Speech.Recognition.DictationGrammar]::new())
+            $pronunciationBackground = [System.Speech.Recognition.DictationGrammar]::new()
+            $pronouncer.LoadGrammar($pronunciationBackground)
         } catch {
             # The ordinary command grammar stays usable if the optional US voice data is unavailable.
             if ($null -ne $pronouncer) { $pronouncer.Dispose() }
@@ -207,6 +208,39 @@ try {
                     $match = $pronouncer.Recognize()
                     $name = if ($null -ne $match) { $match.Text.ToLowerInvariant() -replace '^(hey|call) ', '' } else { '' }
                     $confident = $null -ne $match -and $match.Grammar -eq $pronounced -and $match.Confidence -ge 0.83
+                    # Recheck an incomplete decision against explicit pronunciations AND near neighbors.
+                    # A constrained winner alone is insufficient. Require matching evidence from
+                    # the independent full catalog or the pronunciation grammar competing with dictation.
+                    if (-not $confident) {
+                        $pronouncer.SetInputToNull()
+                        $checkStream.Dispose()
+                        $checkStream = [System.IO.MemoryStream]::new($pcm, $false)
+                        $pronunciationBackground.Enabled = $false
+                        try {
+                            $pronouncer.SetInputToAudioStream($checkStream, $format)
+                            $restricted = $pronouncer.Recognize()
+                        } finally {
+                            $pronouncer.SetInputToNull()
+                            $pronunciationBackground.Enabled = $true
+                        }
+                        if ($null -ne $restricted -and $restricted.Grammar -eq $pronounced) {
+                            $proposed = $restricted.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
+                            $primaryName = if ($null -ne $result -and $result.Grammar -eq $calls) {
+                                $result.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
+                            } else { '' }
+                            if ($lexicon.Contains($proposed) -and $aliases.ContainsKey($proposed)) {
+                                $samePrimary = $aliases.ContainsKey($primaryName) -and $aliases[$primaryName] -eq $aliases[$proposed]
+                                $sameOpen = $null -ne $match -and $match.Grammar -eq $pronounced -and $name -eq $proposed
+                                if (($samePrimary -and $result.Confidence -ge 0.82 -and $restricted.Confidence -ge 0.74) -or
+                                        ($samePrimary -and $result.Confidence -ge 0.68 -and $restricted.Confidence -ge 0.90) -or
+                                        ($sameOpen -and $match.Confidence -ge 0.70 -and $restricted.Confidence -ge 0.90)) {
+                                    $confident = $true
+                                    $name = $proposed
+                                }
+                            }
+                        }
+                        $restricted = $null
+                    }
                     if ($decision -eq $aliases['hoglin'] -and (-not $confident -or $name -ne 'hoglin')) {
                         $decision = 0
                     } elseif ($decision -eq 0 -and $confident -and $lexicon.Contains($name) -and $aliases.ContainsKey($name)) {
