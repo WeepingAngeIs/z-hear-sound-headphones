@@ -58,19 +58,22 @@ final class MobCallNotice {
     }
 
     static void diagnose(Component local) {
+        diagnose(local, false);
+    }
+
+    static void diagnose(Component local, boolean inProgress) {
         confirmed = false;
         message = null;
         diagnostic = local;
-        diagnosticEnd = Minecraft.getInstance().gui.getGuiTicks() + LIFETIME;
+        diagnosticEnd = inProgress ? -1 : Minecraft.getInstance().gui.getGuiTicks() + LIFETIME;
     }
 
-    static void diagnoseMiss(Component detail) {
-        if ((confirmed && current() != null) || localMatch() != null) return;
-        diagnose(detail);
+    static void clearDiagnostic() {
+        diagnostic = null;
     }
 
     static Component localMatch() {
-        if (diagnostic != null && (Minecraft.getInstance().gui.getGuiTicks() >= diagnosticEnd
+        if (diagnostic != null && ((diagnosticEnd >= 0 && Minecraft.getInstance().gui.getGuiTicks() >= diagnosticEnd)
                 || !VoiceClient.options().recognitionDiagnostics())) diagnostic = null;
         return diagnostic;
     }
@@ -84,6 +87,7 @@ final class MobCallNotice {
         var mc = Minecraft.getInstance();
         if (mc.options.hideGui || mc.screen != null || mc.player == null || !mc.player.isAlive()) return;
         Component main = current();
+        if (main == null) main = VoiceClient.speechTestPrompt();
         if (main == null) return;
         Component local = localMatch();
         var font = mc.font;

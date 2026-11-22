@@ -443,6 +443,7 @@ public final class SpeechCuesFixture {
                     + " expected " + Arrays.toString(expected));
         }
 
+        checkPrivateReplies(aliasFile, namedEnderman, creeper, unrelated);
         speech.setEnabled(true);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25);
         while (speech.status() == SpeechCues.Status.STARTING && System.nanoTime() < deadline) Thread.sleep(25);
@@ -519,6 +520,35 @@ public final class SpeechCuesFixture {
         System.out.println("MOBSEAR_SYNTH_CALL_PASS Enderman, spider, mob, mobs -> " + results);
         speech.setEnabled(false);
         require(speech.status() == SpeechCues.Status.OFF && received.isEmpty(), "Opt-out or duplicate cue");
+    }
+
+    private static void checkPrivateReplies(Path aliasFile, byte[] enderman, byte[] creeper, byte[] ordinary) throws Exception {
+        var helper = SpeechCues.launch();
+        killAfter(helper, 36);
+        try (var input = new DataInputStream(helper.getInputStream()); var output = new DataOutputStream(helper.getOutputStream())) {
+            new SpeechGrammar(aliasFile, Map.of()).writeTo(output);
+            require(input.read() == 82, "Local tester pipe did not start");
+            byte[][] samples = {enderman, ordinary, new byte[32000], creeper, enderman};
+            int[] expected = {3, 0, 0, 5, 3};
+            for (int i = 0; i < samples.length; i++) {
+                boolean detail = i > 0 && i < 4;
+                output.writeInt(Integer.reverseBytes(detail ? -samples[i].length : samples[i].length));
+                output.write(samples[i]);
+                output.flush();
+                require(input.readUnsignedShort() == expected[i], "Tester mode changed the command decision");
+                if (detail) {
+                    int length = input.readUnsignedByte();
+                    require(length <= 96 && (i == 1 ? length > 0 : length == 0), "Unexpected private hint length");
+                    byte[] local = new byte[length];
+                    input.readFully(local);
+                    require(new String(local, StandardCharsets.UTF_8).length() <= 32, "Tester guess exceeded display limit");
+                    Arrays.fill(local, (byte) 0);
+                }
+            }
+            System.out.println("MOBSEAR_WINDOWS_PRIVATE_REPLIES_PASS match rejectedGuess silence secondName optOut");
+        } finally {
+            helper.destroyForcibly();
+        }
     }
 
     private static int[] decisions(Process helper, SpeechGrammar grammar, byte[][] cases) throws Exception {

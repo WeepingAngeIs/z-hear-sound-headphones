@@ -22,6 +22,8 @@ import java.util.function.Consumer;
 public final class SpeechCues implements AutoCloseable {
     public enum Status { OFF, STARTING, READY, UNAVAILABLE }
     public record Decision(long number, boolean matched, boolean timely, long ageMillis) {}
+    enum TestStage { LISTENING, CHECKING, NO_MATCH, LATE, TOO_LONG, NO_VOICE }
+    record TestFeedback(long attempt, TestStage stage, String guess) {}
 
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeouts();
     private static final long MAX_AGE_NANOS = TimeUnit.SECONDS.toNanos(4);
@@ -37,6 +39,9 @@ public final class SpeechCues implements AutoCloseable {
     private boolean closed, inputPaused;
     private Decision lastDecision;
     private long decisionNumber;
+    private boolean testing;
+    private long nextAttempt, latestAttempt;
+    private TestFeedback testFeedback;
 
     public SpeechCues(Consumer<Cue> listener) {
         this(listener, null);
@@ -97,6 +102,32 @@ public final class SpeechCues implements AutoCloseable {
     /** Transient local timing only. No phrase, audio or identifier is retained here. */
     public synchronized Decision lastDecision() { return lastDecision; }
 
+    synchronized void setTesting(boolean enabled) {
+        if (testing == enabled) return;
+        testing = enabled;
+        clearTest();
+    }
+
+    /** The game thread consumes the local hint once. A subsequent word supersedes it. */
+    synchronized TestFeedback takeTestFeedback() {
+        var result = testFeedback;
+        testFeedback = null;
+        return result;
+    }
+
+    private void clearTest() {
+        latestAttempt = 0;
+        testFeedback = null;
+    }
+
+    private boolean currentTest(long attempt) {
+        return testing && attempt != 0 && attempt == latestAttempt;
+    }
+
+    private void reportTest(long attempt, TestStage stage, String guess) {
+        if (currentTest(attempt)) testFeedback = new TestFeedback(attempt, stage, guess);
+    }
+
     public synchronized boolean startupTimedOut() {
         return status == Status.UNAVAILABLE && session != null && session.startupExpired;
     }
@@ -111,6 +142,7 @@ public final class SpeechCues implements AutoCloseable {
             session = null;
             status = Status.OFF;
             lastDecision = null;
+            clearTest();
             if (previous != null) previous.stop();
         } else if (!closed && status == Status.OFF) {
             if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows")) {
@@ -148,6 +180,7 @@ public final class SpeechCues implements AutoCloseable {
         if (inputPaused == paused) return;
         inputPaused = paused;
         lastDecision = null;
+        clearTest();
         if (session != null) {
             session.inputRevision++;
             session.utterances.clear();
@@ -188,7 +221,7 @@ public final class SpeechCues implements AutoCloseable {
         }
     }
 
-    private record Clip(byte[] pcm, long endedAt, long inputRevision) {
+    private record Clip(byte[] pcm, long endedAt, long inputRevision, long testAttempt) {
         boolean fresh() {
             return System.nanoTime() - endedAt <= MAX_AGE_NANOS;
         }
@@ -198,10 +231,14 @@ public final class SpeechCues implements AutoCloseable {
         }
     }
 
+    private record Reply(int code, String guess) {}
+
     private final class Session {
         private final SpeechGrammar.Registries registry = catalogs;
         private final ArrayBlockingQueue<Clip> pending = new ArrayBlockingQueue<>(1);
-        private final Utterances utterances = new Utterances(this::submit);
+        private long activeAttempt;
+        private final Utterances utterances = new Utterances(this::submit, this::beginUtterance,
+                reason -> reportTest(activeAttempt, reason, ""));
         private final Thread worker = Thread.ofPlatform().daemon().name("Mob's Ear speech")
                 .unstarted(this::run);
         private Process helper;
@@ -215,10 +252,16 @@ public final class SpeechCues implements AutoCloseable {
             this.recovering = recovering;
         }
 
+        private void beginUtterance() {
+            activeAttempt = testing ? ++nextAttempt : 0;
+            latestAttempt = activeAttempt;
+            reportTest(activeAttempt, TestStage.LISTENING, "");
+        }
+
         // Called by the capture thread under the owner's monitor. It never waits for SAPI.
         private void submit(byte[] pcm) {
             clearPending();
-            pending.offer(new Clip(pcm, System.nanoTime(), inputRevision));
+            pending.offer(new Clip(pcm, System.nanoTime(), inputRevision, activeAttempt));
         }
 
         private void clearPending() {
@@ -254,15 +297,28 @@ public final class SpeechCues implements AutoCloseable {
                     while (!Thread.currentThread().isInterrupted()) {
                         Clip clip = pending.take();
                         try {
-                            if (!clip.fresh()) continue;
-                            int decision = exchange(child, input, output, clip);
+                            boolean detail;
+                            synchronized (SpeechCues.this) {
+                                if (session != this || inputPaused || clip.inputRevision != inputRevision) continue;
+                                if (!clip.fresh()) {
+                                    reportTest(clip.testAttempt, TestStage.LATE, "");
+                                    continue;
+                                }
+                                detail = currentTest(clip.testAttempt);
+                                reportTest(clip.testAttempt, TestStage.CHECKING, "");
+                            }
+                            var reply = exchange(child, input, output, clip, detail);
                             synchronized (SpeechCues.this) {
                                 if (session == this && !inputPaused && clip.inputRevision == inputRevision) {
                                     long age = System.nanoTime() - clip.endedAt;
                                     boolean timely = age <= MAX_AGE_NANOS;
+                                    int decision = reply.code;
                                     if (timely && !grammar.dispatch(decision, listener, speciesListener, entityListener))
                                         throw new IOException("Invalid speech helper reply");
                                     lastDecision = new Decision(++decisionNumber, decision != 0, timely, TimeUnit.NANOSECONDS.toMillis(age));
+                                    if (!timely) reportTest(clip.testAttempt, TestStage.LATE, "");
+                                    else if (decision == 0) reportTest(clip.testAttempt, TestStage.NO_MATCH, reply.guess);
+                                    else if (currentTest(clip.testAttempt)) testFeedback = null; // The matched call supplies its display name.
                                 }
                             }
                         } finally {
@@ -281,6 +337,7 @@ public final class SpeechCues implements AutoCloseable {
                         utterances.clear();
                         clearPending();
                         helper = null;
+                        clearTest();
                         // A stalled clip is never replayed. A fresh helper may serve the next call.
                         if (decodeExpired && !recovering && !closed) startSession(true);
                         else status = Status.UNAVAILABLE;
@@ -312,7 +369,7 @@ public final class SpeechCues implements AutoCloseable {
             }
         }
 
-        private int exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip)
+        private Reply exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip, boolean detail)
                 throws IOException {
             // A late result still expires after four seconds. Give the engine time to finish
             // the discarded clip before treating it as unresponsive and recycling the worker.
@@ -321,10 +378,21 @@ public final class SpeechCues implements AutoCloseable {
                 child.toHandle().destroyForcibly();
             }, 24, TimeUnit.SECONDS);
             try {
-                output.writeInt(Integer.reverseBytes(clip.pcm.length));
+                // A negative length requests a one-shot hint on the device-local pipe.
+                output.writeInt(Integer.reverseBytes(detail ? -clip.pcm.length : clip.pcm.length));
                 output.write(clip.pcm);
                 output.flush();
-                return input.readUnsignedShort();
+                int code = input.readUnsignedShort();
+                if (!detail) return new Reply(code, "");
+                int size = input.readUnsignedByte();
+                if (size > 96) throw new IOException("Invalid local hint size");
+                byte[] hint = new byte[size];
+                try {
+                    input.readFully(hint);
+                    return new Reply(code, new String(hint, StandardCharsets.UTF_8));
+                } finally {
+                    Arrays.fill(hint, (byte) 0);
+                }
             } finally {
                 deadline.cancel(false);
             }
@@ -340,13 +408,21 @@ public final class SpeechCues implements AutoCloseable {
         // Preserve quiet initial consonants and give the desktop decoder a stable noise floor.
         private final byte[] preRoll = new byte[10 * FRAME_BYTES];
         private final Consumer<byte[]> output;
+        private final Runnable onStart;
+        private final Consumer<TestStage> onSkip;
         private int used;
         private int silenceFrames;
         private boolean tooLong;
         private boolean sentVoice;
 
         Utterances(Consumer<byte[]> output) {
+            this(output, () -> {}, reason -> {});
+        }
+
+        Utterances(Consumer<byte[]> output, Runnable onStart, Consumer<TestStage> onSkip) {
             this.output = output;
+            this.onStart = onStart;
+            this.onSkip = onSkip;
         }
 
         void accept(byte[] frame) {
@@ -355,6 +431,7 @@ public final class SpeechCues implements AutoCloseable {
 
         void accept(byte[] frame, boolean queuedForVoice) {
             boolean voiced = hasEnergy(frame);
+            if (voiced && used == 0 && !tooLong) onStart.run();
             sentVoice |= voiced && queuedForVoice;
             if (!voiced && used == 0 && !tooLong) {
                 System.arraycopy(preRoll, FRAME_BYTES, preRoll, 0, preRoll.length - FRAME_BYTES);
@@ -371,6 +448,7 @@ public final class SpeechCues implements AutoCloseable {
                     Arrays.fill(current, (byte) 0);
                     used = 0;
                     tooLong = true;
+                    onSkip.accept(TestStage.TOO_LONG);
                 } else {
                     System.arraycopy(frame, 0, current, used, FRAME_BYTES);
                     used += FRAME_BYTES;
@@ -395,6 +473,8 @@ public final class SpeechCues implements AutoCloseable {
                 // Append synthetic silence in memory without delaying the PTT-release endpoint.
                 int padding = (DECODER_TAIL_FRAMES - silenceFrames) * FRAME_BYTES;
                 output.accept(Arrays.copyOf(current, Math.min(current.length, used + padding)));
+            } else if (used > 0 && !tooLong) {
+                onSkip.accept(TestStage.NO_VOICE);
             }
             clear();
         }

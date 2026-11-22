@@ -1,5 +1,5 @@
 # The local binary pipe carries a bounded grammar followed by short PCM clips.
-# Standard output carries one readiness byte and one unsigned 16-bit decision per clip.
+# The ordinary reply is one unsigned 16-bit decision. Opt-in local tests can request a short rejected guess.
 $ErrorActionPreference = 'Stop'
 $engine = $null
 $pronouncer = $null
@@ -124,14 +124,19 @@ try {
     $output.Flush()
     while ($true) {
         try { $length = $reader.ReadInt32() } catch [System.IO.EndOfStreamException] { break }
+        if ($length -lt -96000) { exit 3 }
+        $detail = $length -lt 0
+        if ($detail) { $length = -$length }
         if ($length -le 0 -or $length -gt 96000 -or $length % 2 -ne 0) { exit 3 }
         $pcm = $reader.ReadBytes($length)
         if ($pcm.Length -ne $length) { exit 3 }
         $stream = [System.IO.MemoryStream]::new($pcm, $false)
+        $guess = $null
         $decision = 0
         try {
             $engine.SetInputToAudioStream($stream, $format)
             $result = $engine.Recognize()
+            if ($detail -and $null -ne $result) { $guess = $result.Text }
             $minConfidence = 0.58
             # Rescore a rejection or very weak dictation hypothesis with the command grammar.
             # Keep ordinary speech with a credible match in the background vocabulary.
@@ -143,6 +148,7 @@ try {
                 try {
                     $engine.SetInputToAudioStream($stream, $format)
                     $result = $engine.Recognize()
+                    if ($detail -and -not $guess -and $null -ne $result) { $guess = $result.Text }
                 } finally {
                     $background.Enabled = $true
                 }
@@ -214,6 +220,7 @@ try {
                 try {
                     $pronouncer.SetInputToAudioStream($checkStream, $format)
                     $match = $pronouncer.Recognize()
+                    if ($detail -and -not $guess -and $null -ne $match) { $guess = $match.Text }
                     $name = if ($null -ne $match) { $match.Text.ToLowerInvariant() -replace '^(hey|call) ', '' } else { '' }
                     $confident = $null -ne $match -and $match.Grammar -eq $pronounced -and $match.Confidence -ge 0.83
                     # Recheck an incomplete decision against explicit pronunciations AND near neighbors.
@@ -270,6 +277,20 @@ try {
         }
         $output.WriteByte([byte]($decision -shr 8))
         $output.WriteByte([byte]($decision -band 255))
+        if ($detail) {
+            # Guesses are display-only. They never enter the command decision or leave this device.
+            if ($decision -ne 0 -or -not $guess) {
+                $output.WriteByte(0)
+            } else {
+                $guess = (($guess -replace "[^\p{L}\p{M}\p{Nd}' -]",' ') -replace ' +',' ').Trim()
+                if ($guess.Length -gt 32) { $guess = $guess.Substring(0,31).TrimEnd() + [char]0x2026 }
+                $hint = [Text.Encoding]::UTF8.GetBytes($guess)
+                $output.WriteByte([byte]$hint.Length)
+                $output.Write($hint,0,$hint.Length)
+                [Array]::Clear($hint,0,$hint.Length)
+            }
+            $guess = $null
+        }
         $output.Flush()
     }
 } catch {

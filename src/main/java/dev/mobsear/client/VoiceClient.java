@@ -119,6 +119,14 @@ public final class VoiceClient {
     }
 
     public static VoicePreferences options() { return instance.preferences; }
+    static Component speechTestPrompt() {
+        if (!connected() || !options().recognitionDiagnostics() || !instance.recognition) return null;
+        var session = instance.session;
+        if (session.suspended || options().muted() || options().deafened() || session.speech.status() != SpeechCues.Status.READY)
+            return null;
+        return session.held ? Component.translatable("mobsear.speech.test_wait")
+                : Component.translatable("mobsear.speech.test_ptt", instance.talk.getTranslatedKeyMessage());
+    }
     public static boolean voiceActivated() { return connected() && instance.activation; }
     public static void setVoiceActivated(boolean enabled) {
         if (connected()) instance.activation = enabled;
@@ -215,6 +223,7 @@ public final class VoiceClient {
                 || session.deafened != preferences.deafened())) closeSession();
         if (!usable) return;
         if (session == null) session = new Session(mc.level, preferences);
+        session.speech.setTesting(preferences.recognitionDiagnostics());
         publishControls(current);
         if (!(mc.screen instanceof VoiceSettingsScreen) || !mc.isWindowActive()) testMic = false;
         boolean inputBlocked = preferences.muted() || preferences.deafened();
@@ -309,7 +318,7 @@ public final class VoiceClient {
         boolean monitoring;
         long lastSpeaking;
         long lastMeter;
-        long displayedDecision;
+        long displayedAttempt;
         boolean recognition;
         boolean creative;
         boolean suspended;
@@ -384,6 +393,7 @@ public final class VoiceClient {
             lastSpeaking = 0;
             audio.setTransmitting(false);
             speech.setInputPaused(true);
+            MobCallNotice.clearDiagnostic();
             cue.set(null);
             frames.clear();
         }
@@ -417,13 +427,24 @@ public final class VoiceClient {
             for (int i = 0; i < 12 && (frame = frames.poll()) != null; i++) {
                 PacketDistributor.sendToServer(new Packets.Up(frame));
             }
-            var decision = speech.lastDecision();
-            if (decision != null && decision.number() != displayedDecision) {
-                displayedDecision = decision.number();
-                if (prefs.recognitionDiagnostics() && (!decision.matched() || !decision.timely())) {
-                    String key = decision.timely() ? "no_match" : "late_match";
-                    MobCallNotice.diagnoseMiss(Component.translatable("mobsear.speech." + key));
+            var test = speech.takeTestFeedback();
+            if (test != null && prefs.recognitionDiagnostics() && recognition) {
+                if (displayedAttempt != test.attempt()) {
+                    displayedAttempt = test.attempt();
+                    // An acknowledgement for an earlier utterance must not label this test attempt.
+                    instance.pendingRequestId = 0;
                 }
+                Component detail = switch (test.stage()) {
+                    case LISTENING -> Component.translatable("mobsear.speech.test_listening");
+                    case CHECKING -> Component.translatable("mobsear.speech.test_checking");
+                    case NO_MATCH -> test.guess().isEmpty() ? Component.translatable("mobsear.speech.no_match")
+                            : Component.translatable("mobsear.speech.test_guess", Component.literal(test.guess()));
+                    case LATE -> Component.translatable("mobsear.speech.late_match");
+                    case TOO_LONG -> Component.translatable("mobsear.speech.test_long");
+                    case NO_VOICE -> Component.translatable("mobsear.speech.test_unsent");
+                };
+                MobCallNotice.diagnose(detail, test.stage() == SpeechCues.TestStage.LISTENING
+                        || test.stage() == SpeechCues.TestStage.CHECKING);
             }
             Packets.MobCall ready = cue.getAndSet(null);
             if (ready == null || !recognition) return;
@@ -446,7 +467,7 @@ public final class VoiceClient {
                 if (!link.hasChannel(Packets.Call.TYPE)) return;
                 if (mob != Cue.ZOMBIE && mob != Cue.MOBS && mob != Cue.ENDERMAN && !link.hasChannel(MicPresence.Controls.TYPE)) return;
             }
-            // Optional troubleshooting shows canonical names, never transcribed words.
+            // A successful local decision displays its canonical name even when no mob answers.
             if (mc.player != null && (mc.player.isCreative() || mc.player.isSpectator())) {
                 if (prefs.recognitionDiagnostics())
                     MobCallNotice.diagnose(Component.translatable("mobsear.speech.recognized_mode", name));

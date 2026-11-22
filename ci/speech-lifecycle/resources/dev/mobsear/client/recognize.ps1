@@ -16,9 +16,29 @@ if ([IO.File]::Exists($launched)) { [IO.File]::WriteAllText((Join-Path $folder '
 else { [IO.File]::WriteAllText($launched,'1') }
 $outPipe.WriteByte(82)
 $outPipe.Flush()
+$tests=[IO.File]::Exists((Join-Path $folder 'test-feedback'))
+$number=0
 while ($true) {
     try { $length=$inputPipe.ReadInt32() } catch [IO.EndOfStreamException] { break }
+    $detail=$length -lt 0
+    if ($detail) { $length=-$length }
     $null=$inputPipe.ReadBytes($length)
+    if ($tests) {
+        $number++
+        [IO.File]::WriteAllText((Join-Path $folder "request-$number"),$detail.ToString())
+        Start-Sleep -Milliseconds 600
+        $code=if ($number -eq 1) {3} elseif ($number -eq 2) {5} else {0}
+        $outPipe.WriteByte(0)
+        $outPipe.WriteByte($code)
+        if ($detail) {
+            $example=if ($number -in @(3,5)) {'low bunny'} else {''}
+            $bytes=[Text.Encoding]::UTF8.GetBytes($example)
+            $outPipe.WriteByte($bytes.Length)
+            $outPipe.Write($bytes,0,$bytes.Length)
+        }
+        $outPipe.Flush()
+        continue
+    }
     $late=Join-Path $folder 'late-returned'
     $stall=Join-Path $folder 'stall'
     if (-not [IO.File]::Exists($late)) {
