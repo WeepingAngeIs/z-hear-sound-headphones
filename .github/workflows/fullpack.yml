@@ -71,6 +71,7 @@ jobs:
       GALLIUM_DRIVER: llvmpipe
       LP_NUM_THREADS: '2'
       MOBSEAR_NATIVE_WORLD: '1'
+      MOBSEAR_PROFILE: ${{ matrix.profile }}
       MOBSEAR_CANDIDATE_RUN: ${{ inputs.candidate_run }}
       MOBSEAR_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
       MOBSEAR_EARLIER: ${{ matrix.profile == 'earlier-public-pack' && '1' || '0' }}
@@ -128,6 +129,7 @@ jobs:
           visit = False
           sentences = False
           nearby = False
+          distractions = False
           if os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
               item = json.loads(pin.read_text(encoding='utf8'))
               build, digest = str(item['run']), item['sha256']
@@ -135,6 +137,7 @@ jobs:
               visit = item.get('testVisit',False)
               sentences = item.get('testSentences',False)
               nearby = item.get('testNearby',False)
+              distractions = item.get('testDistractions',False)
           if os.environ['MOBSEAR_EARLIER']=='1' or os.environ['MOBSEAR_INSTALLED_REFERENCE']=='1':
               build, digest = '', ''
           if build or digest:
@@ -145,6 +148,9 @@ jobs:
               print('MOBSEAR_TEST_VISIT='+('1' if build and visit else '0'),file=f)
               print('MOBSEAR_TEST_SENTENCES='+('1' if build and sentences else '0'),file=f)
               print('MOBSEAR_TEST_NEARBY='+('1' if build and nearby else '0'),file=f)
+              if build and distractions:
+                  group_profile = 'focused' if os.environ['MOBSEAR_PROFILE']=='focused-control' else 'full'
+                  print('MOBSEAR_TEST_DISTRACTIONS='+group_profile,file=f)
           with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as f:
               print('build='+build,file=f)
       - name: Retrieve the exact packaged candidate from its production build

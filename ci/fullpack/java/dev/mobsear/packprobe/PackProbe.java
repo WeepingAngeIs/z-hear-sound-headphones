@@ -212,6 +212,12 @@ public final class PackProbe {
                     // The lit wall behind the subject makes a distant Enderman visible against the night sky.
                     for (int y=160; y<=166; y++) for (int z=-5; z<=5; z++)
                         level.setBlockAndUpdate(new BlockPos(-5,y,z), Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
+                    String distractions = System.getenv("MOBSEAR_TEST_DISTRACTIONS");
+                    if ("full".equals(distractions) || "focused".equals(distractions)) {
+                        p.setGameMode(GameType.SURVIVAL);
+                        p.teleportTo(level,.5,160,.5,-90,0);
+                        PackHostileTargets.verify(p, "full".equals(distractions));
+                    }
                 }
                 var t = tests[index];
                 // Exercise Pikachu repeatedly at night as well as during daytime.
