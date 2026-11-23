@@ -38,6 +38,7 @@ final class PokemonCaseServer {
     private WalkingDeer deerWalk;
     private CalledPokemonVisit visit;
     private VisitCareProof care;
+    private VisitWindowProof feedingWindow;
     private boolean measuredPortion;
     private Mob subject;
     private Mob firstListener;
@@ -62,7 +63,12 @@ final class PokemonCaseServer {
     private int interruptionTick;
     private boolean released;
 
-    PokemonCaseServer() { NeoForge.EVENT_BUS.addListener(this::tick); }
+    PokemonCaseServer() {
+        NeoForge.EVENT_BUS.addListener(this::tick);
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.item.ItemTossEvent event)->{
+            if (feedingWindow!=null) feedingWindow.tossed(event);
+        });
+    }
 
     void handle(ServerPlayer p, PokemonProbe.Message m) {
         if (m.stage() == PokemonProbe.HELLO) {
@@ -172,6 +178,7 @@ final class PokemonCaseServer {
     private void prepare() {
         c = PokemonCase.values()[index];
         care = null;
+        feedingWindow = null;
         measuredPortion = false;
         deerWalk = null;
         visit = null;
@@ -362,6 +369,11 @@ final class PokemonCaseServer {
             measuredPortion=true;
         }
         if (c==PokemonCase.WALKING_LOPUNNY && visitDone && !measuredPortion) throw PokemonProbe.fail("Missing uncapped healing measurement");
+        if (fired && (c==PokemonCase.WALKING_EEVEE || c==PokemonCase.WALKING_LOPUNNY)) {
+            if (feedingWindow==null) feedingWindow=new VisitWindowProof((PokemonEntity)subject,caller,viewer,c);
+            feedingWindow.tick();
+            if (visitDone && !feedingWindow.finished()) return;
+        }
         if (visitDone) released=true;
         if (c==PokemonCase.INTERRUPTED && ball!=null && age>interruptionTick) {
             var nav=subject.getNavigation();
@@ -397,6 +409,11 @@ final class PokemonCaseServer {
         }
         if ((c==PokemonCase.INTERRUPTED || c==PokemonCase.NEW_AGGRO) && !released) return;
         if (age < (c.controlled()?45:27)) return;
+        if (c==PokemonCase.COOLDOWN_PRIME && active) {
+            // End this visit by leaving range. The follow-up measures the per-call cooldown independently.
+            if (caller.distanceToSqr(subject)<=32*32) caller.teleportTo(caller.getX()+48,caller.getY(),caller.getZ());
+            return;
+        }
         if (c.reusesSubject()) System.out.printf(java.util.Locale.ROOT,
                 "POKEMON_REPEAT_PASS sameWildEntity=true sinceFirstCallTicks=%d accepted=%s completedVisit=%s witness=%s%n",
                 gap,reacted,visitDone,witnessReacted);

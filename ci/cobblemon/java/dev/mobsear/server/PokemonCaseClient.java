@@ -47,6 +47,7 @@ public final class PokemonCaseClient {
     private boolean visitTurn, visitBeside;
     private int visitNearTicks;
     private final VisitFeedbackProof careEffects=new VisitFeedbackProof();
+    private int dropAfterTicks;
 
     public PokemonCaseClient() {
         PokemonProbe.client=this::stage;
@@ -56,6 +57,15 @@ public final class PokemonCaseClient {
     }
     private void stage(PokemonProbe.Message request) {
         if (request.stage()==PokemonProbe.BEFORE) careEffects.stage(PokemonCase.values()[request.scenario()],request.entity());
+        if (request.stage()==PokemonProbe.DROP_ONE) {
+            if (!(mc.level.getEntity(request.entity()) instanceof PokemonEntity mob)) throw PokemonProbe.fail("Missing visitor for ground drop");
+            var away=mc.player.position().subtract(mob.position()).multiply(1,0,1).normalize();
+            var floor=mob.position().add(away.scale(mob.getBbWidth()*.5+1.6));
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,floor);
+            // Allow the normal movement packet to send the look direction before the regular Q action.
+            dropAfterTicks=3;
+            return;
+        }
         if (request.stage()==PokemonProbe.CARE_CLICK || request.stage()==PokemonProbe.CARE_DROP) {
             var mob=mc.level.getEntity(request.entity());
             if (!caller || !(mob instanceof PokemonEntity) || !MobsEar.localVisitor.test(mob.getUUID()))
@@ -123,6 +133,8 @@ public final class PokemonCaseClient {
             return;
         }
         if ((!hello || caller) && !VoiceClient.connected()) { waitFor("voice session"); return; }
+        if (dropAfterTicks>0 && --dropAfterTicks==0 && !mc.player.drop(false))
+            throw PokemonProbe.fail("The normal single-item Q action failed");
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
         if (!hello) {
             if (mc.screen!=null || !mc.isWindowActive()) {

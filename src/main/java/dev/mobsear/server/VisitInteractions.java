@@ -31,9 +31,12 @@ import net.neoforged.neoforge.network.PacketDistributor;
 /** Interactions are authorized against the existing visit on the server, including on the pickup tick. */
 final class VisitInteractions {
     private record Bite(ItemStack food, int start) {}
+    // Vanilla replaces the surviving ItemStack when ground entities merge. Never claim a mixed pile.
+    private record Offer(UUID caller, ItemStack tossedStack, Set<UUID> visitors) {}
+    private static final double GROUND_REACH = 2.0;
     private static final Map<PokemonEntity,Bite> bites = new WeakHashMap<>();
     private static final Map<PokemonEntity,Integer> lastClick = new WeakHashMap<>();
-    private static final Map<ItemEntity,Set<UUID>> offers = new WeakHashMap<>();
+    private static final Map<ItemEntity,Offer> offers = new WeakHashMap<>();
 
     private VisitInteractions() {}
 
@@ -61,7 +64,10 @@ final class VisitInteractions {
             PacketDistributor.sendToPlayer(caller, new Packets.Visit(mob.getUUID(), arrived));
         if (!arrived) {
             lastClick.remove(mob);
-            offers.values().removeIf(ids -> { ids.remove(mob.getUUID()); return ids.isEmpty(); });
+            offers.values().removeIf(offer -> {
+                offer.visitors.remove(mob.getUUID());
+                return offer.visitors.isEmpty();
+            });
         }
     }
 
@@ -95,7 +101,7 @@ final class VisitInteractions {
         var visitors = new HashSet<UUID>();
         for (var mob : caller.serverLevel().getEntitiesOfClass(PokemonEntity.class, caller.getBoundingBox().inflate(5),
                 mob -> CobblemonCalls.visiting(mob, caller))) visitors.add(mob.getUUID());
-        if (!visitors.isEmpty()) offers.put(drop, visitors);
+        if (!visitors.isEmpty()) offers.put(drop, new Offer(caller.getUUID(), drop.getItem(), visitors));
     }
 
     static void collect(PokemonEntity mob, ServerPlayer caller) {
@@ -103,9 +109,10 @@ final class VisitInteractions {
         for (var it = offers.entrySet().iterator(); it.hasNext();) {
             var entry = it.next();
             var drop = entry.getKey();
-            if (!drop.isAlive() || drop.isRemoved()) { it.remove(); continue; }
-            if (!entry.getValue().contains(mob.getUUID()) || drop.level() != mob.level()
-                    || !mob.getBoundingBox().inflate(0.9).intersects(drop.getBoundingBox()) || !mob.hasLineOfSight(drop)) continue;
+            var offer = entry.getValue();
+            if (!drop.isAlive() || !drop.isAddedToLevel() || drop.getItem() != offer.tossedStack) { it.remove(); continue; }
+            if (!offer.caller.equals(caller.getUUID()) || !offer.visitors.contains(mob.getUUID())
+                    || drop.level() != mob.level() || !withinReach(mob, drop) || !mob.hasLineOfSight(drop)) continue;
             var stack = drop.getItem();
             if (feed(mob, caller, stack).isEmpty()) continue;
             mob.getLookControl().setLookAt(drop);
@@ -115,6 +122,13 @@ final class VisitInteractions {
             it.remove();
             return;
         }
+    }
+
+    private static boolean withinReach(PokemonEntity mob, ItemEntity drop) {
+        var body = mob.getBoundingBox();
+        if (body.inflate(0.9).intersects(drop.getBoundingBox())) return true;
+        return drop.onGround() && Math.abs(mob.getY() - drop.getY()) <= 0.75
+                && body.distanceToSqr(drop.position()) <= GROUND_REACH * GROUND_REACH;
     }
 
     private static ItemStack feed(PokemonEntity mob, ServerPlayer caller, ItemStack stack) {

@@ -25,7 +25,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Server-side species calls. Loaded only when Cobblemon is present. */
 final class CobblemonCalls {
     private static final int FACE_TICKS = 14;
-    private static final int STAY_TICKS = 45;
+    private static final int STAY_TICKS = 120;
     private static final int COOLDOWN_TICKS = 100;
     private static final int STUCK_TICKS = 100;
     private static final float WALK_SPEED = 1.0F;
@@ -93,7 +93,7 @@ final class CobblemonCalls {
         if (response == null || response.caller != caller || response.stage != Stage.STAY || !available(mob)
                 || !caller.isAlive() || caller.isRemoved() || caller.isSpectator() || caller.isCreative()
                 || caller.level() != mob.level() || !response.beside(mob)) return false;
-        return caller.serverLevel().getServer().overworld().getGameTime() - response.arrived < STAY_TICKS;
+        return !response.visitExpired(caller.serverLevel().getServer().overworld().getGameTime());
     }
 
     private static boolean available(PokemonEntity mob) {
@@ -137,7 +137,8 @@ final class CobblemonCalls {
         WalkTarget stand;
         Path assignedPath;
         Stage stage = Stage.FACE;
-        long arrived, nextPath, lastProgress;
+        long firstArrival = -1;
+        long nextPath, lastProgress;
         Vec3 progressPosition;
 
         Response(PokemonEntity mob, ServerPlayer caller, double limit, long now) {
@@ -151,22 +152,22 @@ final class CobblemonCalls {
         }
 
         boolean update(PokemonEntity mob, long now) {
-            if (!available(mob) || !caller.isAlive() || caller.isRemoved() || caller.isSpectator() || caller.isCreative()
+            if (visitExpired(now) || !available(mob) || !caller.isAlive() || caller.isRemoved() || caller.isSpectator() || caller.isCreative()
                     || mob.level() != caller.level() || mob.distanceToSqr(caller) > limit) return false;
             if (stage == Stage.FACE && now - started < FACE_TICKS) {
                 standAndFace(mob);
                 return true;
             }
-            // A caller can move. Count two continuous seconds beside that same player after arrival.
+            // Stepping away and back during one call never restarts its six-second window.
             if (beside(mob)) {
                 if (stage != Stage.STAY) {
                     stage = Stage.STAY;
-                    arrived = now;
+                    if (firstArrival < 0) firstArrival = now;
                     VisitInteractions.status(mob, caller, true);
                 }
                 standAndFace(mob);
-                if (now - arrived < STAY_TICKS) VisitInteractions.collect(mob, caller);
-                return now - arrived < STAY_TICKS;
+                VisitInteractions.collect(mob, caller);
+                return true;
             }
             BlockPos destination = caller.blockPosition();
             if (now >= deadline || !mob.level().hasChunkAt(destination)
@@ -190,6 +191,10 @@ final class CobblemonCalls {
         private boolean beside(PokemonEntity mob) {
             double reach = Math.max(2.5, (mob.getBbWidth() + caller.getBbWidth()) * 0.5 + 1.0);
             return mob.distanceToSqr(caller) <= reach * reach && mob.hasLineOfSight(caller);
+        }
+
+        private boolean visitExpired(long now) {
+            return firstArrival >= 0 && now - firstArrival >= STAY_TICKS;
         }
 
         private void standAndFace(PokemonEntity mob) {
