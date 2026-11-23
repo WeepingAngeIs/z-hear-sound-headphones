@@ -116,8 +116,9 @@ final class VisitCareProof {
             clientAction(PokemonProbe.CARE_CLICK,new ItemStack(CobblemonItems.SITRUS_BERRY,3));
             step=5;
         } else if (step==5 && caller.getMainHandItem().getCount()==2) {
-            if (pokemon.getCurrentHealth()!=max || pokemon.getCurrentFullness()!=Math.min(5,pokemon.getMaxFullness()))
-                throw PokemonProbe.fail("Healthy Sitrus treat changed HP or missed native fullness");
+            if (pokemon.getCurrentHealth()!=max || pokemon.getCurrentFullness()!=1)
+                throw PokemonProbe.fail("Healthy Sitrus should give one fullness at max HP, got hp="+
+                        pokemon.getCurrentHealth()+"/"+max+" fullness="+pokemon.getCurrentFullness());
             System.out.println("MOBSEAR_POKEMON_HEALTHY_SITRUS input=right-click hp="+max+"->"+max+
                     " fullness=0->"+pokemon.getCurrentFullness()+" totalBerries=3->2");
             step=6;

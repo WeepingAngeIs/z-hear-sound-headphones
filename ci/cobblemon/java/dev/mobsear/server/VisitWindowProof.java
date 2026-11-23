@@ -6,6 +6,7 @@ import java.util.Map;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
@@ -59,17 +60,19 @@ final class VisitWindowProof {
         if (t<120) require(visiting,"Visit closed early at "+t);
         if (!treatSent && t>=8) {
             treatSent=true;
-            action(caller,ground?PokemonProbe.DROP_ONE:PokemonProbe.CARE_CLICK);
+            action(caller,ground?PokemonProbe.DROP_ONE:PokemonProbe.CARE_CLICK,ground?CobblemonItems.ORAN_BERRY:CobblemonItems.FIGY_BERRY);
         }
         if (treatSent && !treatEaten) {
             require(hp==mob.getPokemon().getMaxHealth(),"Healthy visitor HP changed");
-            if (mob.getPokemon().getCurrentFullness()==1) {
+            int expectedFullness=ground?1:Math.min(5,mob.getPokemon().getMaxFullness());
+            if (mob.getPokemon().getCurrentFullness()==expectedFullness) {
                 require(caller.getMainHandItem().getCount()==2,"Healthy visitor spent the wrong number of berries");
                 if (ground) require(treatDrop!=null && treatDrop.onGround() && treatDrop.isRemoved() && reachable(treatDrop),
                         "Healthy visitor did not eat the original grounded single-Q berry");
                 treatEaten=true;
                 System.out.println("MOBSEAR_POKEMON_HEALTHY_TREAT input="+(ground?"single-Q-on-floor":"right-click")+
-                        " tick="+t+" hp="+hp+"->"+hp+" fullness=0->1 totalBerries=3->2");
+                        " tick="+t+" hp="+hp+"->"+hp+" berry="+(ground?"oran":"figy")+
+                        " fullness=0->"+expectedFullness+" totalBerries=3->2");
                 mob.getPokemon().setCurrentHealth(initialHp);
             } else require(t<60,"Healthy visitor ignored the treat");
         }
@@ -144,7 +147,11 @@ final class VisitWindowProof {
     }
 
     private void action(ServerPlayer player,int input) {
-        player.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(CobblemonItems.ORAN_BERRY,3));
+        action(player,input,CobblemonItems.ORAN_BERRY);
+    }
+
+    private void action(ServerPlayer player,int input,Item berry) {
+        player.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(berry,3));
         player.inventoryMenu.broadcastChanges();
         PacketDistributor.sendToPlayer(player,new PokemonProbe.Message(input,scenario.ordinal(),mob.getId()));
     }
