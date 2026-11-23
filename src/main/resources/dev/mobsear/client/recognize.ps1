@@ -265,7 +265,12 @@ try {
         if ($null -ne $plain) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
         if (($null -eq $command -or $command.Grammar -ne $calls) -and $env:MOBSEAR_NEARBY_MATCHER -and
                 [NearbyPokemonWords]::IsUnregisteredPause([string[]]$original,$aliases)) { return 0 }
-        $answer=Read-WordAudio $samples $original $shortCode 3200
+        # Desktop recognition time varies with pack load. Let the word decoder use the
+        # remainder of this utterance's four-second budget, reserving time to return it.
+        # The client independently rechecks the age from capture before dispatching.
+        $remaining = 3900 - $clipClock.ElapsedMilliseconds
+        if ($remaining -le 0) { return 65535 }
+        $answer=Read-WordAudio $samples $original $shortCode ([int]$remaining)
         if (-not $hasContext) {
             if ($answer -eq $shortCode -or $answer -ge 32768) { return $answer }
             return 0
@@ -307,6 +312,7 @@ try {
         if ($length -le 0 -or $length -gt 256000 -or $length % 2 -ne 0) { exit 3 }
         $pcm = $reader.ReadBytes($length)
         if ($pcm.Length -ne $length) { exit 3 }
+        $clipClock = [Diagnostics.Stopwatch]::StartNew()
         $stream = [System.IO.MemoryStream]::new($pcm, $false)
         $guess = $null
         $decision = 0
