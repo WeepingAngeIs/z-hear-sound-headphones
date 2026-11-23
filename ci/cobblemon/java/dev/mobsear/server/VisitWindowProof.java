@@ -20,8 +20,8 @@ final class VisitWindowProof {
     private final ItemStack originalHand, otherHand;
     private long arrival=-1, callerDropAge=-1, ateAt=-1;
     private int initialHp, otherRest, expiredRest;
-    private boolean checkedOther, checkedCutoff, lateSent, expiredSent, expiredBeside, finished;
-    private ItemEntity otherDrop, offered, expiredDrop;
+    private boolean treatSent, treatEaten, checkedOther, checkedCutoff, lateSent, expiredSent, expiredBeside, finished;
+    private ItemEntity treatDrop, otherDrop, offered, expiredDrop;
 
     VisitWindowProof(PokemonEntity mob, ServerPlayer caller, ServerPlayer other, PokemonCase scenario) {
         this.mob=mob; this.caller=caller; this.other=other; this.scenario=scenario;
@@ -40,6 +40,7 @@ final class VisitWindowProof {
         if (player==caller) {
             if (expiredSent) expiredDrop=drop;
             else if (lateSent && ground) { offered=drop; callerDropAge=age(); }
+            else if (treatSent && !treatEaten && ground) treatDrop=drop;
         } else if (player==other && !checkedOther) otherDrop=drop;
     }
 
@@ -50,11 +51,28 @@ final class VisitWindowProof {
             if (!visiting) return;
             arrival=serverArrival();
             initialHp=mob.getPokemon().getMaxHealth()-14;
-            mob.getPokemon().setCurrentHealth(initialHp);
+            mob.getPokemon().setCurrentHealth(mob.getPokemon().getMaxHealth());
+            mob.getPokemon().setCurrentFullness(0);
         }
         long t=age();
         int hp=mob.getPokemon().getCurrentHealth();
         if (t<120) require(visiting,"Visit closed early at "+t);
+        if (!treatSent && t>=8) {
+            treatSent=true;
+            action(caller,ground?PokemonProbe.DROP_ONE:PokemonProbe.CARE_CLICK);
+        }
+        if (treatSent && !treatEaten) {
+            require(hp==mob.getPokemon().getMaxHealth(),"Healthy visitor HP changed");
+            if (mob.getPokemon().getCurrentFullness()==1) {
+                require(caller.getMainHandItem().getCount()==2,"Healthy visitor spent the wrong number of berries");
+                if (ground) require(treatDrop!=null && treatDrop.onGround() && treatDrop.isRemoved() && reachable(treatDrop),
+                        "Healthy visitor did not eat the original grounded single-Q berry");
+                treatEaten=true;
+                System.out.println("MOBSEAR_POKEMON_HEALTHY_TREAT input="+(ground?"single-Q-on-floor":"right-click")+
+                        " tick="+t+" hp="+hp+"->"+hp+" fullness=0->1 totalBerries=3->2");
+                mob.getPokemon().setCurrentHealth(initialHp);
+            } else require(t<60,"Healthy visitor ignored the treat");
+        }
         if (t==65 && other!=caller && ground) {
             other.setGameMode(GameType.ADVENTURE);
             var perpendicular=caller.position().subtract(mob.position()).multiply(1,0,1).normalize();

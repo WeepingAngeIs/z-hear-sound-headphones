@@ -110,26 +110,31 @@ final class VisitCareProof {
             if (drops.size()!=1) throw PokemonProbe.fail("Toss did not leave precisely two original berries");
             if (rejected!=null && (!rejected.isAlive() || rejected.getItem().getCount()!=2)) throw PokemonProbe.fail("A stranger's toss was consumed");
             System.out.println("MOBSEAR_POKEMON_FEED_TOSS hp="+initial+"->"+max+" capped=true berries=3->2");
-            caller.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(CobblemonItems.ORAN_BERRY,3));
-            NeoForge.EVENT_BUS.post(new PlayerInteractEvent.EntityInteractSpecific(caller,InteractionHand.MAIN_HAND,mob,Vec3.ZERO));
-            if (caller.getMainHandItem().getCount()!=3 || pokemon.getCurrentHealth()!=max) throw PokemonProbe.fail("Full HP spent a berry");
             drops.getFirst().discard();
             if (rejected!=null) rejected.discard();
+            pokemon.setCurrentFullness(0);
+            clientAction(PokemonProbe.CARE_CLICK,new ItemStack(CobblemonItems.SITRUS_BERRY,3));
             step=5;
-        } else if (step==5 && !PokemonReactions.isReacting(mob)) {
+        } else if (step==5 && caller.getMainHandItem().getCount()==2) {
+            if (pokemon.getCurrentHealth()!=max || pokemon.getCurrentFullness()!=Math.min(5,pokemon.getMaxFullness()))
+                throw PokemonProbe.fail("Healthy Sitrus treat changed HP or missed native fullness");
+            System.out.println("MOBSEAR_POKEMON_HEALTHY_SITRUS input=right-click hp="+max+"->"+max+
+                    " fullness=0->"+pokemon.getCurrentFullness()+" totalBerries=3->2");
+            step=6;
+        } else if (step==6 && !PokemonReactions.isReacting(mob)) {
             pokemon.setCurrentHealth(max-12);
             excluded(mob,caller,"after visit");
             rejected=rejectedToss(caller);
-            next=now+7; step=6;
-        } else if (step==6 && now>=next) {
+            next=now+7; step=7;
+        } else if (step==7 && now>=next) {
             if (!rejected.isAlive() || rejected.getItem().getCount()!=2 || pokemon.getCurrentHealth()!=max-12)
                 throw PokemonProbe.fail("Unclaimed toss changed HP or count");
             rejected.discard(); finished=true;
             caller.setItemInHand(InteractionHand.MAIN_HAND,originalHand);
             caller.inventoryMenu.broadcastChanges();
-            System.out.println("MOBSEAR_POKEMON_VISIT_CARE_PASS fullHpNoSpend=true afterVisitDropUnspent=true bystander="+(caller!=viewer));
+            System.out.println("MOBSEAR_POKEMON_VISIT_CARE_PASS healthyTreat=true afterVisitDropUnspent=true bystander="+(caller!=viewer));
         }
-        if (step>0 && step<5 && now-arrived>48)
+        if (step>0 && step<6 && now-arrived>60)
             throw PokemonProbe.fail("Missed visit input stage="+step+" hp="+pokemon.getCurrentHealth()+" hand="+caller.getMainHandItem());
     }
 

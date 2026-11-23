@@ -43,7 +43,7 @@ final class VisitFeedbackProof {
     }
     void stage(PokemonCase scenario,int id) {
         if (active && scenario!=PokemonCase.WALKING_PIKACHU) {
-            if (hearts!=4 || cries<1 || noms!=2 || bites<2 || crumbs<8)
+            if (hearts!=4 || cries<1 || noms!=3 || bites<3 || crumbs<12)
                 throw PokemonProbe.fail("Missing client visit effects hearts="+hearts+" cries="+cries+" nom="+noms+" bites="+bites+" crumbs="+crumbs);
             System.out.println("MOBSEAR_POKEMON_CLIENT_CARE actualHearts="+hearts+" speciesCry="+cries+" nomSounds="+noms+" eatingEvents="+bites+" berryCrumbs="+crumbs);
             active=false;

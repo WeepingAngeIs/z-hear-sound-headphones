@@ -1,6 +1,7 @@
 package dev.mobsear.server;
 
 import com.cobblemon.mod.common.api.item.PokemonSelectingItem;
+import com.cobblemon.mod.common.api.tags.CobblemonItemTags;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import com.cobblemon.mod.common.item.berry.HealingBerryItem;
 import com.cobblemon.mod.common.item.berry.PortionHealingBerryItem;
@@ -134,13 +135,19 @@ final class VisitInteractions {
     private static ItemStack feed(PokemonEntity mob, ServerPlayer caller, ItemStack stack) {
         if (stack.isEmpty() || !healing(stack)) return ItemStack.EMPTY;
         var pokemon = mob.getPokemon();
-        var berry = (PokemonSelectingItem) stack.getItem();
-        int before = pokemon.getCurrentHealth();
         var food = stack.copyWithCount(1);
-        if (!berry.canUseOnPokemon(food, pokemon)) return ItemStack.EMPTY;
-        // The native item consumes its argument. Commit the real hand/drop only after HP actually increases.
-        var result = berry.applyToPokemon(caller, food.copy(), pokemon);
-        if (result == null || !result.getResult().consumesAction() || pokemon.getCurrentHealth() <= before) return ItemStack.EMPTY;
+        if (pokemon.isFullHealth()) {
+            // Cobblemon's healing action rejects full HP. Use its ordinary feeding routine for a treat.
+            if (food.is(CobblemonItemTags.POKE_FOOD) && pokemon.isFull()) return ItemStack.EMPTY;
+            int fullness = food.getItem() instanceof PortionHealingBerryItem ? 5 : 1;
+            pokemon.feedPokemon(fullness, true);
+        } else {
+            var berry = (PokemonSelectingItem) food.getItem();
+            int before = pokemon.getCurrentHealth();
+            // The native action checks eligibility and consumes its argument. Commit the real stack once.
+            var result = berry.applyToPokemon(caller, food.copy(), pokemon);
+            if (result == null || !result.getResult().consumesAction() || pokemon.getCurrentHealth() <= before) return ItemStack.EMPTY;
+        }
         bites.put(mob, new Bite(food, mob.tickCount));
         chew(mob, food);
         mob.playSound(MobsEar.NOM.get(), .56F, 1F);
