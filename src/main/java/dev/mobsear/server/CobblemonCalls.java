@@ -2,6 +2,7 @@ package dev.mobsear.server;
 
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
+import dev.mobsear.net.Packets;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -25,7 +26,6 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Server-side species calls. Loaded only when Cobblemon is present. */
 final class CobblemonCalls {
     private static final int FACE_TICKS = 14;
-    private static final int STAY_TICKS = 120;
     private static final int COOLDOWN_TICKS = 100;
     private static final int STUCK_TICKS = 100;
     private static final float WALK_SPEED = 1.0F;
@@ -194,7 +194,7 @@ final class CobblemonCalls {
         }
 
         private boolean visitExpired(long now) {
-            return firstArrival >= 0 && now - firstArrival >= STAY_TICKS;
+            return firstArrival >= 0 && now - firstArrival >= Packets.Visit.WINDOW_TICKS;
         }
 
         private void standAndFace(PokemonEntity mob) {

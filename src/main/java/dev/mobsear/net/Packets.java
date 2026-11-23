@@ -49,6 +49,7 @@ public final class Packets {
 
     /** Only the caller needs to predict a visiting Pokémon's right-click interaction. */
     public record Visit(UUID pokemonEntity, boolean arrived) implements CustomPacketPayload {
+        public static final int WINDOW_TICKS = 120;
         public static final Type<Visit> TYPE = id("pokemon_visit");
         public static final StreamCodec<FriendlyByteBuf, Visit> CODEC = StreamCodec.of((buf, value) -> {
             buf.writeUUID(value.pokemonEntity);

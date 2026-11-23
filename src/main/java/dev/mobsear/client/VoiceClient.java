@@ -79,11 +79,11 @@ public final class VoiceClient {
         MobsEar.visitStatus = packet -> {
             var level = Minecraft.getInstance().level;
             if (level == null || !packet.arrived()) visitors.remove(packet.pokemonEntity());
-            else visitors.put(packet.pokemonEntity(), level.getGameTime() + 50);
+            else visitors.put(packet.pokemonEntity(), level.getGameTime() + Packets.Visit.WINDOW_TICKS);
         };
         MobsEar.localVisitor = id -> {
             var level = Minecraft.getInstance().level;
-            return level != null && visitors.getOrDefault(id, Long.MIN_VALUE) >= level.getGameTime();
+            return level != null && visitors.getOrDefault(id, Long.MIN_VALUE) > level.getGameTime();
         };
         MobsEar.nearbySpecies = reply -> {
             var mc = Minecraft.getInstance();

@@ -63,7 +63,7 @@ final class VisitWindowProof {
                     "Bystander's normal drop changed or missed the visitor at "+t);
             if (++otherRest==5) {
                 checkedOther=true;
-                System.out.println("MOBSEAR_VISIT_STRANGER_Q grounded=true hp="+hp+" hand="+other.getMainHandItem().getCount()+" ground=1");
+                System.out.println("MOBSEAR_POKEMON_VISIT_STRANGER_Q grounded=true hp="+hp+" hand="+other.getMainHandItem().getCount()+" ground=1");
                 other.setGameMode(GameType.SPECTATOR);
                 otherDrop.discard();
             }
@@ -83,7 +83,7 @@ final class VisitWindowProof {
                         "Ground control fell inside the old catch box");
             }
             ateAt=t;
-            System.out.println("MOBSEAR_VISIT_LATE_FEED input="+(ground?"single-Q-on-floor":"right-click")+" tick="+t+
+            System.out.println("MOBSEAR_POKEMON_VISIT_LATE_FEED input="+(ground?"single-Q-on-floor":"right-click")+" tick="+t+
                     " droppedAt="+callerDropAge+" hp="+initialHp+"->"+hp+" totalBerries=3->2"+
                     (ground?" grounded=true clearance="+Math.sqrt(mob.getBoundingBox().distanceToSqr(offered.position())):""));
         }
@@ -104,7 +104,7 @@ final class VisitWindowProof {
             require(expiredDrop.isAlive() && expiredDrop.getItem().getCount()==1 && mob.getPokemon().getCurrentHealth()==initialHp
                     && caller.getMainHandItem().getCount()==2,"Expired single Q spent a berry or healed");
             if (++expiredRest==5) {
-                System.out.println("MOBSEAR_VISIT_EXPIRY tick=120 dropGrounded=true hp="+initialHp+" hand=2 ground=1 input="+scenario);
+                System.out.println("MOBSEAR_POKEMON_VISIT_EXPIRY tick=120 dropGrounded=true hp="+initialHp+" hand=2 ground=1 input="+scenario);
                 expiredDrop.discard();
                 finished=true;
             }

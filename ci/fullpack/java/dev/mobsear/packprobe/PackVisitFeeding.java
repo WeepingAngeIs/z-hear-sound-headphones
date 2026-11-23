@@ -66,6 +66,7 @@ final class PackVisitFeeding {
                     " hp="+start+"->"+pokemon.getCurrentHealth()+" totalBerries=3->2 clearance="+
                     Math.sqrt(mob.getBoundingBox().distanceToSqr(actualDrop.position())));
         }
+        if (age==119 && !ate) throw new IllegalStateException("Missing grounded feeding evidence on the last eligible tick");
         if (age==120) {
             var visiting=Class.forName("dev.mobsear.server.CobblemonCalls").getDeclaredMethod("visiting",PokemonEntity.class,ServerPlayer.class);
             visiting.setAccessible(true);
