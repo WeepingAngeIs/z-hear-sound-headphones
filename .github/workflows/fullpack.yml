@@ -173,6 +173,9 @@ jobs:
           path: ${{ runner.temp }}/hearing-windows/boot-progress.txt
       - name: Play generated speech in disposable Survival and Creative
         run: python ci/fullpack/watch.py finish
+      - name: Replay the known generated relative call if the live run failed
+        if: failure() && !cancelled() && env.MOBSEAR_TEST_NEARBY == '1'
+        run: python ci/fullpack/replay_relative.py
       - name: Measure first-pass and retry confidence on the shared synthetic clips
         if: ${{ !cancelled() && env.MOBSEAR_CONFIDENCE_COMPARE == '1' && steps.subject.outputs.build != '' }}
         shell: python

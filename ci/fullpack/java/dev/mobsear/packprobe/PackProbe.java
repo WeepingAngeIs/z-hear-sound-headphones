@@ -123,7 +123,7 @@ public final class PackProbe {
         volatile boolean started;
         boolean recognized, dispatched, confirmed, notice, facedAway, screenshot;
         boolean anyReply, listening, checking, guess, noMatch, privateText, waiting;
-        int aligned, postAckTicks, renderedNoticeFrames;
+        int aligned, postAckTicks;
         double initialError = -1, closestError = 180;
         long initialRequest, startedAt, seenAt, initialDecision;
         Boundary.Decision decision;
@@ -551,6 +551,11 @@ public final class PackProbe {
                 Files.write(folder.resolve(o.number+"_"+o.test.recording+"_"+segments++ +".pcm"),generated);
             }
             System.out.println("ACOUSTIC_SEGMENTS sample="+o.test.recording+" submitted="+segments);
+            if (o.test.recording.equals("nearby-nidorine") && segments>0) {
+                var rows=Boundary.generatedHints();
+                Files.write(home.resolve("segments").resolve("nidorine-public-hints.txt"),rows);
+                System.out.println("ACOUSTIC_GENERATED_HINTS "+rows);
+            }
             if (o.decision!=null) System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording
                     +" matched="+o.decision.matched()+" timely="+o.decision.timely()+" decoderAgeMs="+o.decision.ageMillis());
             else System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording+" returned=false");
@@ -565,7 +570,7 @@ public final class PackProbe {
             if (o.visitTrial) System.out.println("ACOUSTIC_POKEMON_VISIT audio="+o.wireAudio+" recognized="+o.recognized+
                     " dispatched="+o.dispatched+" wandering="+o.primed+" fullVisit="+o.finished+" besideFrame="+o.besideScreenshot);
             if (!success && !o.lastNativeState.isEmpty()) System.out.println("ACOUSTIC_NATIVE_OBSERVATION trial="+o.number+
-                    " activeSamples="+o.activeSamples+" bestServerAngle="+Math.round(o.serverBestAngle)+" "+o.lastNativeState);
+                    " image="+o.screenshot+" activeSamples="+o.activeSamples+" bestServerAngle="+Math.round(o.serverBestAngle)+" "+o.lastNativeState);
             if (testFeedback) {
                 boolean detailOk=!o.test.detail ? !o.privateText : switch(o.test.recording) {
                     case "hold-on" -> o.guess;
@@ -630,7 +635,7 @@ public final class PackProbe {
         if (testFeedback && o!=null && o.started && !next && !fatal && !complete && mc.screen==null && mc.getOverlay()==null) {
             try { captureTestPreview(mc,o); } catch (Exception ex) { fail(ex); }
         }
-        if (fatal || complete || next || o==null || o.screenshot || !o.confirmed || !o.notice || o.aligned<2
+        if (fatal || complete || next || o==null || o.screenshot || !o.confirmed || !o.notice
                 || mc.screen!=null || mc.getOverlay()!=null) return;
         try {
             if (!Boundary.notice("current").equals(o.test.name+" heard you")) return;
@@ -648,7 +653,7 @@ public final class PackProbe {
                 // still being displayed. A separately visible diagnostic adds a second line.
                 String diagnostic = Boundary.notice("localMatch");
                 int minHeight = diagnostic.isEmpty() || diagnostic.equals(o.test.name+" heard you") ? 13 : 21;
-                if (bottom-top+1<minHeight*scale || ++o.renderedNoticeFrames<2) return;
+                if (bottom-top+1<minHeight*scale) return;
                 var folder=Files.createDirectories(home.resolve("evidence"));
                 pic.writeToFile(folder.resolve(o.number+"-"+o.test.name+".png"));
                 o.screenshot=true;

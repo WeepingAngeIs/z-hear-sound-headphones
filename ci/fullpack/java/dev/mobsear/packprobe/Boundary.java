@@ -128,6 +128,24 @@ final class Boundary {
         return bytes.toByteArray();
     }
 
+    /** Rebuild the labels actually used on this entirely generated clip, including live order. */
+    static List<String> generatedHints() throws ReflectiveOperationException {
+        var speech=get(get(client(),"session"),"speech");
+        synchronized (speech) {
+            var worker=get(speech,"session");
+            var registry=get(worker,"registry");
+            var type=Class.forName("dev.mobsear.client.SpeechGrammar");
+            var constructor=type.getDeclaredConstructor(Path.class,registry.getClass());
+            constructor.setAccessible(true);
+            var names=type.getDeclaredMethod("nearbyLabels",List.class);
+            names.setAccessible(true);
+            var rows=new java.util.ArrayList<String>();
+            for (var item:(List<?>)get(worker,"sentNames")) rows.add(item.toString());
+            for (var item:(List<?>)names.invoke(constructor.newInstance(null,registry),get(worker,"sentSpecies"))) rows.add("+"+item);
+            return rows;
+        }
+    }
+
     static Component noticeComponent(String accessor) throws ReflectiveOperationException {
         var method = Class.forName("dev.mobsear.client.MobCallNotice").getDeclaredMethod(accessor);
         method.setAccessible(true);
