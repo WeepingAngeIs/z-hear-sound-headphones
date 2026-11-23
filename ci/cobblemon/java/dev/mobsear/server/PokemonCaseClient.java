@@ -133,8 +133,11 @@ public final class PokemonCaseClient {
             return;
         }
         if ((!hello || caller) && !VoiceClient.connected()) { waitFor("voice session"); return; }
-        if (dropAfterTicks>0 && --dropAfterTicks==0 && !mc.player.drop(false))
-            throw PokemonProbe.fail("The normal single-item Q action failed");
+        if (dropAfterTicks>0) {
+            if (--dropAfterTicks==0 && !mc.player.drop(false)) throw PokemonProbe.fail("The normal single-item Q action failed");
+            // Keep looking at the floor until Minecraft sends the drop. The visit screenshot follows the Pokémon's face.
+            return;
+        }
         if (mc.screen instanceof PauseScreen pause) pause.onClose();
         if (!hello) {
             if (mc.screen!=null || !mc.isWindowActive()) {

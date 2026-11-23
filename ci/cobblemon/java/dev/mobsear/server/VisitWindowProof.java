@@ -68,7 +68,9 @@ final class VisitWindowProof {
             if (mob.getPokemon().getCurrentFullness()==expectedFullness) {
                 require(caller.getMainHandItem().getCount()==2,"Healthy visitor spent the wrong number of berries");
                 if (ground) require(treatDrop!=null && treatDrop.onGround() && treatDrop.isRemoved() && reachable(treatDrop),
-                        "Healthy visitor did not eat the original grounded single-Q berry");
+                        "Expected healthy visitor to eat the original single-Q berry after landing, tick="+t+
+                        (treatDrop==null?" no recorded drop":" ground="+treatDrop.onGround()+" removed="+treatDrop.isRemoved()+
+                                " clearance="+Math.sqrt(mob.getBoundingBox().distanceToSqr(treatDrop.position()))));
                 treatEaten=true;
                 System.out.println("MOBSEAR_POKEMON_HEALTHY_TREAT input="+(ground?"single-Q-on-floor":"right-click")+
                         " tick="+t+" hp="+hp+"->"+hp+" berry="+(ground?"oran":"figy")+
