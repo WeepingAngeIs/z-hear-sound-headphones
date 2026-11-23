@@ -11,6 +11,12 @@ foreach ($order in @('nidorina,nidorino','nidorino,nidorina')) {
     if ($pick.Pick('Nobody noticed the new notebook','')) { throw 'Initial alone selected a name' }
 }
 Write-Output 'NEARBY_RANK_PASS equal scores select the nearer individual in both orders'
+if (-not [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on'),@{}) -or
+        [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on'),@{'hold on'=99}) -or
+        [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('wait','a','second'),@{'second'=8}) -or
+        [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on','lopunny'),@{})) {
+    throw 'Conversational pause handling must preserve names and custom aliases'
+}
 Add-Type -AssemblyName System.Speech
 $synth=[System.Speech.Synthesis.SpeechSynthesizer]::new()
 $format=[System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000,16,1)
@@ -26,6 +32,9 @@ $lines=@{
     'lantern'='There is a lantern by the wall.'
     'notebook'='I need your notebook right here.'
     'needle'='I saw a needle in the sewing kit.'
+    'pause'='Hold on.'
+    'moment'='Just a moment.'
+    'pause-name'='Hold on, the Pikachu ran past me.'
 }
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {

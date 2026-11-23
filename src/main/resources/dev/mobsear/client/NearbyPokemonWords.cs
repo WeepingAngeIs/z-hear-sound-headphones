@@ -11,6 +11,10 @@ public sealed class NearbyPokemonWords
     private readonly string[] sounds;
     private static readonly Regex Words = new Regex("[a-z]+", RegexOptions.Compiled);
     private static readonly Regex Repeated = new Regex("(.)\\1+", RegexOptions.Compiled);
+    private static readonly HashSet<string> Pauses = new HashSet<string> {
+        "hold on", "hang on", "one moment", "one second",
+        "just a moment", "just a second", "wait a moment", "wait a second"
+    };
     private static readonly HashSet<string> Ordinary = new HashSet<string>(
         ("a an the this that these those there theres is are was were and or but if for of to from with at by in on " +
          "he she it we you they my your his her our their hey look see saw found over here near after before around " +
@@ -64,6 +68,21 @@ public sealed class NearbyPokemonWords
     private static double Similarity(string a, string b)
     {
         return 1.0 - (double)Edits(a,b)/Math.Max(a.Length,b.Length);
+    }
+
+    // After the command recognizers reject a clip, a complete conversational pause
+    // needs no second audio decode. Registered names and player aliases take precedence.
+    public static bool IsUnregisteredPause(string[] words, System.Collections.IDictionary registry)
+    {
+        if (words.Length < 2 || words.Length > 3 || !Pauses.Contains(String.Join(" ",words))) return false;
+        for (int first = 0; first < words.Length; first++) {
+            string span = "";
+            for (int last = first; last < words.Length; last++) {
+                span = last == first ? words[first] : span + " " + words[last];
+                if (registry.Contains(span) || registry.Contains(span.Replace(" ",""))) return false;
+            }
+        }
+        return true;
     }
 
     // Only spelling context for the audio decoder. A starting sound never selects a Pokémon.

@@ -260,6 +260,8 @@ try {
         }
         $original=@()
         if ($null -ne $plain) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
+        if (($null -eq $command -or $command.Grammar -ne $calls) -and $env:MOBSEAR_NEARBY_MATCHER -and
+                [NearbyPokemonWords]::IsUnregisteredPause([string[]]$original,$aliases)) { return 0 }
         $answer=Read-WordAudio $samples $original $shortCode 3200
         if (-not $hasContext) {
             if ($answer -eq $shortCode -or $answer -ge 32768) { return $answer }

@@ -16,7 +16,7 @@ cases = []
 inputs = []
 for file in sorted(root.glob("near-Microsoft*.pcm")):
     voice, label = file.stem[5:].split("_")
-    near = {"exact": "raichu pikachu", "nidorine": "nidorina nidorino",
+    near = {"exact": "raichu pikachu", "pause-name": "raichu pikachu", "nidorine": "nidorina nidorino",
             "bulbasaur": "ivysaur bulbasaur", "charmander": "charmeleon charmander"}
     trials = [(label, near.get(targets.get(label, label), crowded))]
     if label == "nidorine":
@@ -42,9 +42,9 @@ for (voice, test, roster), reply in zip(cases, actual, strict=True):
     print("NEARBY_GENERATED", voice, test, ",".join(roster), "result="+result, "approximate="+str(guessed), flush=True)
     if wire >= 65534 or (guessed and result not in roster):
         errors.append((test, "invalid guess or worker failure", wire))
-    if test == "exact" and (result != "pikachu" or guessed):
+    if test in ("exact","pause-name") and (result != "pikachu" or guessed):
         errors.append((test, "exact name did not win", result))
-    if test in ("ordinary", "money", "lantern", "notebook", "needle") and result != "neutral":
+    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment") and result != "neutral":
         errors.append((test, result))
     if test.startswith("out-") and (guessed or result not in ("neutral", targets[test[4:]])):
         errors.append((test, "redirected out-of-range speech", result))
