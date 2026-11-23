@@ -8,11 +8,12 @@ try {
     $english = $speaker.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq 'en' } | Select-Object -First 1
     $speaker.SelectVoice($english.VoiceInfo.Name)
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
-    foreach ($name in @('Enderman','Pikachu','Lopunny')) {
+    foreach ($name in @('Enderman','Pikachu','Lopunny','nearby-bulbazore')) {
         $stream = New-Object System.IO.MemoryStream
         try {
             $speaker.SetOutputToAudioStream($stream,$format)
-            $speaker.Speak($name)
+            if ($name -eq 'nearby-bulbazore') { $speaker.Speak('There is a Bulbazore here.') }
+            else { $speaker.Speak($name) }
             $speaker.SetOutputToNull()
             $data = [byte[]]::new(640 * 3 + $stream.Length + 640 * 28)
             [Array]::Copy($stream.ToArray(),0,$data,640 * 3,$stream.Length)

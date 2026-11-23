@@ -51,6 +51,7 @@ public final class PackProbe {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
         boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary").contains(recording); }
+        boolean distantImperfect() { return recording.equals("nearby-bulbazore") && range>32; }
         String expectedName() { return recording.equals("pikachu") ? "Pikachu" : name; }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
@@ -58,6 +59,7 @@ public final class PackProbe {
     private final boolean testFeedback = "1".equals(System.getenv("MOBSEAR_TEST_FEEDBACK"));
     private final boolean testVisit = "1".equals(System.getenv("MOBSEAR_TEST_VISIT"));
     private final boolean testSentences = "1".equals(System.getenv("MOBSEAR_TEST_SENTENCES"));
+    private final LiveNearbyProof liveNearby = "1".equals(System.getenv("MOBSEAR_TEST_NEARBY")) ? new LiveNearbyProof() : null;
     private final Trial[] tests = trials();
 
     private Trial[] trials() {
@@ -91,8 +93,12 @@ public final class PackProbe {
         if (testVisit) {
             cases.add(new Trial("Pikachu",12,false,true,true));
             cases.add(new Trial("Pikachu",12,false,true,true));
-            cases.add(new Trial("Lopunny",16,false,true,true));
         }
+        if (liveNearby!=null) {
+            cases.add(new Trial("Bulbasaur",16,false,true,true,"nearby-bulbazore"));
+            cases.add(new Trial("Bulbasaur",40,false,false,true,"nearby-bulbazore"));
+        }
+        if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
     }
     static final class Observation {
@@ -175,6 +181,7 @@ public final class PackProbe {
             if (players.size() != 1 || e.getServer().isDedicatedServer()) throw new IllegalStateException("Expected one integrated player");
             var p = players.getFirst();
             var level = p.serverLevel();
+            if (liveNearby!=null && !liveNearby.server(p)) return;
             if (next) {
                 current.subject.discard();
                 current = null;
@@ -198,7 +205,7 @@ public final class PackProbe {
                 }
                 var t = tests[index];
                 // Exercise Pikachu repeatedly at night as well as during daytime.
-                boolean nightPikachu=testVisit && index>=tests.length-3 && index<tests.length-1;
+                boolean nightPikachu=testVisit && t.name.equals("Pikachu") && index>=tests.length-(liveNearby==null?3:5);
                 level.setDayTime(t.name.equals("Enderman") || nightPikachu ? 18000 : 1000);
                 boolean visitTrial=testVisit && index==tests.length-1;
                 if (visitTrial) {
@@ -314,6 +321,7 @@ public final class PackProbe {
         if (fatal || complete) return;
         try {
             var mc = Minecraft.getInstance();
+            if (ready && liveNearby!=null) liveNearby.client();
             if (!installed) {
                 Boundary.install();
                 installed=true;
@@ -436,6 +444,11 @@ public final class PackProbe {
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
+                    if (o.test.recording.equals("nearby-bulbazore") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
+                            LiveNearbyProof.has("cobblemon:bulbasaur")!=o.test.hears)) {
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live Bulbasaur pool before speech");
+                        return;
+                    }
                     if (o.visitTrial && !o.primed) return;
                     o.initialError=err;
                     if (earlier) mc.gui.setOverlayMessage(Component.empty(),false);
@@ -505,9 +518,11 @@ public final class PackProbe {
             if (o.decision!=null) System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording
                     +" matched="+o.decision.matched()+" timely="+o.decision.timely()+" decoderAgeMs="+o.decision.ageMillis());
             else System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording+" returned=false");
-            boolean expectWire=o.test.spokenName() && !o.test.creative;
-            boolean correctDecision=o.test.spokenName() || (silent ? o.decision==null : o.decision!=null && !o.decision.matched() && o.decision.timely());
-            boolean success=capture && o.wireAudio!=silent && o.recognized==o.test.spokenName() && correctDecision
+            // Open dictation may spell the remote species exactly. A near-only guess must never redirect it.
+            boolean expectedName=o.test.distantImperfect() ? o.decision!=null && o.decision.matched() : o.test.spokenName();
+            boolean expectWire=expectedName && !o.test.creative;
+            boolean correctDecision=expectedName || (silent ? o.decision==null : o.decision!=null && !o.decision.matched() && o.decision.timely());
+            boolean success=capture && o.wireAudio!=silent && o.recognized==expectedName && correctDecision
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot))) && completedVisit;
@@ -520,6 +535,7 @@ public final class PackProbe {
                     case "hold-on" -> o.guess;
                     case "fan" -> o.noMatch;
                     case "sentence-partial-mob", "sentence-ordinary" -> o.noMatch || o.guess;
+                    case "nearby-bulbazore" -> o.recognized || o.test.distantImperfect() && (o.noMatch || o.guess);
                     case "silence" -> o.waiting && !o.listening && !o.checking;
                     default -> o.recognized;
                 };
