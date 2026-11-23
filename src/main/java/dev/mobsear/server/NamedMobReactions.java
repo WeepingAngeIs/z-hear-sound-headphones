@@ -16,6 +16,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -42,13 +44,20 @@ public final class NamedMobReactions {
     private static final int POSE_INTERVAL = 5;
     private static final Map<Mob, Glance> active = new IdentityHashMap<>();
     private static final Map<UUID, Long> cooldowns = new HashMap<>();
+    private static final ResourceLocation HEARD_RANGE = ResourceLocation.fromNamespaceAndPath("mobsear", "heard_target_range");
+    private static final Map<Mob, Pursuit> distantTargets = new IdentityHashMap<>();
 
     private NamedMobReactions() {}
 
     public static void register() {
         NeoForge.EVENT_BUS.addListener(NamedMobReactions::afterLevelTick);
         NeoForge.EVENT_BUS.addListener(NamedMobReactions::expireCooldowns);
-        NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> { active.clear(); cooldowns.clear(); });
+        NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
+            distantTargets.keySet().forEach(NamedMobReactions::restoreRange);
+            distantTargets.clear();
+            active.clear();
+            cooldowns.clear();
+        });
     }
 
     static boolean isReacting(Mob mob) { return active.containsKey(mob); }
@@ -83,6 +92,7 @@ public final class NamedMobReactions {
         boolean aggro = canDrawAggro(caller, mob);
         if (aggro) {
             if (!targetCaller(mob, caller)) return false;
+            followHeardTarget(mob, caller, limit, now);
             if (mob instanceof Zombie zombie) MobReactions.pauseZombie(zombie, caller.getEyePosition());
         } else if (!canGlance(mob)) return false;
         var glance = new Glance(caller, caller.getEyePosition(), limit, now, mob.getYHeadRot(), mob.yBodyRot, aggro);
@@ -127,6 +137,33 @@ public final class NamedMobReactions {
 
     private static boolean targeting(Mob mob, ServerPlayer caller) {
         return mob.getTarget() == caller || mob.getBrain().isMemoryValue(MemoryModuleType.ATTACK_TARGET, caller);
+    }
+
+    // Vanilla's TargetGoal drops a legitimate target immediately beyond the mob's usual follow range.
+    // Give only this pursuit time to close that gap. Native attacks, sight checks and retaliation still run.
+    private static void followHeardTarget(Mob mob, ServerPlayer caller, double limit, long now) {
+        if (distantTargets.remove(mob) != null) restoreRange(mob);
+        var range = mob.getAttribute(Attributes.FOLLOW_RANGE);
+        if (range == null || mob.getTarget() != caller) return;
+        double ordinary = range.getValue();
+        if (ordinary <= 0 || mob.distanceToSqr(caller) <= ordinary * ordinary) return;
+        double factor = Math.sqrt(limit) / ordinary - 1;
+        if (factor <= 0) return;
+        range.addTransientModifier(new AttributeModifier(HEARD_RANGE, factor, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+        distantTargets.put(mob, new Pursuit(caller, ordinary * ordinary, limit, now + 160));
+    }
+
+    private static void restoreRange(Mob mob) {
+        var range = mob.getAttribute(Attributes.FOLLOW_RANGE);
+        if (range != null) range.removeModifier(HEARD_RANGE);
+    }
+
+    private record Pursuit(ServerPlayer caller, double ordinaryLimit, double hearingLimit, long expires) {
+        boolean ended(Mob mob, long now) {
+            double distance = mob.distanceToSqr(caller);
+            return mob.isRemoved() || !mob.isAlive() || mob.isNoAi() || !eligibleCaller(caller) || mob.level() != caller.level()
+                    || mob.getTarget() != caller || now >= expires || distance < ordinaryLimit || distance > hearingLimit;
+        }
     }
 
     private static boolean canGlance(Mob mob) {
@@ -204,8 +241,15 @@ public final class NamedMobReactions {
 
     // Apply the pose immediately after this world's native AI has updated its head and body.
     private static void afterLevelTick(LevelTickEvent.Post event) {
-        if (!(event.getLevel() instanceof ServerLevel level) || active.isEmpty()) return;
+        if (!(event.getLevel() instanceof ServerLevel level) || active.isEmpty() && distantTargets.isEmpty()) return;
         long now = level.getServer().overworld().getGameTime();
+        distantTargets.entrySet().removeIf(entry -> {
+            var mob = entry.getKey();
+            if (mob.level() != level && !mob.isRemoved()) return false;
+            if (!entry.getValue().ended(mob, now)) return false;
+            restoreRange(mob);
+            return true;
+        });
         active.entrySet().removeIf(entry -> {
             var mob = entry.getKey();
             var glance = entry.getValue();

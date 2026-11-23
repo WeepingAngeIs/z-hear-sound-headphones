@@ -26,17 +26,19 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 /** Two real Survival players. The friend draws the first attack through ordinary Minecraft AI. */
 final class DistractionSmoke {
-    static final int CALL=-200, PHOTO=-220;
+    static final int CALL=-200, PHOTO=-220, HEARD=-240;
     static final List<String> CASES=List.of("skeletons","zombie","creeper","mobs");
     static final int X=0, Y=108, Z=265;
     private static final List<Mob> group=new ArrayList<>();
     private static final Set<UUID> faced=new HashSet<>(), arrows=new HashSet<>();
     private static ServerPlayer caller, friend;
-    private static int index, age, previousHit;
-    private static boolean requested, transferred, image, attack;
+    private static int index, age, previousHit, entered;
+    private static long startAfter;
+    private static boolean requested, transferred, image, attack, heard;
 
     static boolean handles(int value) {
-        return (value<=CALL && value>CALL-CASES.size()) || (value<=PHOTO && value>PHOTO-CASES.size());
+        return (value<=CALL && value>CALL-CASES.size()) || (value<=PHOTO && value>PHOTO-CASES.size())
+                || (value<=HEARD && value>HEARD-CASES.size());
     }
 
     static boolean expected(int trial, EntityType<?> type) {
@@ -67,19 +69,25 @@ final class DistractionSmoke {
     private static void begin() {
         var level=caller.serverLevel();
         group.clear(); faced.clear(); arrows.clear();
-        requested=transferred=image=attack=false;
-        age=0;
+        requested=transferred=image=attack=heard=false;
+        age=0; entered=-1;
         for(var player:List.of(friend,caller)) {
             player.setGameMode(GameType.SURVIVAL);
             player.setHealth(player.getMaxHealth());
+            player.setItemSlot(EquipmentSlot.CHEST,new ItemStack(Items.DIAMOND_CHESTPLATE));
         }
         caller.teleportTo(level,X+49.5,Y,Z+.5,90,0);
         friend.teleportTo(level,X+.5,Y,Z+12.5,180,6);
         previousHit=caller.getLastHurtByMobTimestamp();
+        // The preceding independent voice trial just finished. Respect the real 1.25-second call cooldown.
+        startAfter=System.nanoTime()+1_600_000_000L;
+    }
+
+    private static void spawnGroup() {
         if (index==0 || index==3) {
-            spawn(EntityType.SKELETON,-3,-2);
-            spawn(EntityType.SKELETON,2,1);
-            spawn(EntityType.ZOMBIE,-5,1);
+            spawn(EntityType.SKELETON,-4,2);
+            spawn(EntityType.SKELETON,4,-2);
+            spawn(EntityType.ZOMBIE,0,0);
         } else if (index==1) spawn(EntityType.ZOMBIE,0,0);
         else spawn(EntityType.CREEPER,0,0);
     }
@@ -95,16 +103,25 @@ final class DistractionSmoke {
         group.add(mob);
     }
 
-    static void photographed(ServerPlayer player,int value) {
+    static void acknowledge(ServerPlayer player,int value) {
+        if (value==HEARD-index && player==caller && requested && !heard) {
+            heard=true;
+            System.out.println("MOBSEAR_DISTRACTION_HEARD "+CASES.get(index));
+            return;
+        }
         if (player!=friend || value!=PHOTO-index || !transferred || image) throw SmokeControl.failure("Unexpected distraction photo");
         image=true;
     }
 
     private static void tick(ServerTickEvent.Post event) {
         if(index==CASES.size()) return;
+        if(group.isEmpty()) {
+            if(System.nanoTime()>=startAfter) spawnGroup();
+            return;
+        }
         if(++age>400 || group.stream().anyMatch(mob->!mob.isAlive()))
             throw SmokeControl.failure("Distraction "+CASES.get(index)+" age="+age+" requested="+requested+" transfer="+transferred
-                    +" faced="+faced.size()+" photo="+image+" attack="+attack+" targets="
+                    +" heard="+heard+" faced="+faced.size()+" photo="+image+" attack="+attack+" targets="
                     +group.stream().map(m->m.getTarget()==caller?"caller":m.getTarget()==friend?"friend":"other").toList());
         var level=caller.serverLevel();
         var nearby=level.getEntitiesOfClass(AbstractArrow.class,friend.getBoundingBox().inflate(40));
@@ -118,8 +135,14 @@ final class DistractionSmoke {
         if (!requested) {
             if (age<10 || !group.stream().allMatch(m->m.getTarget()==friend) ||
                     group.stream().noneMatch(m->m.isAggressive() || !m.getNavigation().isDone())) return;
-            caller.teleportTo(level,X+13.5,Y,Z+.5,90,4);
-            System.out.println("MOBSEAR_DISTRACTION_BEFORE "+CASES.get(index)+" nativeTargetsOnFriend="+group.size());
+            if(entered<0) {
+                caller.teleportTo(level,X+23.5,Y,Z+.5,90,4);
+                entered=age;
+                return;
+            }
+            if(age-entered<4) return;
+            System.out.println("MOBSEAR_DISTRACTION_BEFORE "+CASES.get(index)+" nativeTargetsOnFriend="+group.size()
+                    +" distances="+group.stream().map(mob->Math.round(mob.distanceTo(caller)*10)/10.0).toList());
             requested=true;
             PacketDistributor.sendToPlayer(caller,new SmokeControl.Barrier(CALL-index));
             return;
@@ -138,7 +161,7 @@ final class DistractionSmoke {
             transferred=true;
             PacketDistributor.sendToPlayer(friend,new SmokeControl.Barrier(PHOTO-index));
         }
-        if(!transferred || !correct || !image || !attack || faced.size()!=calledCount(index)) return;
+        if(!transferred || !correct || !heard || !image || !attack || faced.size()!=calledCount(index)) return;
         String action=index==1 ? "melee-hit-on-caller" : index==2 ? "approached-and-started-native-fuse" : "native-arrow-aimed-at-caller";
         System.out.println("MOBSEAR_DISTRACTION_PASS "+CASES.get(index)+" previous=friend callerTargets="+faced.size()
                 +" stillOnFriend="+(group.size()-faced.size())+" action="+action+" observerPicture=true");

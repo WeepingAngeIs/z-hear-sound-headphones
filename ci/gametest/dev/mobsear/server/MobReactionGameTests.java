@@ -150,6 +150,26 @@ public final class MobReactionGameTests {
     }
 
     @GameTest(template = "hearing_floor")
+    public static void distantCallKeepsNativeTargetAndRestoresRange(GameTestHelper test) {
+        var caller=speaker(test.getLevel(),test.absoluteVec(new Vec3(3.5,2,5.5)));
+        var skeleton=test.spawn(EntityType.SKELETON,9,2,5);
+        var range=skeleton.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.FOLLOW_RANGE);
+        range.setBaseValue(4);
+        double ordinary=range.getValue();
+        skeleton.setTarget(caller);
+        var nativeGoal=new net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal<>(
+                skeleton,net.minecraft.world.entity.player.Player.class,false);
+        test.assertTrue(!nativeGoal.canContinueToUse(),"Native goal unexpectedly retained distant player");
+        test.assertTrue(NamedMobReactions.respond(caller,skeleton,32*32) && nativeGoal.canContinueToUse(),
+                "Native target goal dropped a caller inside the hearing radius");
+        caller.setPos(skeleton.position().add(1,0,0));
+        test.runAfterDelay(3,()->{
+            test.assertTrue(Math.abs(range.getValue()-ordinary)<.00001,"Voice range persisted after the gap closed");
+            test.succeed();
+        });
+    }
+
+    @GameTest(template = "hearing_floor")
     public static void namedBrainTargetAndCreeperFuse(GameTestHelper test) {
         var caller=speaker(test.getLevel(),test.absoluteVec(new Vec3(3.5,2,5.5)));
         var friend=speaker(test.getLevel(),test.absoluteVec(new Vec3(8.5,2,5.5)));

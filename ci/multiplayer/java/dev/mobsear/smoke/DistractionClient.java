@@ -6,12 +6,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 final class DistractionClient {
-    private static int photo=-1;
+    private static int photo=-1, awaiting=-1;
+    private static String lastNotice="";
 
     static void receive(int value,boolean sender) {
         if (value<=DistractionSmoke.PHOTO) {
@@ -26,10 +28,30 @@ final class DistractionClient {
             if(!calls.equals(List.of("SKELETON","ZOMBIE","CREEPER","MOBS"))) throw new IllegalStateException("Unexpected Windows decisions");
             NoticeFixture.clear();
             GazeClient.supplyDecision(Cue.valueOf(calls.get(index)));
+            awaiting=index;
+            lastNotice="";
         } catch(Exception ex) { throw SmokeControl.failure("Distraction voice proof "+ex); }
     }
 
     static void tick() {
+        if(awaiting>=0) {
+            String text=NoticeFixture.text();
+            if(!text.isEmpty() && !text.equals(lastNotice)) {
+                lastNotice=text;
+                System.out.println("MOBSEAR_DISTRACTION_NOTICE "+DistractionSmoke.CASES.get(awaiting)+" "+text);
+                var listeners=switch(awaiting) {
+                    case 0 -> List.of("skeleton");
+                    case 1 -> List.of("zombie");
+                    case 2 -> List.of("creeper");
+                    default -> List.of("skeleton","zombie");
+                };
+                if(listeners.stream().anyMatch(name->text.equals(Component.translatable("mobsear.speech.heard",
+                        Component.translatable("entity.minecraft."+name)).getString()))) {
+                    PacketDistributor.sendToServer(new SmokeControl.Barrier(DistractionSmoke.HEARD-awaiting));
+                    awaiting=-1;
+                }
+            }
+        }
         if(photo<0) return;
         var mc=Minecraft.getInstance();
         if(mc.player==null || mc.level==null || mc.screen!=null) return;
