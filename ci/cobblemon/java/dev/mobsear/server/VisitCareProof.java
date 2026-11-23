@@ -99,7 +99,9 @@ final class VisitCareProof {
             if (!e.isCanceled() || extra.getCount()!=2 || pokemon.getCurrentHealth()!=initial)
                 throw PokemonProbe.fail("An active chew accepted a duplicate offer after the click debounce");
             caller.setItemInHand(InteractionHand.MAIN_HAND,original);
-            var drop=new ItemEntity(caller.serverLevel(),mob.getX()+(step==1?-1:1),mob.getY()+.1,mob.getZ(),
+            var towardCaller=caller.position().subtract(mob.position()).multiply(1,0,1).normalize();
+            var side=new Vec3(-towardCaller.z,0,towardCaller.x).scale(step==1?-1.1:1.1);
+            var drop=new ItemEntity(caller.serverLevel(),mob.getX()+side.x,mob.getY()+.1,mob.getZ()+side.z,
                     new ItemStack(CobblemonItems.ORAN_BERRY,2));
             drop.setPickUpDelay(240);
             drop.setDeltaMovement(Vec3.ZERO);

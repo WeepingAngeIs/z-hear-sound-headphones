@@ -5,6 +5,7 @@ import com.cobblemon.mod.common.api.tags.CobblemonItemTags;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import com.cobblemon.mod.common.item.berry.HealingBerryItem;
 import com.cobblemon.mod.common.item.berry.PortionHealingBerryItem;
+import com.mojang.math.Transformation;
 import dev.mobsear.MobsEar;
 import dev.mobsear.net.Packets;
 import java.util.HashSet;
@@ -15,6 +16,7 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import net.minecraft.core.particles.ItemParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -33,6 +35,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /** Interactions are authorized against the existing visit on the server, including on the pickup tick. */
 final class VisitInteractions {
@@ -153,6 +157,12 @@ final class VisitInteractions {
         var level = caller.serverLevel();
         var display = EntityType.ITEM_DISPLAY.create(level);
         if (display == null || !display.getSlot(0).set(food.copy())) return false;
+        // A generated item is a flat sprite. Keep it readable from both caller and observer angles.
+        var visual = display.saveWithoutId(new CompoundTag());
+        visual.putString("billboard", "center");
+        visual.putString("item_display", "fixed");
+        display.load(visual);
+        display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(), new Vector3f(.30F), new Quaternionf()));
         display.addTag(PROP_TAG);
         var mouth = mouth(mob);
         display.setPos(mouth.x, mouth.y, mouth.z);
