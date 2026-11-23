@@ -75,6 +75,13 @@ public final class VoiceClient {
         MobsEar.presence = packet -> nearby.put(packet.speaker(), new Seen(packet, System.nanoTime()));
         MobsEar.hordeStatus = enabled -> horde = enabled;
         MobsEar.callHeard = VoiceClient::heard;
+        MobsEar.nearbySpecies = reply -> {
+            var mc = Minecraft.getInstance();
+            if (session == null || !session.recognition || session.suspended || mc.level != session.level
+                    || !mc.level.dimension().location().equals(reply.dimension())) return;
+            session.speech.setNearbySpecies(reply.species().stream().map(ResourceLocation::toString).toList());
+            session.lastRosterTick = mc.level.getGameTime();
+        };
         MobsEar.callDeclined = reply -> {
             debug.reply(reply.requestId(), CallDebugLog.Event.valueOf(reply.reason().name()));
             if (pendingRequestId == reply.requestId()) pendingRequestId = 0;
@@ -328,6 +335,7 @@ public final class VoiceClient {
         final EntityCallNames mobNames = new EntityCallNames();
         Map<String, List<String>> knownSpecies = Map.of(), knownEntities = Map.of();
         private long nextHints;
+        private long lastRosterTick = Long.MIN_VALUE;
         final VoiceAudio audio;
         volatile boolean held;
         boolean automatic;
@@ -406,6 +414,7 @@ public final class VoiceClient {
             lastSpeaking = 0;
             audio.setTransmitting(false);
             speech.setInputPaused(true);
+            speech.setNearbySpecies(List.of());
             MobCallNotice.clearDiagnostic();
             cue.set(null);
             frames.clear();
@@ -416,14 +425,18 @@ public final class VoiceClient {
             long now = System.nanoTime();
             if (now >= nextHints && mc.player != null && mc.level != null) {
                 nextHints = now + 500_000_000L;
+                long tick = mc.level.getGameTime();
+                if (mc.player.isCreative() || lastRosterTick == Long.MIN_VALUE || tick - lastRosterTick > 30)
+                    speech.setNearbySpecies(List.of());
+                if (!mc.player.isCreative() && link.hasChannel(Packets.NearbySpeciesRequest.TYPE))
+                    PacketDistributor.sendToServer(new Packets.NearbySpeciesRequest());
                 var labels = new java.util.LinkedHashSet<String>();
                 var mobs = mc.level.getEntitiesOfClass(net.minecraft.world.entity.Mob.class,
                         mc.player.getBoundingBox().inflate(64), mob -> mob.distanceToSqr(mc.player) <= 64 * 64);
                 mobs.sort(java.util.Comparator.comparingDouble(mob -> mob.distanceToSqr(mc.player)));
                 for (var mob : mobs) {
-                    String name = names == null ? null : CobblemonNames.nearbyName(mob);
-                    if (name == null) name = mob.getType().getDescription().getString();
-                    name = SpeechGrammar.spokenName(name, true);
+                    if (names != null && CobblemonNames.nearbyName(mob) != null) continue;
+                    String name = SpeechGrammar.spokenName(mob.getType().getDescription().getString(), true);
                     if (!name.isEmpty()) labels.add(name);
                     if (labels.size() >= 20) break;
                 }
@@ -447,6 +460,7 @@ public final class VoiceClient {
             gate.reset();
             speech.setEnabled(enable && !suspended);
             if (!enable) {
+                speech.setNearbySpecies(List.of());
                 cue.set(null);
                 MobCallNotice.clearMatch();
             }

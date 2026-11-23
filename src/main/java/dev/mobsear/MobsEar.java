@@ -47,6 +47,7 @@ public final class MobsEar {
     public static Consumer<Boolean> hordeStatus = optedIn -> {};
     public static Consumer<Packets.Heard> callHeard = ack -> {};
     public static Consumer<Packets.CallDeclined> callDeclined = reply -> {};
+    public static Consumer<Packets.NearbySpecies> nearbySpecies = reply -> {};
     public static Consumer<Packets.MobPose> mobPose = pose -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
@@ -123,6 +124,10 @@ public final class MobsEar {
                 ServerVoice.entityCue(player, packet.entityType(), radius.getAsInt());
         });
         if (hasSpecies) {
+            reg.playToClient(Packets.NearbySpecies.TYPE, Packets.NearbySpecies.CODEC, (packet, ctx) -> nearbySpecies.accept(packet));
+            reg.playToServer(Packets.NearbySpeciesRequest.TYPE, Packets.NearbySpeciesRequest.CODEC, (packet, ctx) -> {
+                if (ctx.player() instanceof ServerPlayer player) PokemonReactions.sendNearby(player, radius.getAsInt());
+            });
             reg.playToServer(Packets.SpeciesCall.TYPE, Packets.SpeciesCall.CODEC, (packet, context) -> {
                 if (context.player() instanceof ServerPlayer player)
                     ServerVoice.speciesCue(player, packet.species(), radius.getAsInt());

@@ -37,6 +37,8 @@ final class SpeechGrammar {
 
     private final Map<String, Integer> phrases;
     private final List<Registered> registeredByIndex;
+    private final Map<String, List<String>> speciesLabels = new TreeMap<>();
+    static final int NEARBY_GUESS = 0x8000;
     private final Set<String> needsConfirmation;
     private final Set<String> explicitOnly;
     private static final Cue[] MOBS = Cue.values();
@@ -162,6 +164,7 @@ final class SpeechGrammar {
                 return MOBS.length + ids.size();
             });
             entries.put(phrase, code);
+            if (!target.entity) speciesLabels.computeIfAbsent(target.id, key -> new ArrayList<>()).add(phrase);
             String shape = spellingShape(phrase);
             if (!shape.isEmpty()) groups.computeIfAbsent(shape, ignored -> new ArrayList<>()).add(phrase);
         });
@@ -223,11 +226,27 @@ final class SpeechGrammar {
         return phrases.getOrDefault(phrase, 0);
     }
 
+    List<String> nearbyLabels(List<String> nearestFirst) {
+        var labels = new ArrayList<String>();
+        for (var id : nearestFirst) labels.addAll(speciesLabels.getOrDefault(id, List.of()));
+        return labels;
+    }
+
+    String speciesId(int code) {
+        int index = code - MOBS.length - 1;
+        if (index < 0 || index >= registeredByIndex.size() || registeredByIndex.get(index).entity) return null;
+        return registeredByIndex.get(index).id;
+    }
+
     boolean dispatch(int code, Consumer<Cue> mob, Consumer<String> species) {
         return dispatch(code, mob, species, id -> {});
     }
 
     boolean dispatch(int code, Consumer<Cue> mob, Consumer<String> species, Consumer<String> entity) {
+        if ((code & NEARBY_GUESS) != 0) {
+            code &= ~NEARBY_GUESS;
+            if (speciesId(code) == null) return false;
+        }
         if (code < 0 || code > MOBS.length + registeredByIndex.size()) return false;
         if (code > MOBS.length) {
             var registered = registeredByIndex.get(code - MOBS.length - 1);

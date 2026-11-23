@@ -113,6 +113,9 @@ try {
 
     $modelDir = $env:MOBSEAR_LOCAL_WORD_MODEL
     $nearNames = @()
+    $nearPokemon = @()
+    $nearMatcher = $null
+    if ($env:MOBSEAR_NEARBY_MATCHER) { Add-Type -TypeDefinition $env:MOBSEAR_NEARBY_MATCHER }
     # Written equivalents of the short-call pronunciation variants in the English lexicon.
     $spokenForms = @{'la punny'='lopunny'; 'lapunny'='lopunny'; 'lop bunny'='lopunny'}
     $ordinaryRivals = @{
@@ -172,7 +175,7 @@ try {
 
     function Read-WordAudio([byte[]]$samples, $original, [int]$shortCode, [int]$budget) {
         # Hints come from registered local creatures and an existing pronunciation lexicon. Dictation remains open.
-        $hints = @(($nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
+        $hints = @(($nearPokemon + $nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
             $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
         } | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })
         $prompt = (@('Minecraft','Cobblemon') + $hints) -join ', '
@@ -205,7 +208,23 @@ try {
             if (-not $child.WaitForExit($budget)) { $child.Kill(); return 65535 }
             if ($child.ExitCode -ne 0) { return 65534 }
             $text = $stdout.GetAwaiter().GetResult()
-            if ($text.Length -le 500) { return Find-WholeName $text $original $shortCode }
+            if ($text.Length -le 500) {
+                $exact = Find-WholeName $text $original $shortCode
+                if ($exact) { return $exact }
+                if ($null -ne $nearMatcher) {
+                    $plain = $original -join ' '
+                    # Never redirect an exactly named, absent species to its local relative.
+                    $tokens = @([regex]::Matches($text.ToLowerInvariant(),'[a-z]+') | ForEach-Object { $_.Value })
+                    for ($i=0; $i -lt $tokens.Count; $i++) {
+                        for ($n=[Math]::Min(4,$tokens.Count-$i); $n -gt 0; $n--) {
+                            $word = $tokens[$i..($i+$n-1)] -join ' '
+                            if ($aliases.ContainsKey($word) -and $nearPokemon -notcontains $word) { return 0 }
+                        }
+                    }
+                    $selected = $nearMatcher.Pick($text,$plain)
+                    if ($selected) { return (32768 -bor $aliases[$selected]) }
+                }
+            }
             return 0
         } catch {
             return 65534
@@ -224,12 +243,12 @@ try {
                     -not $compounds.ContainsKey($name) -and $name -notin @('hoglin','poponee')) { $shortCode=$aliases[$name] }
         }
         $hasContext=$null -ne $plain -and $plain.Words.Count -ge 2
-        if (-not $hasContext -and $shortCode -eq 0) { return 0 }
+        if (-not $hasContext -and $shortCode -eq 0 -and $null -eq $nearMatcher) { return 0 }
         $original=@()
-        if ($hasContext) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
+        if ($null -ne $plain) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
         $answer=Read-WordAudio $samples $original $shortCode 3200
         if (-not $hasContext) {
-            if ($answer -eq $shortCode -or $answer -ge 65534) { return $answer }
+            if ($answer -eq $shortCode -or $answer -ge 32768) { return $answer }
             return 0
         }
         return $answer
@@ -251,10 +270,16 @@ try {
         if ($length -lt -256000) { exit 3 }
         if ($length -eq 0) {
             $count = $reader.ReadInt32()
-            if ($count -lt 0 -or $count -gt 2048) { exit 3 }
+            if ($count -lt 0 -or $count -gt 1048576) { exit 3 }
             $data = $reader.ReadBytes($count)
             if ($data.Length -ne $count) { exit 3 }
-            $nearNames = @([Text.Encoding]::ASCII.GetString($data).Split([char]10) | Where-Object { $aliases.ContainsKey($_) } | Select-Object -First 24)
+            $rows = [Text.Encoding]::ASCII.GetString($data).Split([char]10)
+            $nearPokemon = @($rows | Where-Object { $_.StartsWith('+') } | ForEach-Object { $_.Substring(1) } |
+                Where-Object { $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 })
+            $nearNames = @(($nearPokemon + @($rows | Where-Object { $aliases.ContainsKey($_) })) | Select-Object -Unique -First 24)
+            $nearMatcher = if ($nearPokemon.Count -and ('NearbyPokemonWords' -as [type])) {
+                [NearbyPokemonWords]::new([string[]]$nearPokemon)
+            } else { $null }
             continue
         }
         $detail = $length -lt 0

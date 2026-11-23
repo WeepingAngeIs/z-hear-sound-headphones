@@ -1,6 +1,8 @@
 package dev.mobsear.net;
 
 import io.netty.handler.codec.DecoderException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -36,6 +38,34 @@ public final class Packets {
         public static final StreamCodec<FriendlyByteBuf, HordeOpt> CODEC =
                 StreamCodec.of((buf, packet) -> buf.writeBoolean(packet.optedIn), buf -> new HordeOpt(readFlag(buf)));
         @Override public Type<HordeOpt> type() { return TYPE; }
+    }
+
+    /** Requests the eligible species around the authenticated player, without supplying a position. */
+    public record NearbySpeciesRequest() implements CustomPacketPayload {
+        public static final Type<NearbySpeciesRequest> TYPE = id("nearby_species_request");
+        public static final StreamCodec<FriendlyByteBuf, NearbySpeciesRequest> CODEC = StreamCodec.unit(new NearbySpeciesRequest());
+        @Override public Type<NearbySpeciesRequest> type() { return TYPE; }
+    }
+
+    /** Registry IDs only, ordered by distance to the nearest eligible individual of each species. */
+    public record NearbySpecies(ResourceLocation dimension, List<ResourceLocation> species) implements CustomPacketPayload {
+        public static final int MAX_SPECIES = 4096;
+        public NearbySpecies { species = List.copyOf(species); }
+        public static final Type<NearbySpecies> TYPE = id("nearby_species");
+        public static final StreamCodec<FriendlyByteBuf, NearbySpecies> CODEC = StreamCodec.of((buf, value) -> {
+            buf.writeResourceLocation(value.dimension);
+            buf.writeVarInt(value.species.size());
+            for (var id : value.species) buf.writeUtf(id.toString(), MAX_CALL_ID_LENGTH);
+        }, buf -> {
+            var dimension = buf.readResourceLocation();
+            int count = buf.readVarInt();
+            if (count < 0 || count > MAX_SPECIES) throw new DecoderException("Invalid nearby species count");
+            var species = new ArrayList<ResourceLocation>(count);
+            for (int i = 0; i < count; i++) species.add(ResourceLocation.parse(buf.readUtf(MAX_CALL_ID_LENGTH)));
+            if (buf.isReadable()) throw new DecoderException("Unexpected nearby species data");
+            return new NearbySpecies(dimension, species);
+        });
+        @Override public Type<NearbySpecies> type() { return TYPE; }
     }
 
     public record HordeState(boolean optedIn) implements CustomPacketPayload {

@@ -34,6 +34,7 @@ public final class SpeechCues implements AutoCloseable {
     private final Consumer<Process> configureWorker;
     private final Path aliasFile;
     private volatile List<String> nearbyNames = List.of();
+    private volatile List<String> nearbySpecies = List.of();
     private SpeechGrammar.Registries catalogs;
     private Map<String, List<String>> entitySource = Map.of();
     private Session session;
@@ -105,6 +106,7 @@ public final class SpeechCues implements AutoCloseable {
     public synchronized Decision lastDecision() { return lastDecision; }
 
     void setNearbyNames(List<String> names) { nearbyNames = List.copyOf(names); }
+    void setNearbySpecies(List<String> ids) { nearbySpecies = List.copyOf(ids); }
 
     synchronized void setTesting(boolean enabled) {
         if (testing == enabled) return;
@@ -220,6 +222,10 @@ public final class SpeechCues implements AutoCloseable {
             var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
                     "-WindowStyle", "Hidden", "-Command", helper)
                     .redirectError(trackedStartup ? ProcessBuilder.Redirect.PIPE : ProcessBuilder.Redirect.DISCARD);
+            try (var matcher = SpeechCues.class.getResourceAsStream("NearbyPokemonWords.cs")) {
+                if (matcher == null) throw new IOException("Missing nearby name matcher");
+                process.environment().put("MOBSEAR_NEARBY_MATCHER", new String(matcher.readAllBytes(), StandardCharsets.UTF_8));
+            }
             if (!trackedStartup && "github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))
                     && "1".equals(System.getenv("MOBSEAR_SYNTHETIC_WORKER_FAULTS")))
                 process.redirectError(ProcessBuilder.Redirect.INHERIT);
@@ -258,6 +264,7 @@ public final class SpeechCues implements AutoCloseable {
         private volatile boolean decodeExpired;
         private final boolean recovering;
         private List<String> sentNames = List.of();
+        private List<String> sentSpecies = List.of();
 
         Session(boolean recovering) {
             this.recovering = recovering;
@@ -318,7 +325,7 @@ public final class SpeechCues implements AutoCloseable {
                                 detail = currentTest(clip.testAttempt);
                                 reportTest(clip.testAttempt, TestStage.CHECKING, "");
                             }
-                            var reply = exchange(child, input, output, clip, detail);
+                            var reply = exchange(child, input, output, clip, detail, grammar);
                             synchronized (SpeechCues.this) {
                                 if (session == this && !inputPaused && clip.inputRevision == inputRevision) {
                                     long age = System.nanoTime() - clip.endedAt;
@@ -329,6 +336,10 @@ public final class SpeechCues implements AutoCloseable {
                                         default -> DecoderIssue.NONE;
                                     };
                                     int decision = issue == DecoderIssue.NONE ? reply.code : 0;
+                                    if ((decision & SpeechGrammar.NEARBY_GUESS) != 0) {
+                                        String id = grammar.speciesId(decision & ~SpeechGrammar.NEARBY_GUESS);
+                                        if (id == null || !nearbySpecies.contains(id)) decision = 0;
+                                    }
                                     if (timely && !grammar.dispatch(decision, listener, speciesListener, entityListener))
                                         throw new IOException("Invalid speech helper reply");
                                     lastDecision = new Decision(++decisionNumber, decision != 0, timely,
@@ -387,7 +398,7 @@ public final class SpeechCues implements AutoCloseable {
             }
         }
 
-        private Reply exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip, boolean detail)
+        private Reply exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip, boolean detail, SpeechGrammar grammar)
                 throws IOException {
             // A late result still expires after four seconds. Give the engine time to finish
             // the discarded clip before treating it as unresponsive and recycling the worker.
@@ -397,12 +408,16 @@ public final class SpeechCues implements AutoCloseable {
             }, 24, TimeUnit.SECONDS);
             try {
                 var hints = nearbyNames;
-                if (!sentNames.equals(hints)) {
-                    byte[] names = String.join("\n", hints).getBytes(StandardCharsets.US_ASCII);
+                var eligible = nearbySpecies;
+                if (!sentNames.equals(hints) || !sentSpecies.equals(eligible)) {
+                    var rows = new StringBuilder(String.join("\n", hints));
+                    for (String label : grammar.nearbyLabels(eligible)) rows.append("\n+").append(label);
+                    byte[] names = rows.toString().getBytes(StandardCharsets.US_ASCII);
                     output.writeInt(0);
                     output.writeInt(Integer.reverseBytes(names.length));
                     output.write(names);
                     sentNames = hints;
+                    sentSpecies = eligible;
                 }
                 // A negative length requests a one-shot hint on the device-local pipe.
                 output.writeInt(Integer.reverseBytes(detail ? -clip.pcm.length : clip.pcm.length));

@@ -4,6 +4,7 @@ import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
@@ -57,8 +58,7 @@ final class CobblemonCalls {
         boolean heard = false;
         for (var mob : level.getEntitiesOfClass(PokemonEntity.class, caller.getBoundingBox().inflate(radius),
                 mob -> mob.distanceToSqr(caller) <= limit && id.equals(mob.getPokemon().getSpecies().getResourceIdentifier())
-                        && available(mob))) {
-            if (responses.containsKey(mob) || now < cooldowns.getOrDefault(mob.getUUID(), 0L)) continue;
+                        && canAnswer(mob, now))) {
             cooldowns.put(mob.getUUID(), now + COOLDOWN_TICKS);
             var response = new Response(mob, caller, limit, now);
             responses.put(mob, response);
@@ -66,6 +66,25 @@ final class CobblemonCalls {
             heard = true;
         }
         return heard;
+    }
+
+    private static boolean canAnswer(PokemonEntity mob, long now) {
+        return !responses.containsKey(mob) && now >= cooldowns.getOrDefault(mob.getUUID(), 0L) && available(mob);
+    }
+
+    static List<ResourceLocation> nearbySpecies(ServerPlayer caller, int radius) {
+        var level = caller.serverLevel();
+        long now = level.getServer().overworld().getGameTime();
+        var nearest = new HashMap<ResourceLocation, Double>();
+        for (var mob : level.getEntitiesOfClass(PokemonEntity.class, caller.getBoundingBox().inflate(radius),
+                mob -> mob.distanceToSqr(caller) <= (double) radius * radius && canAnswer(mob, now))) {
+            var id = mob.getPokemon().getSpecies().getResourceIdentifier();
+            if (id.toString().length() <= dev.mobsear.net.Packets.MAX_CALL_ID_LENGTH)
+                nearest.merge(id, mob.distanceToSqr(caller), Math::min);
+        }
+        return nearest.entrySet().stream().sorted(Map.Entry.<ResourceLocation, Double>comparingByValue()
+                .thenComparing(Map.Entry.comparingByKey())).limit(dev.mobsear.net.Packets.NearbySpecies.MAX_SPECIES)
+                .map(Map.Entry::getKey).toList();
     }
 
     private static boolean available(PokemonEntity mob) {

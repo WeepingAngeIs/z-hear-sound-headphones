@@ -1,0 +1,56 @@
+"""Generated clips through the shipped Windows recognizer; synthetic text tracing exists only in this fixture."""
+import os
+from pathlib import Path
+import struct
+import subprocess
+import sys
+from zipfile import ZipFile
+
+assert os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and os.name == "nt"
+root = Path(sys.argv[1])
+model = root / "nearby-model"
+model.mkdir(exist_ok=True)
+with ZipFile("build/generated/offline-speech/dev/mobsear/client/words-win-x64.zip") as package:
+    package.extractall(model)
+data = bytearray((root/"registry.bin").read_bytes())
+codes = {int(code):label for code,mode,label in (line.split(":") for line in data[4:].decode().splitlines())
+         if mode!="2" and " " not in label}
+cases = []
+for file in sorted(root.glob("near-*.pcm")):
+    voice,label=file.stem[5:].split("_")
+    roster={"exact":"raichu pikachu", "charmandor":"charmeleon charmander", "bulbazore":"ivysaur bulbasaur",
+            "nidorine":"nidorina nidorino"}.get(label,"lopunny lanturn nidorina nidorino charmander pikachu")
+    trials=[(roster,label)]
+    if label=="nidorine": trials.append(("nidorino nidorina","reverse"))
+    if label in ("bulbazore","charmandor"): trials.append(("nidorina lanturn","out-"+label))
+    for nearby,test in trials:
+        names="\n".join("+"+s for s in nearby.split()).encode()
+        pcm=file.read_bytes()
+        data.extend(struct.pack("<ii",0,len(names))+names+struct.pack("<i",len(pcm))+pcm)
+        cases.append((voice,test,nearby.split()))
+script=Path("src/main/resources/dev/mobsear/client/recognize.ps1").read_text(encoding="utf-8")
+script=script.replace("$pcm = $reader.ReadBytes($length)",'[Console]::Error.WriteLine("NEXT"); $pcm = $reader.ReadBytes($length)')
+script=script.replace("if ($text.Length -le 500)",'[Console]::Error.WriteLine("decoded="+$text.Trim()+" independent="+($original -join " ")); if ($text.Length -le 500)')
+shell=Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"
+proc=subprocess.run([str(shell),"-NoProfile","-NonInteractive","-Command",script],input=data,capture_output=True,
+                    timeout=180,check=True,env=dict(os.environ,MOBSEAR_LOCAL_WORD_MODEL=str(model)))
+assert proc.stdout[0]==82 and len(proc.stdout)==1+2*len(cases)
+traces=proc.stderr.decode(errors="replace").split("NEXT")[1:]
+hits=set()
+guesses=[]
+errors=[]
+for (voice,test,roster), (wire,),trace in zip(cases,struct.iter_unpack(">H",proc.stdout[1:]),traces,strict=True):
+    result=codes.get(wire & 32767,"neutral") if wire else "neutral"
+    guessed=bool(wire & 32768)
+    print("NEARBY_GENERATED",voice,test,",".join(roster),"result="+result,"approximate="+str(guessed),trace.strip(),flush=True)
+    if wire>=65534: errors.append((test,"decoder failed"))
+    if test=="exact" and result!="pikachu": errors.append((test,result))
+    if (test.startswith("out-") or test in ("ordinary","money","lantern")) and guessed: errors.append((test,"unjustified guess",result))
+    if test in ("ordinary","money","lantern") and result!="neutral": errors.append((test,result))
+    expected={"charmandor":"charmander","bulbazore":"bulbasaur"}.get(test)
+    if expected and result not in ("neutral",expected): errors.append((test,result))
+    if expected and result==expected: hits.add(voice)
+    if expected and result==expected and guessed: guesses.append((voice,test))
+    if test in ("nidorine","reverse") and result not in ("neutral",*roster): errors.append((test,result))
+assert not errors and guesses and len(hits)>=2,(errors,guesses,hits)
+print("NEARBY_SPEECH_PASS voices="+str(len(hits)),"imperfect="+str(guesses),flush=True)
