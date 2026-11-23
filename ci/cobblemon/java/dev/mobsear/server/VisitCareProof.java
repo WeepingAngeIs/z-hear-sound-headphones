@@ -18,6 +18,7 @@ final class VisitCareProof {
     final PokemonEntity mob;
     final ServerPlayer caller, viewer;
     final PokemonCase scenario;
+    private final ItemStack originalHand;
     final int max;
     int step, arrived, initial, next;
     boolean finished;
@@ -25,6 +26,7 @@ final class VisitCareProof {
 
     VisitCareProof(PokemonEntity mob, ServerPlayer caller, ServerPlayer viewer, PokemonCase scenario) {
         this.mob=mob; this.caller=caller; this.viewer=viewer; this.scenario=scenario;
+        originalHand=caller.getMainHandItem().copy();
         max=mob.getPokemon().getMaxHealth();
         excluded(mob, caller, "before arrival");
     }
@@ -123,6 +125,8 @@ final class VisitCareProof {
             if (!rejected.isAlive() || rejected.getItem().getCount()!=2 || pokemon.getCurrentHealth()!=max-12)
                 throw PokemonProbe.fail("Unclaimed toss changed HP or count");
             rejected.discard(); finished=true;
+            caller.setItemInHand(InteractionHand.MAIN_HAND,originalHand);
+            caller.inventoryMenu.broadcastChanges();
             System.out.println("MOBSEAR_POKEMON_VISIT_CARE_PASS fullHpNoSpend=true afterVisitDropUnspent=true bystander="+(caller!=viewer));
         }
         if (step>0 && step<5 && now-arrived>48)

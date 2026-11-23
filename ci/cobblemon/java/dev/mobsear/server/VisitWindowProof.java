@@ -17,14 +17,17 @@ final class VisitWindowProof {
     private final ServerPlayer caller, other;
     private final PokemonCase scenario;
     private final boolean ground;
+    private final ItemStack originalHand, otherHand;
     private long arrival=-1, callerDropAge=-1, ateAt=-1;
     private int initialHp, otherRest, expiredRest;
-    private boolean checkedOther, checkedCutoff, lateSent, expiredSent, finished;
+    private boolean checkedOther, checkedCutoff, lateSent, expiredSent, expiredBeside, finished;
     private ItemEntity otherDrop, offered, expiredDrop;
 
     VisitWindowProof(PokemonEntity mob, ServerPlayer caller, ServerPlayer other, PokemonCase scenario) {
         this.mob=mob; this.caller=caller; this.other=other; this.scenario=scenario;
         ground=scenario==PokemonCase.WALKING_LOPUNNY;
+        originalHand=caller.getMainHandItem().copy();
+        otherHand=other.getMainHandItem().copy();
     }
 
     boolean finished() { return finished; }
@@ -65,6 +68,8 @@ final class VisitWindowProof {
                 checkedOther=true;
                 System.out.println("MOBSEAR_POKEMON_VISIT_STRANGER_Q grounded=true hp="+hp+" hand="+other.getMainHandItem().getCount()+" ground=1");
                 other.setGameMode(GameType.SPECTATOR);
+                other.setItemInHand(InteractionHand.MAIN_HAND,otherHand);
+                other.inventoryMenu.broadcastChanges();
                 otherDrop.discard();
             }
         }
@@ -101,11 +106,15 @@ final class VisitWindowProof {
             action(caller,PokemonProbe.DROP_ONE);
         }
         if (expiredDrop!=null && expiredDrop.onGround() && !finished) {
+            expiredBeside |= reachable(expiredDrop);
             require(expiredDrop.isAlive() && expiredDrop.getItem().getCount()==1 && mob.getPokemon().getCurrentHealth()==initialHp
                     && caller.getMainHandItem().getCount()==2,"Expired single Q spent a berry or healed");
             if (++expiredRest==5) {
-                System.out.println("MOBSEAR_POKEMON_VISIT_EXPIRY tick=120 dropGrounded=true hp="+initialHp+" hand=2 ground=1 input="+scenario);
+                require(expiredBeside,"Expired berry never landed within reach of the former visitor");
+                System.out.println("MOBSEAR_POKEMON_VISIT_EXPIRY tick=120 dropGrounded=true withinReach=true hp="+initialHp+" hand=2 ground=1 input="+scenario);
                 expiredDrop.discard();
+                caller.setItemInHand(InteractionHand.MAIN_HAND,originalHand);
+                caller.inventoryMenu.broadcastChanges();
                 finished=true;
             }
         }
