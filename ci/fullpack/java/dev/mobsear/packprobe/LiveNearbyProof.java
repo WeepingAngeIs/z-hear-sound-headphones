@@ -11,13 +11,15 @@ import net.minecraft.world.phys.Vec3;
 
 /** Moves the same two real Pokémon and observes the ordered list actually offered to the local speech worker. */
 final class LiveNearbyProof {
-    private final double[][] distances={{36,38},{31.5,32.5},{22,7},{5,22},{33,37},{12,8}};
+    private final double[][] distances={{36,38},{31.5,32.5},{24,16},{16,24},{33,37},{18,16}};
     private final List<List<String>> expected=List.of(List.of(),List.of("nidorina"),List.of("nidorino","nidorina"),
             List.of("nidorina","nidorino"),List.of(),List.of("nidorina"));
     private final PokemonEntity[] subjects=new PokemonEntity[2];
     private volatile int stage=-1, observed=-1;
     private volatile long began;
+    private volatile List<String> lastSeen=List.of();
     private boolean complete;
+    private boolean missed;
 
     boolean server(ServerPlayer player) {
         if (complete) return true;
@@ -38,20 +40,33 @@ final class LiveNearbyProof {
             if (stage+1==distances.length) {
                 for (var mob:subjects) mob.discard();
                 complete=true;
-                System.out.println("ACOUSTIC_ROSTER_PASS entry exit distance-order-reversal incompatible-AI same individuals same connection");
+                if (!missed) System.out.println("ACOUSTIC_ROSTER_PASS entry exit distance-order-reversal incompatible-AI same individuals same connection");
                 return true;
             }
             began=System.nanoTime(); stage++;
         }
+        if (player.distanceToSqr(.5,160,.5)>.04) player.teleportTo(level,.5,160,.5,-90,0);
         for(int i=0;i<subjects.length;i++){
             var mob=subjects[i];
             mob.setNoAi(i==1 && stage==5);
+            mob.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+            mob.getBrain().setActiveActivityIfPossible(net.minecraft.world.entity.schedule.Activity.IDLE);
             mob.getNavigation().stop(); mob.setDeltaMovement(Vec3.ZERO);
             mob.moveTo(.5+distances[stage][i],160,.5,90,0);
         }
-        if (System.nanoTime()-began>30_000_000_000L) throw new IllegalStateException("Live nearby species failed stage "+stage);
+        if (System.nanoTime()-began>12_000_000_000L) {
+            missed=true;
+            System.out.println("ACOUSTIC_ROSTER_MISS stage="+stage+" actual="+lastSeen+" caller="+player.position());
+            for (var mob:subjects) System.out.println("ACOUSTIC_ROSTER_SUBJECT "+mob.getPokemon().getSpecies().getResourceIdentifier()+
+                    " actualDistance="+mob.distanceTo(player)+" inWorld="+(level.getEntity(mob.getUUID())==mob)+" removed="+mob.isRemoved()+
+                    " sleeping="+mob.isSleeping()+" noAi="+mob.isNoAi()+" busy="+mob.isBusy()+" wild="+mob.getPokemon().isWild()+
+                    " aggressive="+mob.isAggressive()+" activity="+mob.getBrain().getActiveNonCoreActivity()+" target="+(mob.getTarget()!=null));
+            observed=stage;
+        }
         return false;
     }
+
+    boolean passed() { return complete && !missed; }
 
     void client() throws ReflectiveOperationException {
         int phase=stage;
@@ -62,6 +77,7 @@ final class LiveNearbyProof {
         var roster=(List<?>)Boundary.get(speech,"nearbySpecies");
         var found=roster.stream().map(Object::toString).filter(name->name.equals("cobblemon:nidorina")||name.equals("cobblemon:nidorino"))
                 .map(name->name.substring("cobblemon:".length())).toList();
+        lastSeen=found;
         if (found.equals(expected.get(phase))) {
             System.out.println("ACOUSTIC_ROSTER stage="+phase+" at="+java.util.Arrays.toString(distances[phase])+" received="+found);
             observed=phase;

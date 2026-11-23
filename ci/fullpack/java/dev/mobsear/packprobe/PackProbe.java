@@ -577,6 +577,7 @@ public final class PackProbe {
             if (!success) failures++;
             if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(false);
             if (o.number+1==tests.length) {
+                if (liveNearby!=null && !liveNearby.passed()) failures++;
                 if (testSentences) verifyDecoderDirectory();
                 if (testFeedback && (!(observedListening && observedChecking)
                         || !testPreviews.containsAll(Set.of("listening","rejected-guess","no-match","waiting","other-name")))) failures++;
