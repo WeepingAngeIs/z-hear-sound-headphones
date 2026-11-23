@@ -302,11 +302,12 @@ try {
             $engine.SetInputToAudioStream($stream, $format)
             $result = $engine.Recognize()
             $plain = if ($null -ne $result -and $result.Grammar -eq $background) { $result } else { $null }
+            $sentenceFirst = $modelDir -and $null -ne $plain -and $plain.Words.Count -ge 4
             if ($detail -and $null -ne $result) { $guess = $result.Text }
             $minConfidence = 0.58
             # Rescore a rejection or very weak dictation hypothesis with the command grammar.
             # Keep ordinary speech with a credible match in the background vocabulary.
-            if ($null -eq $result -or ($result.Grammar.Name -ne 'mob call' -and $result.Confidence -lt 0.12)) {
+            if (-not $sentenceFirst -and ($null -eq $result -or ($result.Grammar.Name -ne 'mob call' -and $result.Confidence -lt 0.12))) {
                 $engine.SetInputToNull()
                 $stream.Dispose()
                 $stream = [System.IO.MemoryStream]::new($pcm, $false)
@@ -379,6 +380,11 @@ try {
                     }
                 }
             }
+            # A genuine multiword dictation result should not wait behind two single-name recovery passes.
+            if ($sentenceFirst) {
+                try { $decision = Read-ConnectedSpeech $pcm $plain $result }
+                catch { $decision = 65534 }
+            }
             # Check only rejections, the measured Poponee/Lopunny collision, and a positive Hoglin.
             # Suppress unconfirmed Hoglin and conflicting species decisions during ordinary speech.
             if ($null -ne $pronouncer -and ($decision -eq 0 -or $decision -eq $aliases['poponee'] -or $decision -eq $aliases['hoglin'])) {
@@ -435,7 +441,7 @@ try {
                     $match = $null
                 }
             }
-            if ($decision -eq 0) {
+            if ($decision -eq 0 -and -not $sentenceFirst) {
                 try { $decision = Read-ConnectedSpeech $pcm $plain $result }
                 catch { $decision = 65534 }
             }

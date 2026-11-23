@@ -28,6 +28,10 @@ public final class SpeechCuesFixture {
     private static final int FRAME = SpeechCues.Utterances.FRAME_BYTES;
 
     public static void main(String[] args) throws Exception {
+        require(SpeechCues.resultIsTimely(TimeUnit.MILLISECONDS.toNanos(4000), false), "Normal result cutoff");
+        require(!SpeechCues.resultIsTimely(TimeUnit.MILLISECONDS.toNanos(4155), false), "Uncorroborated late result");
+        require(SpeechCues.resultIsTimely(TimeUnit.MILLISECONDS.toNanos(4155), true), "Live pack species at measured scheduler delay");
+        require(!SpeechCues.resultIsTimely(TimeUnit.MILLISECONDS.toNanos(4500)+1, true), "Expired live species result");
         checkSegmentation();
         checkSpeciesCatalog();
         var received = new ArrayBlockingQueue<Cue>(8);

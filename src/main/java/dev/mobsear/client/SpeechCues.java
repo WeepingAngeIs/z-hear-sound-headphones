@@ -28,6 +28,7 @@ public final class SpeechCues implements AutoCloseable {
 
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeouts();
     private static final long MAX_AGE_NANOS = TimeUnit.SECONDS.toNanos(4);
+    private static final long LIVE_SPECIES_RESULT_LIMIT = TimeUnit.MILLISECONDS.toNanos(4500);
     private final Consumer<Cue> listener;
     private final Consumer<String> speciesListener;
     private final Consumer<String> entityListener;
@@ -107,6 +108,12 @@ public final class SpeechCues implements AutoCloseable {
 
     void setNearbyNames(List<String> names) { nearbyNames = List.copyOf(names); }
     void setNearbySpecies(List<String> ids) { nearbySpecies = List.copyOf(ids); }
+
+    // A recent server roster can corroborate a slightly delayed species result. Queue admission and
+    // the server's independent five-second transmission window still apply.
+    static boolean resultIsTimely(long age, boolean liveSpecies) {
+        return age <= (liveSpecies ? LIVE_SPECIES_RESULT_LIMIT : MAX_AGE_NANOS);
+    }
 
     synchronized void setTesting(boolean enabled) {
         if (testing == enabled) return;
@@ -329,17 +336,16 @@ public final class SpeechCues implements AutoCloseable {
                             synchronized (SpeechCues.this) {
                                 if (session == this && !inputPaused && clip.inputRevision == inputRevision) {
                                     long age = System.nanoTime() - clip.endedAt;
-                                    boolean timely = age <= MAX_AGE_NANOS;
                                     DecoderIssue issue = switch (reply.code) {
                                         case 65534 -> DecoderIssue.ERROR;
                                         case 65535 -> DecoderIssue.TIMEOUT;
                                         default -> DecoderIssue.NONE;
                                     };
                                     int decision = issue == DecoderIssue.NONE ? reply.code : 0;
-                                    if ((decision & SpeechGrammar.NEARBY_GUESS) != 0) {
-                                        String id = grammar.speciesId(decision & ~SpeechGrammar.NEARBY_GUESS);
-                                        if (id == null || !nearbySpecies.contains(id)) decision = 0;
-                                    }
+                                    String id = grammar.speciesId(decision & ~SpeechGrammar.NEARBY_GUESS);
+                                    boolean liveSpecies = id != null && nearbySpecies.contains(id);
+                                    if ((decision & SpeechGrammar.NEARBY_GUESS) != 0 && !liveSpecies) decision = 0;
+                                    boolean timely = resultIsTimely(age, liveSpecies);
                                     if (timely && !grammar.dispatch(decision, listener, speciesListener, entityListener))
                                         throw new IOException("Invalid speech helper reply");
                                     lastDecision = new Decision(++decisionNumber, decision != 0, timely,
@@ -400,7 +406,7 @@ public final class SpeechCues implements AutoCloseable {
 
         private Reply exchange(Process child, DataInputStream input, DataOutputStream output, Clip clip, boolean detail, SpeechGrammar grammar)
                 throws IOException {
-            // A late result still expires after four seconds. Give the engine time to finish
+            // The normal short freshness limit still applies. Give the engine time to finish
             // the discarded clip before treating it as unresponsive and recycling the worker.
             var deadline = TIMEOUTS.schedule(() -> {
                 decodeExpired = true;
