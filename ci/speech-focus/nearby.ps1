@@ -40,23 +40,29 @@ $lines=@{
     'butterfree-sentence'='Look, there is a Butterfree by the tree.'
     'lilligant'='Lilligant.'
     'lilligant-sentence'='The Lilligant is over here.'
-    'geodude'='Geodude.'
-    'geodude-sentence'='Hey, look at that Geodude.'
+    'geodude'='Geo dude.'
+    'geodude-sentence'='Hey, look at that geo dude.'
+    'geodude-stock'='Geodude.'
+    'geodude-stock-sentence'='Hey, look at that Geodude.'
     'geodude-phonetic'='<phoneme alphabet="ipa" ph="&#x2C8;d&#x292;io&#x28A;dud">Geodude</phoneme>.'
     'geodude-phonetic-sentence'='Look at that <phoneme alphabet="ipa" ph="&#x2C8;d&#x292;io&#x28A;dud">Geodude</phoneme>.'
     'butterfly'='I saw a butterfly in the garden.'
     'elegant'='That is an elegant flower.'
     'geode'='I left a geode on the table.'
     'good-dude'='He is a good dude.'
+    'going'='I am going to do it.'
 }
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {
         $synth.SelectVoice($voice.VoiceInfo.Name)
-        foreach ($word in @('Geodude','geo dude','good dude')) {
-            $phones=[SyntheticPronunciation]::Read($synth,$word,$false)
-            $encoded=$phones.ToCharArray() | ForEach-Object { 'U+{0:X4}' -f [int]$_ }
-            Write-Output ("GENERATED_PRONUNCIATION "+$voice.VoiceInfo.Name+" "+$word+" "+($encoded -join ' '))
-        }
+        $tag=($voice.VoiceInfo.Name -replace '[^a-zA-Z]','')
+        $stock=[SyntheticPronunciation]::Read($synth,'Geodude')
+        $spoken=[SyntheticPronunciation]::Read($synth,'Geo dude')
+        if (-not $spoken -or -not $stock) { throw 'Stock voice provided no phonemes' }
+        # Windows currently assigns different sounds to the unspaced stock text. Keep that
+        # sample as a separate control, and require it to pass if the synthesizer is corrected.
+        [IO.File]::WriteAllText((Join-Path $Directory ("stock-"+$tag+".txt")), ($stock -ceq $spoken).ToString())
+        Write-Output ("GENERATED_PRONUNCIATION "+$voice.VoiceInfo.Name+" stockMatchesGeoDude="+($stock -ceq $spoken))
         foreach($key in $lines.Keys) {
             $mem=[IO.MemoryStream]::new()
             try {
@@ -67,7 +73,6 @@ try {
                 $synth.SetOutputToNull()
                 $pcm=[byte[]]::new($mem.Length+640*38)
                 [Array]::Copy($mem.ToArray(),0,$pcm,640*10,$mem.Length)
-                $tag=($voice.VoiceInfo.Name -replace '[^a-zA-Z]','')
                 [IO.File]::WriteAllBytes((Join-Path $Directory ("near-"+$tag+"_"+$key+".pcm")),$pcm)
             } finally { $mem.Dispose() }
         }

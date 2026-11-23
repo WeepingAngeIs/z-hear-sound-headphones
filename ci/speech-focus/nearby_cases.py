@@ -19,13 +19,13 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
     voice, label = file.stem[5:].split("_")
     near = {"exact": "raichu pikachu", "pause-name": "raichu pikachu", "nidorine": "nidorina nidorino",
             "bulbasaur": "ivysaur bulbasaur", "charmander": "charmeleon charmander"}
-    family = label.removesuffix("-sentence").removesuffix("-phonetic")
+    family = label.removesuffix("-sentence").removesuffix("-phonetic").removesuffix("-stock")
     roster = examples.get(family, near.get(targets.get(label, label), crowded))
     if label == "butterfly":
         roster = examples["butterfree"]
     if label == "elegant":
         roster = examples["lilligant"]
-    if label in ("geode", "good-dude"):
+    if label in ("geode", "good-dude", "going"):
         roster = examples["geodude"]
     trials = [(label, roster)]
     if label == "nidorine":
@@ -54,11 +54,12 @@ for index, ((voice, test, roster), reply) in enumerate(zip(cases, actual, strict
         errors.append((test, "invalid guess or worker failure", wire))
     if test in ("exact","pause-name") and (result != "pikachu" or guessed):
         errors.append((test, "exact name did not win", result))
-    base = test.removesuffix("-sentence").removesuffix("-phonetic")
-    if base in examples and result != base:
+    base = test.removesuffix("-sentence").removesuffix("-phonetic").removesuffix("-stock")
+    wrong_stock_phones = "-stock" in test and (root / f"stock-{voice}.txt").read_text() == "False"
+    if base in examples and result != base and not (wrong_stock_phones and result == "neutral"):
         errors.append((voice, test, "wrong or missing base species", result))
         failed_examples.append(index)
-    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment", "butterfly", "elegant", "geode", "good-dude") and result != "neutral":
+    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment", "butterfly", "elegant", "geode", "good-dude", "going") and result != "neutral":
         errors.append((test, result))
         failed_examples.append(index)
     if test.startswith("out-") and (guessed or result not in ("neutral", targets[test[4:]])):
