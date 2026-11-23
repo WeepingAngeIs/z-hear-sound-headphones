@@ -70,6 +70,7 @@ try {
         $lexicon = [ordered]@{
             enderman = @('eh n d er m ae n', 'eh n d er m ax n')
             lopunny = @('l aa p ax n iy', 'l aa p ah n iy', 'l ow p ah n iy', 'l aa p b ah n iy')
+            geodude = @('jh iy ow d uw d', 'jh iy ow d y uw d', 'jh iy ax d uw d')
             hoglin = @('h aa g l ih n', 'h ao g l ih n')
             zoglin = @('z aa g l ih n', 'z ao g l ih n')
         }
@@ -77,7 +78,7 @@ try {
             $choice = [System.Speech.Recognition.SrgsGrammar.SrgsOneOf]::new()
             # Keep near neighbors as separate alternatives alongside unconstrained dictation.
             foreach ($neighbor in @('poponee', 'buneary', 'endermite', 'ender dragon', 'ender guardian',
-                    'slender man', 'bunny', 'hold on', 'logged in', 'huddling', 'jogging')) {
+                    'slender man', 'bunny', 'hold on', 'logged in', 'huddling', 'jogging', 'geode', 'good dude')) {
                 $choice.Add([System.Speech.Recognition.SrgsGrammar.SrgsItem]::new($neighbor))
             }
             foreach ($name in $lexicon.Keys) {
@@ -117,7 +118,8 @@ try {
     $nearMatcher = $null
     if ($env:MOBSEAR_NEARBY_MATCHER) { Add-Type -TypeDefinition $env:MOBSEAR_NEARBY_MATCHER }
     # Written equivalents of the short-call pronunciation variants in the English lexicon.
-    $spokenForms = @{'la punny'='lopunny'; 'lapunny'='lopunny'; 'lop bunny'='lopunny'}
+    $spokenForms = @{'la punny'='lopunny'; 'lapunny'='lopunny'; 'lop bunny'='lopunny'
+        'geo dude'='geodude'; 'gee oh dude'='geodude'; 'gio dude'='geodude'}
     $ordinaryRivals = @{
         lopunny='\b(low( on)?|little|more) money\b'
         lanturn='\b(lanterns?|land turn)\b'

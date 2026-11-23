@@ -43,6 +43,8 @@ $lines=@{
     'geodude-sentence'='Hey, look at that Geodude.'
     'butterfly'='I saw a butterfly in the garden.'
     'elegant'='That is an elegant flower.'
+    'geode'='I left a geode on the table.'
+    'good-dude'='He is a good dude.'
 }
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {

@@ -25,6 +25,8 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
         roster = examples["butterfree"]
     if label == "elegant":
         roster = examples["lilligant"]
+    if label in ("geode", "good-dude"):
+        roster = examples["geodude"]
     trials = [(label, roster)]
     if label == "nidorine":
         trials.append(("reverse", "nidorino nidorina"))
@@ -41,7 +43,8 @@ subprocess.run(["java", "-cp", "ci-classes;src/main/resources;build/generated/of
                 "dev.mobsear.client.NearbySpeechFixture", str(root)], check=True, timeout=180)
 actual = (root / "nearby-actual.txt").read_text().splitlines()
 hits, similar, guesses, errors = set(), set(), [], []
-for (voice, test, roster), reply in zip(cases, actual, strict=True):
+failed_examples = []
+for index, ((voice, test, roster), reply) in enumerate(zip(cases, actual, strict=True)):
     assert "," not in reply, ("multiple decisions", test, reply)
     wire = int(reply)
     result = codes.get(wire & 32767, "neutral") if wire else "neutral"
@@ -54,8 +57,10 @@ for (voice, test, roster), reply in zip(cases, actual, strict=True):
     base = test.removesuffix("-sentence")
     if base in examples and result != base:
         errors.append((voice, test, "wrong or missing base species", result))
-    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment", "butterfly", "elegant") and result != "neutral":
+        failed_examples.append(index)
+    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment", "butterfly", "elegant", "geode", "good-dude") and result != "neutral":
         errors.append((test, result))
+        failed_examples.append(index)
     if test.startswith("out-") and (guessed or result not in ("neutral", targets[test[4:]])):
         errors.append((test, "redirected out-of-range speech", result))
     if test in targets:
@@ -70,5 +75,8 @@ for (voice, test, roster), reply in zip(cases, actual, strict=True):
             errors.append((test, "wrong relative", result))
     if guessed and (test in targets or test in ("nidorine", "reverse", "crowded")):
         guesses.append((voice, test, result))
+if failed_examples:
+    from trace_nearby import show
+    show(root, inputs, failed_examples)
 assert not errors and guesses and len(hits) >= 2 and similar, (errors, guesses, hits, similar)
 print("NEARBY_SPEECH_PASS voices="+str(len(hits)), "imperfect="+str(guesses), "similar="+str(sorted(similar)), flush=True)
