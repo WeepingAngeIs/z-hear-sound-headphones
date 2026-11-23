@@ -175,7 +175,7 @@ try {
 
     function Read-WordAudio([byte[]]$samples, $original, [int]$shortCode, [int]$budget) {
         # Hints come from registered local creatures and an existing pronunciation lexicon. Dictation remains open.
-        $hints = @(($nearPokemon + $nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
+        $hints = @(($nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
             $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
         } | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })
         $prompt = (@('Minecraft','Cobblemon') + $hints) -join ', '
@@ -276,7 +276,8 @@ try {
             $rows = [Text.Encoding]::ASCII.GetString($data).Split([char]10)
             $nearPokemon = @($rows | Where-Object { $_.StartsWith('+') } | ForEach-Object { $_.Substring(1) } |
                 Where-Object { $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 })
-            $nearNames = @(($nearPokemon + @($rows | Where-Object { $aliases.ContainsKey($_) })) | Select-Object -Unique -First 24)
+            $nearNames = @($rows | ForEach-Object { $_.TrimStart('+') } | Where-Object { $aliases.ContainsKey($_) } |
+                Select-Object -Unique -First 24)
             $nearMatcher = if ($nearPokemon.Count -and ('NearbyPokemonWords' -as [type])) {
                 [NearbyPokemonWords]::new([string[]]$nearPokemon)
             } else { $null }

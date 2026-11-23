@@ -110,7 +110,7 @@ jobs:
           New-Item -ItemType Directory -Path $env:MOBSEAR_WORKER_FIXTURE | Out-Null
           javac --release 21 -cp ci-classes -d ci-classes ci/speech-lifecycle/WorkerRecoveryFixture.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          java -cp 'ci/speech-lifecycle/resources;ci-classes' dev.mobsear.client.WorkerRecoveryFixture
+          java -cp 'ci/speech-lifecycle/resources;ci-classes;src/main/resources' dev.mobsear.client.WorkerRecoveryFixture
       - name: Keep the stock synthetic speech pitch demo
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -159,9 +159,11 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           java -cp 'ci-classes;src/main/resources;build/generated/offline-speech' dev.mobsear.client.FocusFixture $fixture.FullName mentions
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./ci/speech-focus/nearby.ps1 $fixture.FullName
+          $nearbyExit = $LASTEXITCODE
           python ci/speech-focus/mentions.py $fixture.FullName
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ./ci/speech-focus/nearby.ps1 $fixture.FullName
+          exit $nearbyExit
   focused-speech:
     name: Spoken pronunciation and false-positive comparisons
     needs: windows-speech
