@@ -190,7 +190,7 @@ def run():
                         if os.environ.get("MOBSEAR_TEST_SENTENCES")=="1":
                             count+=7
                         if os.environ.get("MOBSEAR_TEST_NEARBY")=="1":
-                            count+=3
+                            count+=4
                         assert len(observations)==count
                         if os.getenv("MOBSEAR_TEST_SENTENCES")=="1":
                             from check_debug import verify, verify_capture

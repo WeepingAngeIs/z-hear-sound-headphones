@@ -98,6 +98,7 @@ public final class PackProbe {
             cases.add(new Trial("Bulbasaur",16,false,true,true,"nearby-bulbazore"));
             cases.add(new Trial("Bulbasaur",40,false,false,true,"nearby-bulbazore"));
             cases.add(new Trial("Nidorino",16,false,true,true,"nearby-nidorine"));
+            cases.add(new Trial("Pikachu",12,false,true,false,"sentence-pikachu-middle"));
         }
         if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
@@ -209,7 +210,7 @@ public final class PackProbe {
                 }
                 var t = tests[index];
                 // Exercise Pikachu repeatedly at night as well as during daytime.
-                boolean nightPikachu=testVisit && t.name.equals("Pikachu") && index>=tests.length-(liveNearby==null?3:6);
+                boolean nightPikachu=testVisit && index>1 && t.hears && t.name.equals("Pikachu") && t.recording.equals("pikachu");
                 level.setDayTime(t.name.equals("Enderman") || nightPikachu ? 18000 : 1000);
                 boolean visitTrial=testVisit && index==tests.length-1;
                 if (visitTrial) {
@@ -534,6 +535,10 @@ public final class PackProbe {
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
             long observationLimit=o.visitTrial ? 90_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
+            // Capture/render time varies with pack load. Allow real frames for the notice after
+            // the generated voice finishes; the production recognizer's own freshness test still decides.
+            if (!o.visitTrial && o.test.hears && Boundary.lastSignalAt>o.startedAt)
+                observationLimit=Math.max(observationLimit,Math.min(18_000_000_000L,Boundary.lastSignalAt-o.startedAt+7_000_000_000L));
             boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot && (o.feeding==null || o.feeding.passed());
             if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");
