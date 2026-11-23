@@ -12,7 +12,7 @@ enum PokemonCase {
     BLOCKED("eevee", 10), COOLDOWN_PRIME("pikachu", 2), COOLDOWN_HELD("pikachu", 2), COOLDOWN_EXPIRED("pikachu", 12),
     WALKING_PIKACHU("pikachu", 14), WALKING_EEVEE("eevee", 14), WALKING_LOPUNNY("lopunny", 16),
     AGGRO("pikachu", 12), NEW_AGGRO("eevee", 12), INTERRUPTED("eevee", 10),
-    PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8), GLOBAL_PACK("boxtail", 8),
+    PACK_FORM("oricorio", 8), PACK_CUSTOM("lunavee", 8), GLOBAL_PACK("boxtail", 8), CREATIVE_GEODUDE("geodude", 14),
     NAMED_COW("minecraft:cow", 12), OTHER_NAME("minecraft:cow", 12), NAMED_FAR("minecraft:cow", 36),
     NAMED_HOSTILE("minecraft:cave_spider", 22), FOREST_DEER("twilightforest:deer", 12), WALKING_DEER("twilightforest:deer", 12),
     OWL_GUARDIAN("uwudimension:blossom_warden", 12), VELVET_IDLE("uwudimension:velvet_vesper", 24),
@@ -30,7 +30,7 @@ enum PokemonCase {
     boolean accepts() {
         return switch (this) {
             case PIKACHU, EEVEE, LOPUNNY, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
-                    WALKING_PIKACHU, WALKING_EEVEE, WALKING_LOPUNNY, NEW_AGGRO, INTERRUPTED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK,
+                    WALKING_PIKACHU, WALKING_EEVEE, WALKING_LOPUNNY, NEW_AGGRO, INTERRUPTED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK, CREATIVE_GEODUDE,
                     NAMED_COW, NAMED_HOSTILE, FOREST_DEER, WALKING_DEER, OWL_GUARDIAN, VELVET_IDLE, DUNGEON_MIMIC, ZOMBIE_CALL_MIMIC -> true;
             case LOPUNNY_FAR, FAR, WRONG, OWNER, OFFLINE_OWNER, BATTLE, CAPTURE, PASSIVE, AGGRO, COOLDOWN_HELD, OTHER_NAME, NAMED_FAR,
                     BROAD_COW, BOSS_CHARGING, BOSS_FIGHTING, NAGA_COMBAT, OWL_OFFENDER, VELVET_GUARD,

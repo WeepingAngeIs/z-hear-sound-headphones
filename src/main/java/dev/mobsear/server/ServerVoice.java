@@ -18,7 +18,7 @@ public final class ServerVoice {
 
     private ServerVoice() {}
 
-    private static boolean eligible(ServerPlayer player) {
+    static boolean eligible(ServerPlayer player) {
         return player.isAlive() && !player.isRemoved() && !player.isSpectator();
     }
 
@@ -44,7 +44,7 @@ public final class ServerVoice {
     private static boolean acceptCall(ServerPlayer speaker, long requestId) {
         TalkWindow window = sessions.get(speaker);
         CallFailure failure;
-        if (!eligible(speaker) || speaker.isCreative()) failure = CallFailure.GAME_MODE;
+        if (!eligible(speaker)) failure = CallFailure.GAME_MODE;
         else if (NearbyMics.inputBlocked(speaker)) failure = CallFailure.INPUT_BLOCKED;
         else failure = window == null ? CallFailure.NO_RECENT_VOICE : window.tryCue(System.nanoTime());
         if (failure == null) return true;

@@ -25,7 +25,7 @@ A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge
 | hey creeper, hey zombie, guardian, slime and other supported hostile names | Matching hostiles can switch from a friend to you and use their normal attacks. A creeper walks into fuse range on its own. |
 | hey | No mob cue. |
 
-Passive mobs can hear their individual type names. The broad **mob** and **mobs** calls apply to hostiles. Creative players can talk to other players. Mob calls require an eligible Survival or Adventure speaker. A zombie can pause for ten game ticks at most once per forty ticks.
+Passive mobs can hear their individual type names. The broad **mob** and **mobs** calls apply to hostiles. Living players can call mobs in Survival, Adventure, and Creative. Calm mobs can turn toward a Creative player while normal Creative combat immunity applies. Wild Pokémon respond to their base species name across all forms. For example, saying **Geodude** calls nearby regular and Alolan Geodude. A zombie can pause for ten game ticks at most once per forty ticks.
 
 Calm Endermen, spiders and cave spiders can pause for up to 18 game ticks (about 0.9 seconds) and then resume walking. A spider already attacking someone can be drawn to the caller. The default hearing range is 32 blocks in the same dimension. A successful hostile distraction has a two-second cooldown per mob. An active creeper fuse, the Warden's anger system and scripted boss fights keep their native behavior.
 

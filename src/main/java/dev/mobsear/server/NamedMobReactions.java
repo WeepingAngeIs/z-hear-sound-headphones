@@ -103,11 +103,11 @@ public final class NamedMobReactions {
     }
 
     private static boolean eligibleCaller(ServerPlayer player) {
-        return player.isAlive() && !player.isRemoved() && !player.isSpectator() && !player.isCreative();
+        return ServerVoice.eligible(player);
     }
 
     private static boolean canDrawAggro(ServerPlayer caller, Mob mob) {
-        if (!MobReactions.hostile(mob) || !mob.isAlive() || mob.isRemoved() || mob.isNoAi() || mob.isSleeping()
+        if (caller.isCreative() || !MobReactions.hostile(mob) || !mob.isAlive() || mob.isRemoved() || mob.isNoAi() || mob.isSleeping()
                 || mob.isInvulnerable() || mob.isPassenger() || mob.isVehicle() || mob.isAlliedTo(caller)
                 || !mob.canAttack(caller) || !mob.isWithinRestriction(caller.blockPosition())
                 || mob instanceof TamableAnimal tamed && tamed.isTame()) return false;
@@ -161,7 +161,7 @@ public final class NamedMobReactions {
     private record Pursuit(ServerPlayer caller, double ordinaryLimit, double hearingLimit, long expires) {
         boolean ended(Mob mob, long now) {
             double distance = mob.distanceToSqr(caller);
-            return mob.isRemoved() || !mob.isAlive() || mob.isNoAi() || !eligibleCaller(caller) || mob.level() != caller.level()
+            return mob.isRemoved() || !mob.isAlive() || mob.isNoAi() || !eligibleCaller(caller) || caller.isCreative() || mob.level() != caller.level()
                     || mob.getTarget() != caller || now >= expires || distance < ordinaryLimit || distance > hearingLimit;
         }
     }

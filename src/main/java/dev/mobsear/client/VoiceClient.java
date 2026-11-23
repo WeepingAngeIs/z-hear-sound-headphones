@@ -108,7 +108,7 @@ public final class VoiceClient {
         if (!options().localMobCalls() || instance.pendingInputRevision != options().inputRevision()
                 || options().muted() || options().deafened()
                 || instance.connection != mc.getConnection() || mc.player == null || !mc.player.isAlive()
-                || mc.player.isSpectator() || mc.player.isCreative() || instance.session.level != mc.level) return;
+                || mc.player.isSpectator() || instance.session.level != mc.level) return;
         Component name;
         if (ack.species()) {
             if (!ModList.get().isLoaded("cobblemon")) return;
@@ -258,10 +258,9 @@ public final class VoiceClient {
         publishControls(current);
         if (!(mc.screen instanceof VoiceSettingsScreen) || !mc.isWindowActive()) testMic = false;
         boolean inputBlocked = preferences.muted() || preferences.deafened();
-        if (inputBlocked || session.creative != mc.player.isCreative()) {
+        if (inputBlocked) {
             pendingRequestId = 0;
             MobCallNotice.clearMatch();
-            session.creative = mc.player.isCreative();
         }
         if (inputBlocked) testMic = false;
         if (!talk.isDown()) waitForRelease = false;
@@ -356,7 +355,6 @@ public final class VoiceClient {
         long displayedAttempt;
         long loggedDecision;
         boolean recognition;
-        boolean creative;
         boolean suspended;
         SpeechCues.Status previous = SpeechCues.Status.OFF;
 
@@ -437,9 +435,9 @@ public final class VoiceClient {
             if (now >= nextHints && mc.player != null && mc.level != null) {
                 nextHints = now + 500_000_000L;
                 long tick = mc.level.getGameTime();
-                if (mc.player.isCreative() || lastRosterTick == Long.MIN_VALUE || tick - lastRosterTick > 30)
+                if (lastRosterTick == Long.MIN_VALUE || tick - lastRosterTick > 30)
                     speech.setNearbySpecies(List.of());
-                if (!mc.player.isCreative() && link.hasChannel(Packets.NearbySpeciesRequest.TYPE))
+                if (link.hasChannel(Packets.NearbySpeciesRequest.TYPE))
                     PacketDistributor.sendToServer(new Packets.NearbySpeciesRequest());
                 var labels = new java.util.LinkedHashSet<String>();
                 var mobs = mc.level.getEntitiesOfClass(net.minecraft.world.entity.Mob.class,
@@ -526,7 +524,7 @@ public final class VoiceClient {
                 if (mob != Cue.ZOMBIE && mob != Cue.MOBS && mob != Cue.ENDERMAN && !link.hasChannel(MicPresence.Controls.TYPE)) return;
             }
             // A successful local decision displays its canonical name even when no mob answers.
-            if (mc.player != null && (mc.player.isCreative() || mc.player.isSpectator())) {
+            if (mc.player != null && mc.player.isSpectator()) {
                 instance.debug.write(CallDebugLog.Event.GAME_MODE, target, 0);
                 if (prefs.recognitionDiagnostics())
                     MobCallNotice.diagnose(Component.translatable("mobsear.speech.recognized_mode", name));

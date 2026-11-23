@@ -27,7 +27,7 @@ public final class MobReactions {
     }
 
     static ResourceLocation react(ServerPlayer speaker, Cue cue, double radius) {
-        if (speaker.isRemoved() || speaker.isCreative() || !speaker.canBeSeenAsEnemy()
+        if (!ServerVoice.eligible(speaker) || (!speaker.isCreative() && !speaker.canBeSeenAsEnemy())
                 || !Double.isFinite(radius) || radius <= 0) {
             return null;
         }
@@ -37,7 +37,7 @@ public final class MobReactions {
         Mob nearest = null;
         for (Mob mob : level.getEntitiesOfClass(Mob.class, area, mob ->
                 hostile(mob) && mob.isAlive() && !mob.isNoAi()
-                    && !mob.isAlliedTo(speaker) && mob.canAttack(speaker)
+                    && !mob.isAlliedTo(speaker) && (speaker.isCreative() || mob.canAttack(speaker))
                     && mob.distanceToSqr(speaker) <= distanceLimit && matches(mob, cue))) {
             if (reactToSpeaker(mob, speaker, distanceLimit)
                     && (nearest == null || mob.distanceToSqr(speaker) < nearest.distanceToSqr(speaker))) nearest = mob;

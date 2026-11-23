@@ -91,7 +91,7 @@ final class CobblemonCalls {
     static boolean visiting(PokemonEntity mob, ServerPlayer caller) {
         var response = responses.get(mob);
         if (response == null || response.caller != caller || response.stage != Stage.STAY || !available(mob)
-                || !caller.isAlive() || caller.isRemoved() || caller.isSpectator() || caller.isCreative()
+                || !ServerVoice.eligible(caller)
                 || caller.level() != mob.level() || !response.beside(mob)) return false;
         return !response.visitExpired(caller.serverLevel().getServer().overworld().getGameTime());
     }
@@ -152,7 +152,7 @@ final class CobblemonCalls {
         }
 
         boolean update(PokemonEntity mob, long now) {
-            if (visitExpired(now) || !available(mob) || !caller.isAlive() || caller.isRemoved() || caller.isSpectator() || caller.isCreative()
+            if (visitExpired(now) || !available(mob) || !ServerVoice.eligible(caller)
                     || mob.level() != caller.level() || mob.distanceToSqr(caller) > limit) return false;
             if (stage == Stage.FACE && now - started < FACE_TICKS) {
                 standAndFace(mob);

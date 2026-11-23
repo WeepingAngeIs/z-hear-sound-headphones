@@ -183,6 +183,7 @@ final class PokemonCaseServer {
         deerWalk = null;
         visit = null;
         var world = caller.serverLevel();
+        caller.setGameMode(c == PokemonCase.CREATIVE_GEODUDE ? GameType.CREATIVE : GameType.SURVIVAL);
         double callX=c.reusesSubject() ? subject.getX()+c.distance : c.distance+.5;
         double callZ=c.reusesSubject() ? subject.getZ() : Z+.5;
         caller.teleportTo(world,callX,Y,callZ,90,(float)Math.toDegrees(Math.atan2(1.15,c.distance)));
@@ -215,6 +216,17 @@ final class PokemonCaseServer {
             witness.setPersistenceRequired();
             witness.moveTo(25.5,Y,Z+.5,90,0);
             if (!world.addFreshEntity(witness)) throw PokemonProbe.fail("No fresh cooldown witness");
+        }
+        if (c == PokemonCase.CREATIVE_GEODUDE) {
+            witness = PokemonProperties.Companion.parse("geodude alolan=true level=15").createEntity(world);
+            var ordinary = ((PokemonEntity) subject).getPokemon();
+            var regional = witness.getPokemon();
+            if (ordinary.getForm() == regional.getForm() || !regional.getAspects().contains("alolan")
+                    || ordinary.getAspects().contains("alolan") || ordinary.getSpecies() != regional.getSpecies())
+                throw PokemonProbe.fail("Expected distinct regular and Alolan forms of the same Geodude species");
+            witness.setPersistenceRequired();
+            witness.moveTo(2.5, Y, Z + 2.5, 90, 0);
+            if (!world.addFreshEntity(witness)) throw PokemonProbe.fail("Missing Alolan Geodude");
         }
         if (c==PokemonCase.BLOCKED) wall(true);
         phase=PokemonProbe.BEFORE; age=aligned=0; reacted=fired=captureLockSeen=pathSeen=witnessReacted=offlineChecked=arranged=keptRoute=false;
@@ -286,7 +298,9 @@ final class PokemonCaseServer {
                 idle(subject);
             }
             if (witness!=null) {
-                witness.moveTo(25.5,Y,Z+.5,90,0);
+                if (c==PokemonCase.CREATIVE_GEODUDE) witness.moveTo(2.5,Y,Z+2.5,90,0);
+                else witness.moveTo(25.5,Y,Z+.5,90,0);
+                witness.setYHeadRot(90);
                 prepareIdle(witness);
             }
             if (age<36 || acknowledgements.size()!=count) return;
@@ -324,7 +338,11 @@ final class PokemonCaseServer {
                     " sleep="+subject.isSleeping()+" active="+subject.getBrain().getActiveNonCoreActivity());
         }
         if (deerWalk!=null && fired) deerWalk.observe(active);
-        if (witness!=null && PokemonReactions.isReacting(witness)) witnessReacted=true;
+        if (witness!=null && PokemonReactions.isReacting(witness)) {
+            double yaw=Math.toDegrees(Math.atan2(caller.getZ()-witness.getZ(), caller.getX()-witness.getX()))-90;
+            if (c!=PokemonCase.CREATIVE_GEODUDE || Math.abs(Mth.wrapDegrees(witness.getYHeadRot()-yaw))<30)
+                witnessReacted=true;
+        }
         if (!active && !fired && !arranged && c.controlled()) idle(subject);
         if (active && !c.accepts()) throw PokemonProbe.fail("Protected or wrong subject reacted: " + c);
         if (active) {
@@ -403,6 +421,8 @@ final class PokemonCaseServer {
         }
         if (c.walking() && !visitDone) return;
         if (c==PokemonCase.OFFLINE_OWNER && !offlineChecked) throw PokemonProbe.fail("Missing live offline owner assertion");
+        if (c == PokemonCase.CREATIVE_GEODUDE && (!caller.isCreative() || !witnessReacted))
+            throw PokemonProbe.fail("One Creative base-name call did not turn both forms of Geodude");
         if (c==PokemonCase.COOLDOWN_HELD && !witnessReacted) {
             if (age>=50) throw PokemonProbe.fail("Fresh witness failed the accepted repeated-call interval "+gap);
             return;

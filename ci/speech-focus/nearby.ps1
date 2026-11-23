@@ -35,6 +35,14 @@ $lines=@{
     'pause'='Hold on.'
     'moment'='Just a moment.'
     'pause-name'='Hold on, the Pikachu ran past me.'
+    'butterfree'='Butterfree.'
+    'butterfree-sentence'='Look, there is a Butterfree by the tree.'
+    'lilligant'='Lilligant.'
+    'lilligant-sentence'='The Lilligant is over here.'
+    'geodude'='Geodude.'
+    'geodude-sentence'='Hey, look at that Geodude.'
+    'butterfly'='I saw a butterfly in the garden.'
+    'elegant'='That is an elegant flower.'
 }
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {

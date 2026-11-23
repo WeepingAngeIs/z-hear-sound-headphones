@@ -41,6 +41,7 @@ public final class EntityNamesAudit {
             Files.createDirectories(dir);
             Files.write(dir.resolve("entity-"+side+".tsv"),rows);
             var species=new CobblemonNames().snapshot();
+            var grammar = new SpeechGrammar(null, SpeechGrammar.registries(species, entries));
             int verified=0;
             for (var line:Files.readAllLines(root.resolve("test-species.tsv"))) {
                 var fields=line.split("\t",-1);
@@ -49,9 +50,12 @@ public final class EntityNamesAudit {
                 if (labels==null || !labels.contains(fields[1]) || !labels.contains(fields[2])
                         || display==null || !fields[2].equals(display.getString()))
                     throw new IllegalStateException("Wrong live English label for "+fields[0]+": expected="+fields[2]+" actual="+labels);
+                if (grammar.nearbyLabels(java.util.List.of(fields[0])).stream()
+                        .noneMatch(phrase -> fields[0].equals(grammar.speciesId(grammar.code(phrase)))))
+                    throw new IllegalStateException("No callable base name in the merged speech vocabulary for " + fields[0]);
                 verified++;
             }
-            System.out.println("POKEMON_REGISTRY_PASS endpoint="+side+" englishLabels="+verified);
+            System.out.println("POKEMON_REGISTRY_PASS endpoint="+side+" englishLabels="+verified+" callableBaseSpecies="+verified);
         } catch (IOException ex) { throw new IllegalStateException("Cannot save real entity names",ex); }
         long modded=entries.keySet().stream().map(ResourceLocation::parse).filter(id->!id.getNamespace().equals("minecraft")).count();
         System.out.println("ENTITY_REGISTRY_PASS endpoint="+side+" eligible="+entries.size()+" modded="+modded);

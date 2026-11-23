@@ -28,14 +28,14 @@ public final class PokemonReactions {
         Integer previous = lastQuery.get(player);
         if (previous != null && tick - previous < 8) return;
         lastQuery.put(player, tick);
-        var ids = player.isAlive() && !player.isRemoved() && !player.isSpectator() && !player.isCreative()
+        var ids = ServerVoice.eligible(player)
                 && !NearbyMics.inputBlocked(player) ? CobblemonCalls.nearbySpecies(player, radius) : List.<ResourceLocation>of();
         PacketDistributor.sendToPlayer(player, new Packets.NearbySpecies(player.level().dimension().location(), ids));
     }
 
     static boolean tryCall(ServerPlayer speaker, ResourceLocation species, double radius) {
         if (ModList.get().isLoaded("cobblemon") && species != null && Double.isFinite(radius) && radius > 0
-                && speaker.isAlive() && !speaker.isRemoved() && !speaker.isSpectator() && !speaker.isCreative()) {
+                && ServerVoice.eligible(speaker)) {
             return CobblemonCalls.hear(speaker, species, radius);
         }
         return false;

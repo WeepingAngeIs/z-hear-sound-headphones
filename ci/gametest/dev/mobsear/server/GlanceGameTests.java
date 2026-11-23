@@ -125,7 +125,7 @@ public final class GlanceGameTests {
         var player = speaker(test, mob.position().add(0, 0, -blocks));
         player.setGameMode(mode);
         test.assertTrue(player.distanceToSqr(mob) == blocks * blocks, "Fixture changed hearing distance");
-        boolean heard = blocks <= 32 && mode == GameType.SURVIVAL;
+        boolean heard = blocks <= 32 && mode != GameType.SPECTATOR;
         int originalGoalCount = mob.goalSelector.getAvailableGoals().size();
         MobReactions.handle(player, cue, 32);
         if (!heard) test.assertTrue(mob.goalSelector.getAvailableGoals().size() == originalGoalCount,

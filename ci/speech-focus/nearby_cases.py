@@ -12,13 +12,20 @@ codes = {int(code): name for code, mode, name in (line.split(":") for line in re
 targets = {"bulbazore": "bulbasaur", "bulbazar": "bulbasaur",
            "charmandor": "charmander", "charmendar": "charmander"}
 crowded = "lopunny lanturn nidorina nidorino charmander pikachu"
+examples = {"butterfree": "beautifly butterfree", "lilligant": "lillipup lilligant", "geodude": "graveler geodude"}
 cases = []
 inputs = []
 for file in sorted(root.glob("near-Microsoft*.pcm")):
     voice, label = file.stem[5:].split("_")
     near = {"exact": "raichu pikachu", "pause-name": "raichu pikachu", "nidorine": "nidorina nidorino",
             "bulbasaur": "ivysaur bulbasaur", "charmander": "charmeleon charmander"}
-    trials = [(label, near.get(targets.get(label, label), crowded))]
+    family = label.removesuffix("-sentence")
+    roster = examples.get(family, near.get(targets.get(label, label), crowded))
+    if label == "butterfly":
+        roster = examples["butterfree"]
+    if label == "elegant":
+        roster = examples["lilligant"]
+    trials = [(label, roster)]
     if label == "nidorine":
         trials.append(("reverse", "nidorino nidorina"))
         trials.append(("crowded", "pikachu lopunny bulbasaur nidorina nidorino ivysaur lanturn"))
@@ -44,7 +51,10 @@ for (voice, test, roster), reply in zip(cases, actual, strict=True):
         errors.append((test, "invalid guess or worker failure", wire))
     if test in ("exact","pause-name") and (result != "pikachu" or guessed):
         errors.append((test, "exact name did not win", result))
-    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment") and result != "neutral":
+    base = test.removesuffix("-sentence")
+    if base in examples and result != base:
+        errors.append((voice, test, "wrong or missing base species", result))
+    if test in ("ordinary", "money", "lantern", "notebook", "needle", "pause", "moment", "butterfly", "elegant") and result != "neutral":
         errors.append((test, result))
     if test.startswith("out-") and (guessed or result not in ("neutral", targets[test[4:]])):
         errors.append((test, "redirected out-of-range speech", result))
