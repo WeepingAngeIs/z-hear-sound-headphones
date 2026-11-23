@@ -243,7 +243,9 @@ try {
                     -not $compounds.ContainsKey($name) -and $name -notin @('hoglin','poponee')) { $shortCode=$aliases[$name] }
         }
         $hasContext=$null -ne $plain -and $plain.Words.Count -ge 2
-        if (-not $hasContext -and $shortCode -eq 0 -and $null -eq $nearMatcher) { return 0 }
+        if (-not $hasContext -and $shortCode -eq 0) {
+            if ($null -eq $nearMatcher -or $null -eq $plain -or -not $nearMatcher.Pick($plain.Text,$plain.Text)) { return 0 }
+        }
         $original=@()
         if ($null -ne $plain) { $original=@($plain.Words | ForEach-Object { $_.LexicalForm.ToLowerInvariant() }) }
         $answer=Read-WordAudio $samples $original $shortCode 3200

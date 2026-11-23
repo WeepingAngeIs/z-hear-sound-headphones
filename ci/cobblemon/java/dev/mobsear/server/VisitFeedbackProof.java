@@ -7,9 +7,11 @@ import java.nio.file.Path;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.network.PacketListener;
 import net.minecraft.network.protocol.BundlePacket;
-import net.minecraft.network.protocol.game.*;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 
 /** Read the actual incoming game effects on each client. All clicks, packets and renders still run normally. */
 final class VisitFeedbackProof {

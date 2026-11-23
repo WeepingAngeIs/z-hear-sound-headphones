@@ -4,6 +4,8 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import io
+import wave
 from zipfile import ZipFile
 
 assert os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and os.name == "nt"
@@ -16,6 +18,7 @@ data = bytearray((root/"registry.bin").read_bytes())
 codes = {int(code):label for code,mode,label in (line.split(":") for line in data[4:].decode().splitlines())
          if mode!="2" and " " not in label}
 cases = []
+inputs = []
 for file in sorted(root.glob("near-*.pcm")):
     voice,label=file.stem[5:].split("_")
     roster={"exact":"raichu pikachu", "charmandor":"charmeleon charmander", "bulbazore":"ivysaur bulbasaur",
@@ -28,6 +31,12 @@ for file in sorted(root.glob("near-*.pcm")):
         pcm=file.read_bytes()
         data.extend(struct.pack("<ii",0,len(names))+names+struct.pack("<i",len(pcm))+pcm)
         cases.append((voice,test,nearby.split()))
+        inputs.append(file.name+"\t"+nearby)
+(root/"nearby-input.tsv").write_text("\n".join(inputs),encoding="ascii")
+subprocess.run(["javac","--release","21","-cp","ci-classes","-d","ci-classes","ci/speech-focus/NearbySpeechFixture.java"],check=True)
+subprocess.run(["java","-cp","ci-classes;src/main/resources;build/generated/offline-speech",
+                "dev.mobsear.client.NearbySpeechFixture",str(root)],check=True,timeout=180)
+actual=(root/"nearby-actual.txt").read_text().splitlines()
 script=Path("src/main/resources/dev/mobsear/client/recognize.ps1").read_text(encoding="utf-8")
 script=script.replace("$pcm = $reader.ReadBytes($length)",'[Console]::Error.WriteLine("NEXT"); $pcm = $reader.ReadBytes($length)')
 script=script.replace("if ($text.Length -le 500)",'[Console]::Error.WriteLine("decoded="+$text.Trim()+" independent="+($original -join " ")); if ($text.Length -le 500)')
@@ -41,10 +50,20 @@ traces=proc.stderr.decode(errors="replace").split("NEXT")[1:]
 hits=set()
 guesses=[]
 errors=[]
-for (voice,test,roster), (wire,),trace in zip(cases,struct.iter_unpack(">H",proc.stdout[1:]),traces,strict=True):
+for index,((voice,test,roster),wireText,trace) in enumerate(zip(cases,actual,traces,strict=True)):
+    assert "," not in wireText,("multiple decisions",test,wireText)
+    wire=int(wireText)
     result=codes.get(wire & 32767,"neutral") if wire else "neutral"
     guessed=bool(wire & 32768)
     print("NEARBY_GENERATED",voice,test,",".join(roster),"result="+result,"approximate="+str(guessed),trace.strip(),flush=True)
+    if test in ("charmandor","bulbazore","nidorine","exact"):
+        for piece in sorted(root.glob(f"near-segment-{index}-*.pcm")):
+            sound=io.BytesIO()
+            with wave.open(sound,"wb") as w:
+                w.setparams((1,2,16000,0,"NONE","not compressed")); w.writeframes(piece.read_bytes())
+            command=[str(model/"whisper-cli.exe"),"-m",str(model/"tiny.en.bin"),"-f","-","-of","pipe-only","-t","3","-nt","-np","-l","en","-bs","5","-ac","512","--prompt","Minecraft, Cobblemon, "+", ".join(s.title() for s in roster)+", Enderman, Lopunny, Hoglin, Zoglin, Pikachu."]
+            raw=subprocess.run(command,input=sound.getvalue(),capture_output=True,timeout=20,check=True)
+            print("NEARBY_GENERATED_WORDS",voice,test,raw.stdout.decode("utf8","replace").strip(),flush=True)
     if wire>=65534: errors.append((test,"decoder failed"))
     if test=="exact" and result!="pikachu": errors.append((test,result))
     if (test.startswith("out-") or test in ("ordinary","money","lantern")) and guessed: errors.append((test,"unjustified guess",result))
