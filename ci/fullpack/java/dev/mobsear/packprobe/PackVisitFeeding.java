@@ -15,7 +15,7 @@ import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 /** Use normal client inputs. The server independently checks the visitor, original dropped entity, HP and inventory. */
 final class PackVisitFeeding {
     private enum Offer {
-        HEALTHY_HAND(8,false,true), HEALTHY_FLOOR(30,true,true),
+        HEALTHY_HAND(8,false,true), HEALTHY_FLOOR(56,true,true),
         INJURED_HAND(96,false,false), INJURED_FLOOR(103,true,false), EXPIRED_FLOOR(120,true,false);
 
         final int earliestTick;
@@ -26,17 +26,18 @@ final class PackVisitFeeding {
         int stackSize() { return ground?3:2; }
     }
 
-    private final boolean testFloor="1".equals(System.getenv("MOBSEAR_BERRY_SOURCE_CHECK"));
+    private final boolean testFloor="1".equals(System.getenv("MOBSEAR_TEST_VISIT_BERRIES"));
     private Offer next=testFloor?Offer.HEALTHY_HAND:Offer.INJURED_HAND;
     private volatile Offer requested;
     private Offer sent;
     private volatile boolean passed;
     private long arrival=-1;
     private int start, aimTicks, settled;
-    private boolean expiredInReach;
+    private boolean expiredInReach, tracedLanding;
     private ItemEntity actualDrop;
     private ItemStack originalHand;
-    private Vec3 beforeFloorTrial;
+    private volatile Vec3 expectedAim;
+    private volatile boolean aimReceived;
     private ServerPlayer visitingCaller;
 
     void tossed(ItemTossEvent event) {
@@ -46,6 +47,8 @@ final class PackVisitFeeding {
         if (actualDrop!=null || drop.getOwner()!=visitingCaller || !drop.getItem().is(CobblemonItems.ORAN_BERRY) || drop.getItem().getCount()!=1)
             throw new IllegalStateException("Expected one single-Q Oran berry from the visitor's caller");
         actualDrop=drop;
+        System.out.println("ACOUSTIC_PACK_BERRY_THROW offer="+offer+" spawn="+drop.position()+" motion="+drop.getDeltaMovement()+
+                " playerPitch="+visitingCaller.getXRot());
     }
 
     void server(PokemonEntity mob,ServerPlayer caller,boolean reacting) throws ReflectiveOperationException {
@@ -74,24 +77,24 @@ final class PackVisitFeeding {
             start=pokemon.getMaxHealth()-(next.healthy?0:next.ground?14:11);
             pokemon.setCurrentHealth(start);
             if (next.healthy) pokemon.setCurrentFullness(0);
-            if (next==Offer.HEALTHY_FLOOR) {
-                // Put only the test caller on a floor mark outside the in-flight catch box.
-                // A normal Q dropped straight down here must land before the visitor can eat it.
-                beforeFloorTrial=caller.position();
-                double dx=caller.getX()-mob.getX(), dz=caller.getZ()-mob.getZ();
-                double offset=mob.getBbWidth()*.5+1.60;
-                if (Math.abs(dx)>=Math.abs(dz)) caller.teleportTo(mob.getX()+Math.copySign(offset,dx),caller.getY(),mob.getZ());
-                else caller.teleportTo(mob.getX(),caller.getY(),mob.getZ()+Math.copySign(offset,dz));
-            }
             caller.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(CobblemonItems.ORAN_BERRY,next.stackSize()));
             caller.inventoryMenu.broadcastChanges();
             actualDrop=null;
+            expectedAim=null;
+            aimReceived=false;
+            tracedLanding=false;
             requested=next;
             return;
         }
         var offer=requested;
         var pokemon=mob.getPokemon();
         int hp=pokemon.getCurrentHealth();
+        var aim=expectedAim;
+        if (offer.ground && aim!=null && caller.getLookAngle().dot(aim)>.998) aimReceived=true;
+        if (actualDrop!=null && actualDrop.onGround() && !tracedLanding) {
+            tracedLanding=true;
+            System.out.println("ACOUSTIC_PACK_BERRY_LANDED offer="+offer+" tick="+age+" "+observedDrop(mob,caller));
+        }
         if (offer==Offer.EXPIRED_FLOOR) {
             if (hp!=start) throw new IllegalStateException("Expired ground berry changed HP");
             if (actualDrop!=null && actualDrop.onGround()) {
@@ -105,13 +108,14 @@ final class PackVisitFeeding {
                     finish(caller);
                 }
             }
-            if (!passed && age>154) throw new IllegalStateException("Missing expired ground drop");
+            if (!passed && age>154) throw new IllegalStateException("Missing expired ground drop "+observedDrop(mob,caller));
             return;
         }
         if (offer.healthy && hp!=start) throw new IllegalStateException("A healthy visitor's HP changed");
         boolean ate=offer.healthy?pokemon.getCurrentFullness()==1:hp==start+10;
         if (!ate) {
-            if (testFloor && age>=(offer.healthy?85:119)) throw new IllegalStateException("Visitor ignored "+offer+" at "+age);
+            if (testFloor && age>=(offer.healthy?94:119)) throw new IllegalStateException("Visitor ignored "+offer+" at "+age+
+                    " hp="+hp+" fullness="+pokemon.getCurrentFullness()+" "+observedDrop(mob,caller));
             return;
         }
         if (caller.getMainHandItem().getCount()!=offer.stackSize()-1) throw new IllegalStateException("Wrong number of berries spent by "+offer);
@@ -128,7 +132,6 @@ final class PackVisitFeeding {
             System.out.println("ACOUSTIC_PACK_GROUND_BERRY_PASS input=single-Q landed=true"+measured+" clearance="+
                     Math.sqrt(mob.getBoundingBox().distanceToSqr(actualDrop.position())));
         else System.out.println("ACOUSTIC_PACK_BERRY_PASS species=Lopunny hp="+start+"->"+hp+" stack=2->1"+(testFloor?" visitTick="+age:""));
-        if (offer==Offer.HEALTHY_FLOOR) caller.teleportTo(beforeFloorTrial.x,beforeFloorTrial.y,beforeFloorTrial.z);
         if (!testFloor) { finish(caller); return; }
         next=Offer.values()[offer.ordinal()+1];
         requested=null;
@@ -136,6 +139,14 @@ final class PackVisitFeeding {
 
     private boolean reachable(PokemonEntity mob,ItemEntity drop) {
         return mob.getBoundingBox().distanceToSqr(drop.position())<=4 && Math.abs(mob.getY()-drop.getY())<=.75 && mob.hasLineOfSight(drop);
+    }
+
+    private String observedDrop(PokemonEntity mob,ServerPlayer caller) {
+        String info="hand="+caller.getMainHandItem().getCount()+" aimReceived="+aimReceived+
+                " caller="+caller.position()+" visitor="+mob.position();
+        if (actualDrop==null) return info+" no original item";
+        return info+" item="+actualDrop.position()+" removed="+actualDrop.getRemovalReason()+" grounded="+actualDrop.onGround()+
+                " inReach="+reachable(mob,actualDrop)+" clearance="+Math.sqrt(mob.getBoundingBox().distanceToSqr(actualDrop.position()));
     }
 
     private void finish(ServerPlayer caller) {
@@ -150,9 +161,10 @@ final class PackVisitFeeding {
                 || mc.player.getMainHandItem().getCount()!=offer.stackSize()) return;
         if (offer.ground) {
             var away=mc.player.position().subtract(mob.position()).multiply(1,0,1).normalize();
-            var floor=offer==Offer.HEALTHY_FLOOR?mc.player.position():mob.position().add(away.scale(mob.getBbWidth()*.5+1.6));
+            var floor=mob.position().add(away.scale(mob.getBbWidth()*.5+1.6));
             mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,floor);
-            if (++aimTicks<3) return;
+            expectedAim=mc.player.getLookAngle();
+            if (++aimTicks<3 || !aimReceived) return;
             if (!mc.player.drop(false)) throw new IllegalStateException("Normal single-item Q failed");
             aimTicks=0;
         } else {
@@ -165,4 +177,9 @@ final class PackVisitFeeding {
     }
 
     boolean passed() { return passed; }
+
+    boolean aimingAtFloor() {
+        var offer=requested;
+        return offer!=null && offer.ground && offer!=sent;
+    }
 }
