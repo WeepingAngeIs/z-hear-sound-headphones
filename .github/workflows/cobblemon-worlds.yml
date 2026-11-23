@@ -1,7 +1,7 @@
 name: Cobblemon species in real worlds
 on:
   push:
-    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, main]
+    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/berry-chew-pro-build, main]
     paths-ignore: ['ci/fullpack/**', '.github/workflows/fullpack.yml']
   workflow_dispatch:
 permissions:
@@ -29,13 +29,16 @@ jobs:
           cache: gradle
       - name: Send species calls through Minecraft and verify nearby Pokémon
         run: python3 ci/cobblemon/run.py ${{ matrix.mode }}
-      - name: Keep real in-game Pokémon captures
+      - name: Keep rendered Pokémon and actual game-output evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pokemon-${{ matrix.mode }}-views
-          path: build/pokemon-evidence/*.png
-          if-no-files-found: warn
+          path: |
+            build/pokemon-evidence/*.png
+            build/pokemon-evidence/*.wav
+            build/pokemon-evidence/*.tsv
+          if-no-files-found: error
       - name: Keep independently resolved species catalogs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
