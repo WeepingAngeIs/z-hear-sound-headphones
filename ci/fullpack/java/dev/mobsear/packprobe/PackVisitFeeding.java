@@ -4,12 +4,12 @@ import com.cobblemon.mod.common.CobblemonItems;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import dev.mobsear.MobsEar;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 
 /** Use normal client inputs. The server independently checks the visitor, original dropped entity, HP and inventory. */
@@ -36,7 +36,6 @@ final class PackVisitFeeding {
     private boolean expiredInReach, tracedLanding;
     private ItemEntity actualDrop;
     private ItemStack originalHand;
-    private volatile Vec3 expectedAim;
     private volatile boolean aimReceived;
     private ServerPlayer visitingCaller;
 
@@ -49,6 +48,7 @@ final class PackVisitFeeding {
         actualDrop=drop;
         System.out.println("ACOUSTIC_PACK_BERRY_THROW offer="+offer+" spawn="+drop.position()+" motion="+drop.getDeltaMovement()+
                 " playerPitch="+visitingCaller.getXRot());
+        if (visitingCaller.getXRot()<85) throw new IllegalStateException("The test caller was not looking down when Q reached the server");
     }
 
     void server(PokemonEntity mob,ServerPlayer caller,boolean reacting) throws ReflectiveOperationException {
@@ -77,10 +77,19 @@ final class PackVisitFeeding {
             start=pokemon.getMaxHealth()-(next.healthy?0:next.ground?14:11);
             pokemon.setCurrentHealth(start);
             if (next.healthy) pokemon.setCurrentFullness(0);
+            if (next==Offer.HEALTHY_FLOOR) {
+                // Arrange only the tester on a flat mark beside the arrived Pokémon. A vertical Q
+                // here stays outside the airborne catch box and lands inside its ground reach.
+                double dx=caller.getX()-mob.getX(), dz=caller.getZ()-mob.getZ();
+                double offset=Math.min(2.38,mob.getBbWidth()*.5+1.55);
+                boolean onX=Math.abs(dx)>=Math.abs(dz);
+                double x=mob.getX()+(onX?Math.copySign(offset,dx):0);
+                double z=mob.getZ()+(onX?0:Math.copySign(offset,dz));
+                caller.teleportTo(caller.serverLevel(),x,caller.getY(),z,caller.getYRot(),90);
+            }
             caller.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(CobblemonItems.ORAN_BERRY,next.stackSize()));
             caller.inventoryMenu.broadcastChanges();
             actualDrop=null;
-            expectedAim=null;
             aimReceived=false;
             tracedLanding=false;
             requested=next;
@@ -89,8 +98,7 @@ final class PackVisitFeeding {
         var offer=requested;
         var pokemon=mob.getPokemon();
         int hp=pokemon.getCurrentHealth();
-        var aim=expectedAim;
-        if (offer.ground && aim!=null && caller.getLookAngle().dot(aim)>.998) aimReceived=true;
+        if (offer.ground) aimReceived=caller.getXRot()>=89;
         if (actualDrop!=null && actualDrop.onGround() && !tracedLanding) {
             tracedLanding=true;
             System.out.println("ACOUSTIC_PACK_BERRY_LANDED offer="+offer+" tick="+age+" "+observedDrop(mob,caller));
@@ -160,10 +168,11 @@ final class PackVisitFeeding {
         if (passed || offer==null || offer==sent || !mc.player.getMainHandItem().is(CobblemonItems.ORAN_BERRY)
                 || mc.player.getMainHandItem().getCount()!=offer.stackSize()) return;
         if (offer.ground) {
-            var away=mc.player.position().subtract(mob.position()).multiply(1,0,1).normalize();
-            var floor=mob.position().add(away.scale(mob.getBbWidth()*.5+1.6));
-            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,floor);
-            expectedAim=mc.player.getLookAngle();
+            // Use Minecraft's normal rotation message directly before its normal drop action.
+            // The headless pack camera can keep showing the visitor while the server still has
+            // its initial five-degree pitch. Only an actual downward throw counts as this trial.
+            mc.player.setXRot(90);
+            mc.getConnection().send(new ServerboundMovePlayerPacket.Rot(mc.player.getYRot(),90,mc.player.onGround()));
             if (++aimTicks<3 || !aimReceived) return;
             if (!mc.player.drop(false)) throw new IllegalStateException("Normal single-item Q failed");
             aimTicks=0;
