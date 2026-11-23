@@ -458,8 +458,8 @@ public final class PackProbe {
             var o=current;
             if (o==null || next) return;
             if (mc.level.getEntity(o.entity) instanceof Mob mob) {
-                if (o.feeding!=null && o.started) o.feeding.client(mc,(PokemonEntity)mob);
                 if (o.visitTrial) mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,mob.getEyePosition());
+                if (o.feeding!=null && o.started) o.feeding.client(mc,(PokemonEntity)mob);
                 double yaw=Math.toDegrees(Math.atan2(mc.player.getZ()-mob.getZ(),mc.player.getX()-mob.getX()))-90;
                 double err=Math.abs(Mth.wrapDegrees(mob.getYHeadRot()-yaw));
                 if (!o.started) {

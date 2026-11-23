@@ -108,7 +108,10 @@ def run():
             assert not any("Fixture" in name or "/smoke/" in name or "packprobe" in name for name in jar.namelist())
         installed.rename(root/installed.name)
         shutil.copy2(checked,game/"mods"/checked.name)
-        print(f"ACOUSTIC_CANDIDATE canonicalBuild={build} sha256={digest}",flush=True)
+        if os.environ.get("MOBSEAR_BERRY_SOURCE_CHECK")=="1":
+            print(f"ACOUSTIC_SOURCE_CHECK commit={os.environ['GITHUB_SHA']} runnerOnly=true sha256={digest}",flush=True)
+        else:
+            print(f"ACOUSTIC_CANDIDATE canonicalBuild={build} sha256={digest}",flush=True)
     for file in sorted((root/"synth").glob("*.pcm")):
         if file.stem in {"enderman","pikachu","lopunny","enderman-alternate","lopunny-alternate"}:
             print("ACOUSTIC_SAMPLE",file.stem,hashlib.sha256(file.read_bytes()).hexdigest(),flush=True)
