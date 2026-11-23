@@ -8,6 +8,7 @@ import com.cobblemon.mod.common.item.berry.PortionHealingBerryItem;
 import dev.mobsear.MobsEar;
 import dev.mobsear.net.Packets;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -18,24 +19,30 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /** Interactions are authorized against the existing visit on the server, including on the pickup tick. */
 final class VisitInteractions {
-    private record Bite(ItemStack food, int start) {}
+    private record Bite(ItemStack food, ServerPlayer caller, Display.ItemDisplay display, ServerLevel level, long start) {}
+    private static final int CHEW_TICKS = 40;
+    private static final String PROP_TAG = "mobsear_berry_chew_prop";
     // Vanilla replaces the surviving ItemStack when ground entities merge. Never claim a mixed pile.
     private record Offer(UUID caller, ItemStack tossedStack, Set<UUID> visitors) {}
     private static final double GROUND_REACH = 2.0;
-    private static final Map<PokemonEntity,Bite> bites = new WeakHashMap<>();
+    private static final Map<PokemonEntity,Bite> bites = new IdentityHashMap<>();
     private static final Map<PokemonEntity,Integer> lastClick = new WeakHashMap<>();
     private static final Map<ItemEntity,Offer> offers = new WeakHashMap<>();
 
@@ -49,15 +56,17 @@ final class VisitInteractions {
             if (interact(e, e.getTarget())) { e.setCancellationResult(InteractionResult.SUCCESS); e.setCanceled(true); }
         });
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VisitInteractions::toss);
-        NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post e) -> bites.entrySet().removeIf(entry -> {
-            var mob = entry.getKey();
-            var bite = entry.getValue();
-            int age = mob.tickCount - bite.start;
-            if (!mob.isAlive() || mob.isRemoved() || mob.isBusy() || mob.isBattling() || age >= 30) return true;
-            if (age > 0 && age % 6 == 0) chew(mob, bite.food);
-            return false;
-        }));
-        NeoForge.EVENT_BUS.addListener((ServerStoppedEvent e) -> { bites.clear(); offers.clear(); lastClick.clear(); });
+        NeoForge.EVENT_BUS.addListener((EntityJoinLevelEvent e) -> {
+            if (e.loadedFromDisk() && e.getEntity() instanceof Display.ItemDisplay && e.getEntity().getTags().contains(PROP_TAG))
+                e.setCanceled(true);
+        });
+        NeoForge.EVENT_BUS.addListener(VisitInteractions::tickBites);
+        NeoForge.EVENT_BUS.addListener((ServerStoppingEvent e) -> {
+            bites.forEach((mob, bite) -> { bite.display.discard(); refund(mob, bite); });
+            bites.clear();
+            offers.clear();
+            lastClick.clear();
+        });
     }
 
     static void status(PokemonEntity mob, ServerPlayer caller, boolean arrived) {
@@ -89,10 +98,11 @@ final class VisitInteractions {
         int now = mob.tickCount;
         if (now - lastClick.getOrDefault(mob, -30) < 6) return true;
         lastClick.put(mob, now);
+        if (bites.containsKey(mob)) return true;
         if (pat) {
             mob.cry();
             caller.serverLevel().sendParticles(ParticleTypes.HEART, mob.getX(), mob.getEyeY()+0.22, mob.getZ(), 4, .20,.10,.20,.025);
-        } else if (!feed(mob, caller, stack).isEmpty()) stack.shrink(1);
+        } else if (beginBite(mob, caller, stack)) stack.shrink(1);
         return true;
     }
 
@@ -106,7 +116,7 @@ final class VisitInteractions {
     }
 
     static void collect(PokemonEntity mob, ServerPlayer caller) {
-        if (offers.isEmpty() || !CobblemonCalls.visiting(mob, caller)) return;
+        if (offers.isEmpty() || bites.containsKey(mob) || !CobblemonCalls.visiting(mob, caller)) return;
         for (var it = offers.entrySet().iterator(); it.hasNext();) {
             var entry = it.next();
             var drop = entry.getKey();
@@ -115,7 +125,7 @@ final class VisitInteractions {
             if (!offer.caller.equals(caller.getUUID()) || !offer.visitors.contains(mob.getUUID())
                     || drop.level() != mob.level() || !withinReach(mob, drop) || !mob.hasLineOfSight(drop)) continue;
             var stack = drop.getItem();
-            if (feed(mob, caller, stack).isEmpty()) continue;
+            if (!beginBite(mob, caller, stack)) continue;
             mob.getLookControl().setLookAt(drop);
             mob.take(drop, 1);
             var rest = stack.copyWithCount(stack.getCount()-1);
@@ -132,33 +142,92 @@ final class VisitInteractions {
                 && body.distanceToSqr(drop.position()) <= GROUND_REACH * GROUND_REACH;
     }
 
-    private static ItemStack feed(PokemonEntity mob, ServerPlayer caller, ItemStack stack) {
-        if (stack.isEmpty() || !healing(stack)) return ItemStack.EMPTY;
-        var pokemon = mob.getPokemon();
+    private static boolean beginBite(PokemonEntity mob, ServerPlayer caller, ItemStack stack) {
+        if (stack.isEmpty() || !healing(stack) || bites.containsKey(mob)) return false;
         var food = stack.copyWithCount(1);
+        var pokemon = mob.getPokemon();
         if (pokemon.isFullHealth()) {
-            // Cobblemon's healing action rejects full HP. Use its ordinary feeding routine for a treat.
-            if (food.is(CobblemonItemTags.POKE_FOOD) && pokemon.isFull()) return ItemStack.EMPTY;
-            int fullness = food.getItem() instanceof PortionHealingBerryItem ? 5 : 1;
-            pokemon.feedPokemon(fullness, true);
-        } else {
-            var berry = (PokemonSelectingItem) food.getItem();
-            int before = pokemon.getCurrentHealth();
-            // The native action checks eligibility and consumes its argument. Commit the real stack once.
-            var result = berry.applyToPokemon(caller, food.copy(), pokemon);
-            if (result == null || !result.getResult().consumesAction() || pokemon.getCurrentHealth() <= before) return ItemStack.EMPTY;
-        }
-        bites.put(mob, new Bite(food, mob.tickCount));
+            if (food.is(CobblemonItemTags.POKE_FOOD) && pokemon.isFull()) return false;
+        } else if (!((PokemonSelectingItem)food.getItem()).canUseOnPokemon(food.copy(), pokemon)) return false;
+
+        var level = caller.serverLevel();
+        var display = EntityType.ITEM_DISPLAY.create(level);
+        if (display == null || !display.getSlot(0).set(food.copy())) return false;
+        display.addTag(PROP_TAG);
+        var mouth = mouth(mob);
+        display.setPos(mouth.x, mouth.y, mouth.z);
+        if (!level.addFreshEntity(display)) return false;
+
+        bites.put(mob, new Bite(food, caller, display, level, level.getGameTime()));
         chew(mob, food);
-        mob.playSound(MobsEar.NOM.get(), .56F, 1F);
-        return food;
+        return true;
+    }
+
+    private static void tickBites(ServerTickEvent.Post event) {
+        var it = bites.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            var mob = entry.getKey();
+            var bite = entry.getValue();
+            if (mob == null || !mob.isAlive() || mob.isRemoved() || mob.isBusy() || mob.isBattling()
+                    || mob.level() != bite.level || bite.display.isRemoved()) {
+                it.remove();
+                bite.display.discard();
+                refund(mob, bite);
+                continue;
+            }
+            long age = bite.level.getGameTime() - bite.start;
+            if (age >= CHEW_TICKS) {
+                it.remove();
+                bite.display.discard();
+                if (finishFeed(mob, bite.caller, bite.food)) mob.cry();
+                else refund(mob, bite);
+                continue;
+            }
+            if (age <= 0) continue;
+            var eyes = mob.getEyePosition();
+            var target = bite.caller.level() == mob.level() ? bite.caller.getEyePosition() : eyes.add(mob.getLookAngle());
+            var delta = target.subtract(eyes);
+            float pitch = (float) -Math.toDegrees(Math.atan2(delta.y, Math.hypot(delta.x, delta.z)));
+            mob.setXRot(net.minecraft.util.Mth.clamp(pitch + (float) Math.sin(age * Math.PI / 4) * 12F, -75F, 75F));
+            var mouth = mouth(mob);
+            bite.display.setPos(mouth.x, mouth.y, mouth.z);
+            if (age % 8 == 0) chew(mob, bite.food);
+        }
+    }
+
+    private static boolean finishFeed(PokemonEntity mob, ServerPlayer caller, ItemStack food) {
+        var pokemon = mob.getPokemon();
+        if (pokemon.isFullHealth()) {
+            if (food.is(CobblemonItemTags.POKE_FOOD) && pokemon.isFull()) return false;
+            pokemon.feedPokemon(food.getItem() instanceof PortionHealingBerryItem ? 5 : 1, true);
+            return true;
+        }
+        var berry = (PokemonSelectingItem)food.getItem();
+        int before = pokemon.getCurrentHealth();
+        var result = berry.applyToPokemon(caller, food.copy(), pokemon);
+        return result != null && result.getResult().consumesAction() && pokemon.getCurrentHealth() > before;
+    }
+
+    private static void refund(PokemonEntity mob, Bite bite) {
+        var food = bite.food.copy();
+        if (bite.caller.isAlive() && !bite.caller.isRemoved()) bite.caller.addItem(food);
+        if (food.isEmpty()) return;
+        var at = mob != null && mob.level() == bite.level ? mob.position() : bite.display.position();
+        var drop = new ItemEntity(bite.level, at.x, at.y, at.z, food);
+        drop.setDefaultPickUpDelay();
+        bite.level.addFreshEntity(drop);
+    }
+
+    private static net.minecraft.world.phys.Vec3 mouth(PokemonEntity mob) {
+        double forward = Math.max(.25, mob.getBbWidth() * .55);
+        return mob.getEyePosition().add(mob.getLookAngle().scale(forward)).add(0, -.12, 0);
     }
 
     private static void chew(PokemonEntity mob, ItemStack food) {
         var level = (ServerLevel)mob.level();
-        var mouth = mob.getEyePosition().add(mob.getLookAngle().scale(.25));
-        level.broadcastEntityEvent(mob, (byte)45);
-        mob.playSound(mob.getEatingSound(food), .7F, 1F);
+        var mouth = mouth(mob);
+        mob.playSound(SoundEvents.GENERIC_EAT, .7F, 1F);
         level.sendParticles(new ItemParticleOption(ParticleTypes.ITEM, food), mouth.x, mouth.y, mouth.z, 4, .08,.06,.08,.015);
     }
 }

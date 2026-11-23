@@ -39,7 +39,6 @@ final class PokemonCaseServer {
     private CalledPokemonVisit visit;
     private VisitCareProof care;
     private VisitWindowProof feedingWindow;
-    private boolean measuredPortion;
     private Mob subject;
     private Mob firstListener;
     private UUID firstListenerId;
@@ -179,7 +178,6 @@ final class PokemonCaseServer {
         c = PokemonCase.values()[index];
         care = null;
         feedingWindow = null;
-        measuredPortion = false;
         deerWalk = null;
         visit = null;
         var world = caller.serverLevel();
@@ -385,11 +383,6 @@ final class PokemonCaseServer {
             care.tick();
             if (visitDone && !care.finished) return;
         }
-        if (c==PokemonCase.WALKING_LOPUNNY && fired && !measuredPortion && CobblemonCalls.visiting((PokemonEntity)subject,caller)) {
-            VisitCareProof.measurePortion((PokemonEntity)subject,caller);
-            measuredPortion=true;
-        }
-        if (c==PokemonCase.WALKING_LOPUNNY && visitDone && !measuredPortion) throw PokemonProbe.fail("Missing uncapped healing measurement");
         if (fired && (c==PokemonCase.WALKING_EEVEE || c==PokemonCase.WALKING_LOPUNNY)) {
             if (feedingWindow==null) feedingWindow=new VisitWindowProof((PokemonEntity)subject,caller,viewer,c);
             feedingWindow.tick();

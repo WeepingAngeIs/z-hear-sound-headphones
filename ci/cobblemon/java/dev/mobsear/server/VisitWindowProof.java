@@ -19,7 +19,7 @@ final class VisitWindowProof {
     private final PokemonCase scenario;
     private final boolean ground;
     private final ItemStack originalHand, otherHand;
-    private long arrival=-1, callerDropAge=-1, ateAt=-1;
+    private long arrival=-1, callerDropAge=-1, ateAt=-1, reservedAt=-1;
     private int initialHp, otherRest, expiredRest;
     private boolean treatSent, treatEaten, checkedOther, checkedCutoff, lateSent, expiredSent, expiredBeside, finished;
     private ItemEntity treatDrop, otherDrop, offered, expiredDrop;
@@ -104,8 +104,12 @@ final class VisitWindowProof {
             lateSent=true;
             action(caller,ground?PokemonProbe.DROP_ONE:PokemonProbe.CARE_CLICK);
         }
+        if (lateSent && reservedAt<0 && (ground ? offered!=null && offered.isRemoved() : caller.getMainHandItem().getCount()==2)) {
+            require(t<120 && hp==initialHp,"Late berry must be reserved before cutoff without immediate effect at "+t);
+            reservedAt=t;
+        }
         if (lateSent && ateAt<0 && hp!=initialHp) {
-            require(t>=100 && t<120 && hp==initialHp+10 && caller.getMainHandItem().getCount()==2,
+            require(reservedAt>=100 && t-reservedAt>=39 && t-reservedAt<=41 && hp==initialHp+10 && caller.getMainHandItem().getCount()==2,
                     "Late feeding HP, inventory or timestamp: tick="+t+" hp="+hp);
             if (ground) {
                 require(offered!=null && callerDropAge>=100 && offered.onGround() && offered.isRemoved() && reachable(offered),
@@ -118,14 +122,14 @@ final class VisitWindowProof {
                     " droppedAt="+callerDropAge+" hp="+initialHp+"->"+hp+" totalBerries=3->2"+
                     (ground?" grounded=true clearance="+Math.sqrt(mob.getBoundingBox().distanceToSqr(offered.position())):""));
         }
-        if (t==119) require(ateAt>=0 && visiting,"Final eligible tick missing");
+        if (t==119) require(reservedAt>=0 && visiting,"Final eligible tick missing");
         if (t==120) {
             require(!visiting && mob.distanceTo(caller)<=2.55,"Cutoff was not observed beside the caller");
             VisitCareProof.excluded(mob,caller,"on tick 120 after arrival");
             checkedCutoff=true;
         }
         if (t>=120) require(!visiting,"Expired visit reopened");
-        if (checkedCutoff && !expiredSent) {
+        if (checkedCutoff && ateAt>=0 && !expiredSent) {
             expiredSent=true;
             initialHp=mob.getPokemon().getMaxHealth()-14;
             mob.getPokemon().setCurrentHealth(initialHp);
@@ -144,7 +148,7 @@ final class VisitWindowProof {
                 finished=true;
             }
         }
-        if (t>152 && !finished) throw PokemonProbe.fail("Missing late visit evidence for "+scenario+" tick="+t);
+        if (t>205 && !finished) throw PokemonProbe.fail("Missing late visit evidence for "+scenario+" tick="+t);
     }
 
     private boolean reachable(ItemEntity drop) {

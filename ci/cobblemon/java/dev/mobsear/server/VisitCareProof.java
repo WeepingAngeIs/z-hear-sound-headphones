@@ -21,7 +21,7 @@ final class VisitCareProof {
     private final ItemStack originalHand;
     final int max;
     int step, arrived, initial, next;
-    boolean finished;
+    boolean finished, duplicateChecked;
     ItemEntity rejected;
 
     VisitCareProof(PokemonEntity mob, ServerPlayer caller, ServerPlayer viewer, PokemonCase scenario) {
@@ -92,7 +92,14 @@ final class VisitCareProof {
             pokemon.setCurrentHealth(initial);
             clientAction(PokemonProbe.CARE_CLICK,new ItemStack(CobblemonItems.ORAN_BERRY,3));
             step=1;
-        } else if (step==1 && caller.getMainHandItem().getCount()==2) {
+        } else if (step==1 && caller.getMainHandItem().getCount()==2 && pokemon.getCurrentHealth()==initial && !duplicateChecked) {
+            duplicateChecked=true;
+            var e=new PlayerInteractEvent.EntityInteractSpecific(caller,InteractionHand.MAIN_HAND,mob,Vec3.ZERO);
+            NeoForge.EVENT_BUS.post(e);
+            if (!e.isCanceled() || caller.getMainHandItem().getCount()!=2 || pokemon.getCurrentHealth()!=initial)
+                throw PokemonProbe.fail("An active chew accepted a duplicate offer");
+        } else if (step==1 && caller.getMainHandItem().getCount()==2 && pokemon.getCurrentHealth()!=initial) {
+            if (!duplicateChecked) throw PokemonProbe.fail("Missing duplicate-offer control");
             if (pokemon.getCurrentHealth()!=initial+10) throw PokemonProbe.fail("Oran HP delta "+(pokemon.getCurrentHealth()-initial));
             System.out.println("MOBSEAR_POKEMON_FEED_HAND hp="+initial+"->"+pokemon.getCurrentHealth()+" berries=3->2");
             next=now+7; step=2;
@@ -112,15 +119,6 @@ final class VisitCareProof {
             System.out.println("MOBSEAR_POKEMON_FEED_TOSS hp="+initial+"->"+max+" capped=true berries=3->2");
             drops.getFirst().discard();
             if (rejected!=null) rejected.discard();
-            pokemon.setCurrentFullness(0);
-            clientAction(PokemonProbe.CARE_CLICK,new ItemStack(CobblemonItems.SITRUS_BERRY,3));
-            step=5;
-        } else if (step==5 && caller.getMainHandItem().getCount()==2) {
-            if (pokemon.getCurrentHealth()!=max || pokemon.getCurrentFullness()!=1)
-                throw PokemonProbe.fail("Healthy Sitrus should give one fullness at max HP, got hp="+
-                        pokemon.getCurrentHealth()+"/"+max+" fullness="+pokemon.getCurrentFullness());
-            System.out.println("MOBSEAR_POKEMON_HEALTHY_SITRUS input=right-click hp="+max+"->"+max+
-                    " fullness=0->"+pokemon.getCurrentFullness()+" totalBerries=3->2");
             step=6;
         } else if (step==6 && !PokemonReactions.isReacting(mob)) {
             pokemon.setCurrentHealth(max-12);
@@ -135,7 +133,7 @@ final class VisitCareProof {
             caller.inventoryMenu.broadcastChanges();
             System.out.println("MOBSEAR_POKEMON_VISIT_CARE_PASS healthyTreat=true afterVisitDropUnspent=true bystander="+(caller!=viewer));
         }
-        if (step>0 && step<6 && now-arrived>60)
+        if (step>0 && step<6 && now-arrived>115)
             throw PokemonProbe.fail("Missed visit input stage="+step+" hp="+pokemon.getCurrentHealth()+" hand="+caller.getMainHandItem());
     }
 

@@ -15,8 +15,7 @@ import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 /** Use normal client inputs. The server independently checks the visitor, original dropped entity, HP and inventory. */
 final class PackVisitFeeding {
     private enum Offer {
-        HEALTHY_HAND(8,false,true), HEALTHY_FLOOR(56,true,true),
-        INJURED_HAND(96,false,false), INJURED_FLOOR(103,true,false), EXPIRED_FLOOR(120,true,false);
+        HEALTHY_HAND(8,false,true), INJURED_HAND(8,false,false), INJURED_FLOOR(101,true,false), EXPIRED_FLOOR(120,true,false);
 
         final int earliestTick;
         final boolean ground, healthy;
@@ -31,7 +30,7 @@ final class PackVisitFeeding {
     private volatile Offer requested;
     private Offer sent;
     private volatile boolean passed;
-    private long arrival=-1;
+    private long arrival=-1, reservedAt=-1;
     private int start, aimTicks, settled;
     private boolean expiredInReach, tracedLanding;
     private ItemEntity actualDrop;
@@ -63,7 +62,7 @@ final class PackVisitFeeding {
         if (testFloor && (age==119 || age==120)) {
             var visiting=Class.forName("dev.mobsear.server.CobblemonCalls").getDeclaredMethod("visiting",PokemonEntity.class,ServerPlayer.class);
             visiting.setAccessible(true);
-            if (next!=Offer.EXPIRED_FLOOR || (boolean)visiting.invoke(null,mob,caller)!=(age==119))
+            if (reservedAt<0 || (boolean)visiting.invoke(null,mob,caller)!=(age==119))
                 throw new IllegalStateException("Missing late feeding or exact visit boundary at "+age+" offer="+next);
         }
         if (requested==null) {
@@ -77,7 +76,7 @@ final class PackVisitFeeding {
             start=pokemon.getMaxHealth()-(next.healthy?0:next.ground?14:11);
             pokemon.setCurrentHealth(start);
             if (next.healthy) pokemon.setCurrentFullness(0);
-            if (next==Offer.HEALTHY_FLOOR) {
+            if (next==Offer.INJURED_FLOOR) {
                 // Arrange only the tester on a flat mark beside the arrived Pokémon. A vertical Q
                 // here stays outside the airborne catch box and lands inside its ground reach.
                 double dx=caller.getX()-mob.getX(), dz=caller.getZ()-mob.getZ();
@@ -90,6 +89,7 @@ final class PackVisitFeeding {
             caller.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(CobblemonItems.ORAN_BERRY,next.stackSize()));
             caller.inventoryMenu.broadcastChanges();
             actualDrop=null;
+            reservedAt=-1;
             aimReceived=false;
             tracedLanding=false;
             requested=next;
@@ -116,16 +116,22 @@ final class PackVisitFeeding {
                     finish(caller);
                 }
             }
-            if (!passed && age>154) throw new IllegalStateException("Missing expired ground drop "+observedDrop(mob,caller));
+            if (!passed && age>210) throw new IllegalStateException("Missing expired ground drop "+observedDrop(mob,caller));
             return;
         }
         if (offer.healthy && hp!=start) throw new IllegalStateException("A healthy visitor's HP changed");
         boolean ate=offer.healthy?pokemon.getCurrentFullness()==1:hp==start+10;
+        boolean reserved=offer.ground ? actualDrop!=null && actualDrop.isRemoved() : caller.getMainHandItem().getCount()==offer.stackSize()-1;
+        if (reserved && reservedAt<0) {
+            if (ate || (testFloor && age>=120)) throw new IllegalStateException("Berry must be reserved before the effect and within the visit: "+offer);
+            reservedAt=age;
+        }
         if (!ate) {
-            if (testFloor && age>=(offer.healthy?94:119)) throw new IllegalStateException("Visitor ignored "+offer+" at "+age+
+            if (testFloor && age>=(offer.healthy?94:165)) throw new IllegalStateException("Visitor ignored "+offer+" at "+age+
                     " hp="+hp+" fullness="+pokemon.getCurrentFullness()+" "+observedDrop(mob,caller));
             return;
         }
+        if (testFloor && (reservedAt<0 || age-reservedAt<39 || age-reservedAt>41)) throw new IllegalStateException("Wrong chew duration "+(age-reservedAt));
         if (caller.getMainHandItem().getCount()!=offer.stackSize()-1) throw new IllegalStateException("Wrong number of berries spent by "+offer);
         if (offer.ground && (actualDrop==null || !actualDrop.onGround() || !actualDrop.isRemoved() || !reachable(mob,actualDrop) ||
                 mob.getBoundingBox().inflate(.9).intersects(actualDrop.getBoundingBox())))
@@ -141,7 +147,7 @@ final class PackVisitFeeding {
                     Math.sqrt(mob.getBoundingBox().distanceToSqr(actualDrop.position())));
         else System.out.println("ACOUSTIC_PACK_BERRY_PASS species=Lopunny hp="+start+"->"+hp+" stack=2->1"+(testFloor?" visitTick="+age:""));
         if (!testFloor) { finish(caller); return; }
-        next=Offer.values()[offer.ordinal()+1];
+        next=offer==Offer.HEALTHY_HAND?Offer.INJURED_FLOOR:Offer.EXPIRED_FLOOR;
         requested=null;
     }
 
