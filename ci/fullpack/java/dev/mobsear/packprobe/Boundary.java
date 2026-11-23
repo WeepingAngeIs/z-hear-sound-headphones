@@ -57,7 +57,7 @@ final class Boundary {
         return method.invoke(worker).toString();
     }
 
-    record Decision(long number, boolean matched, boolean timely, long ageMillis) {}
+    record Decision(long number, boolean matched, boolean timely, long ageMillis, String issue) {}
 
     static Decision decision() throws ReflectiveOperationException {
         var speech = get(get(client(), "session"), "speech");
@@ -70,9 +70,12 @@ final class Boundary {
         var result = accessor.invoke(speech);
         if (result == null) return null;
         var type = result.getClass();
+        String issue;
+        try { issue = type.getMethod("issue").invoke(result).toString(); }
+        catch (NoSuchMethodException olderVersion) { issue = "NONE"; }
         return new Decision((long) type.getMethod("number").invoke(result),
                 (boolean) type.getMethod("matched").invoke(result), (boolean) type.getMethod("timely").invoke(result),
-                (long) type.getMethod("ageMillis").invoke(result));
+                (long) type.getMethod("ageMillis").invoke(result), issue);
     }
 
     static Process desktopProcess() throws ReflectiveOperationException {

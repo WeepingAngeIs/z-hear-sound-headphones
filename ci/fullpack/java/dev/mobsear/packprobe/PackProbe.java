@@ -23,6 +23,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
@@ -148,6 +149,9 @@ public final class PackProbe {
     private final PackOnboarding onboarding=new PackOnboarding();
     private final Path home = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"));
     private final Set<String> testPreviews = new HashSet<>();
+    private static final ResourceLocation CALL_NOTICE = ResourceLocation.fromNamespaceAndPath("mobsear","mob_call_notice");
+    private record DrawnDiagnostic(String label, Component text) {}
+    private DrawnDiagnostic drawnDiagnostic;
     private boolean observedListening, observedChecking;
 
     public PackProbe() {
@@ -155,6 +159,7 @@ public final class PackProbe {
         NeoForge.EVENT_BUS.addListener(this::clientTick);
         NeoForge.EVENT_BUS.addListener(this::serverTick);
         NeoForge.EVENT_BUS.addListener(this::render);
+        NeoForge.EVENT_BUS.addListener(this::noticeDrawn);
     }
 
     private void fail(Exception e) {
@@ -535,6 +540,12 @@ public final class PackProbe {
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
             long observationLimit=o.visitTrial ? 90_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
+            // The first negative checks must also photograph the fully drawn diagnostic.
+            // Give the renderer time after a slow frame, without extending decision freshness.
+            if (testFeedback && o.test.detail && ((o.test.recording.equals("fan") && !testPreviews.contains("no-match"))
+                    || (o.test.recording.equals("hold-on") && !testPreviews.contains("rejected-guess")))) {
+                observationLimit=14_000_000_000L;
+            }
             // Capture/render time varies with pack load. Allow real frames for the notice after
             // the generated voice finishes; the production recognizer's own freshness test still decides.
             if (!o.visitTrial && o.test.hears && Boundary.lastSignalAt>o.startedAt)
@@ -557,12 +568,14 @@ public final class PackProbe {
                 System.out.println("ACOUSTIC_GENERATED_HINTS "+rows);
             }
             if (o.decision!=null) System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording
-                    +" matched="+o.decision.matched()+" timely="+o.decision.timely()+" decoderAgeMs="+o.decision.ageMillis());
+                    +" matched="+o.decision.matched()+" timely="+o.decision.timely()+" decoderAgeMs="+o.decision.ageMillis()
+                    +" issue="+o.decision.issue());
             else System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording+" returned=false");
             // Open dictation may spell the remote species exactly. A near-only guess must never redirect it.
             boolean expectedName=o.test.distantImperfect() ? o.decision!=null && o.decision.matched() : o.test.spokenName();
             boolean expectWire=expectedName && !o.test.creative;
-            boolean correctDecision=expectedName || (silent ? o.decision==null : o.decision!=null && !o.decision.matched() && o.decision.timely());
+            boolean correctDecision=expectedName || (silent ? o.decision==null : o.decision!=null && !o.decision.matched()
+                    && o.decision.timely() && o.decision.issue().equals("NONE"));
             boolean success=capture && o.wireAudio!=silent && o.recognized==expectedName && correctDecision
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
@@ -599,8 +612,12 @@ public final class PackProbe {
             if (o.number+1==tests.length) {
                 if (liveNearby!=null && !liveNearby.passed()) failures++;
                 if (testSentences) verifyDecoderDirectory();
-                if (testFeedback && (!(observedListening && observedChecking)
-                        || !testPreviews.containsAll(Set.of("listening","rejected-guess","no-match","waiting","other-name")))) failures++;
+                if (testFeedback) {
+                    var missing = new java.util.TreeSet<>(Set.of("listening","rejected-guess","no-match","waiting","other-name"));
+                    missing.removeAll(testPreviews);
+                    System.out.println("ACOUSTIC_DIAGNOSTIC_FRAMES missing="+missing+" listening="+observedListening+" checking="+observedChecking);
+                    if (!observedListening || !observedChecking || !missing.isEmpty()) failures++;
+                }
                 System.out.println("ACOUSTIC_COMPLETE trials="+tests.length+" failed="+failures);
                 complete=true;
             } else next=true;
@@ -632,8 +649,10 @@ public final class PackProbe {
                 o.besideScreenshot=true;
             } catch (Exception ex) { fail(ex); }
         }
-        if (testFeedback && o!=null && o.started && !next && !fatal && !complete && mc.screen==null && mc.getOverlay()==null) {
-            try { captureTestPreview(mc,o); } catch (Exception ex) { fail(ex); }
+        var drawn=drawnDiagnostic;
+        drawnDiagnostic=null;
+        if (drawn!=null && !fatal && !complete && mc.screen==null && mc.getOverlay()==null) {
+            try { captureTestPreview(mc,drawn); } catch (Exception ex) { fail(ex); }
         }
         if (fatal || complete || next || o==null || o.screenshot || !o.confirmed || !o.notice
                 || mc.screen!=null || mc.getOverlay()!=null) return;
@@ -662,23 +681,40 @@ public final class PackProbe {
         } catch (Exception ex) { fail(ex); }
     }
 
-    private void captureTestPreview(Minecraft mc, Observation o) throws Exception {
+    private void noticeDrawn(net.neoforged.neoforge.client.event.RenderGuiLayerEvent.Post event) {
+        if (!testFeedback || !CALL_NOTICE.equals(event.getName()) || testPreviews.size()>=6) return;
+        drawnDiagnostic=null;
+        var o=current;
+        if (o==null || !o.started || !o.test.detail || next || fatal || complete) return;
+        try { drawnDiagnostic=readDrawnDiagnostic(o); } catch (Exception ex) { fail(ex); }
+    }
+
+    private DrawnDiagnostic readDrawnDiagnostic(Observation o) throws Exception {
         String key=Boundary.noticeKey("current");
         String label=switch (key) {
             case "mobsear.speech.test_listening" -> "listening";
             case "mobsear.speech.test_checking" -> "checking";
-            case "mobsear.speech.test_guess" -> o.guess ? "rejected-guess" : "";
-            case "mobsear.speech.no_match" -> o.noMatch ? "no-match" : "";
-            case "mobsear.speech.recognized" -> o.recognized && !o.test.name.equals(o.test.expectedName()) ? "other-name" : "";
+            case "mobsear.speech.test_guess" -> "rejected-guess";
+            case "mobsear.speech.no_match" -> "no-match";
+            case "mobsear.speech.recognized" -> !o.test.name.equals(o.test.expectedName())
+                    && Boundary.notice("current").contains(o.test.expectedName()) ? "other-name" : "";
             default -> o.test.recording.equals("silence") && key.isEmpty()
                     && Boundary.promptKey().equals("mobsear.speech.test_wait") ? "waiting" : "";
         };
-        if (label.isEmpty() || testPreviews.contains(label)) return;
+        if (label.isEmpty() || testPreviews.contains(label)) return null;
         var text=key.isEmpty() ? Boundary.prompt() : Boundary.noticeComponent("current");
-        if (text==null) return;
+        return text==null ? null : new DrawnDiagnostic(label,text);
+    }
+
+    private void captureTestPreview(Minecraft mc, DrawnDiagnostic drawn) throws Exception {
+        var label=drawn.label();
         try (var image=Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-            if (!showsNotice(mc,image,text)) return;
             var folder=Files.createDirectories(home.resolve("evidence"));
+            if (!showsNotice(mc,image,drawn.text())) {
+                var raw=folder.resolve("inspect-no-match.png");
+                if (label.equals("no-match") && !Files.exists(raw)) image.writeToFile(raw);
+                return;
+            }
             image.writeToFile(folder.resolve("test-"+label+".png"));
         }
         testPreviews.add(label);
