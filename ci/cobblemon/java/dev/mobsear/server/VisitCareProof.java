@@ -20,8 +20,9 @@ final class VisitCareProof {
     final PokemonCase scenario;
     private final ItemStack originalHand;
     final int max;
-    int step, arrived, initial, next;
+    int step, arrived, initial, next, reserved=-1;
     boolean finished, duplicateChecked;
+    final java.util.List<ItemEntity> duplicateDrops=new java.util.ArrayList<>();
     ItemEntity rejected;
 
     VisitCareProof(PokemonEntity mob, ServerPlayer caller, ServerPlayer viewer, PokemonCase scenario) {
@@ -78,6 +79,37 @@ final class VisitCareProof {
         if (finished) return;
         var pokemon=mob.getPokemon();
         int now=mob.tickCount;
+        for (var drop:duplicateDrops)
+            if (!drop.isAlive() || drop.getItem().getCount()!=2)
+                throw PokemonProbe.fail("A toss offered during chewing was consumed later");
+        boolean handReserved=step==1 && caller.getMainHandItem().getCount()==2;
+        boolean floorReserved=step==4 && !caller.serverLevel().getEntitiesOfClass(ItemEntity.class,mob.getBoundingBox().inflate(5),
+                item->item.getItem().is(CobblemonItems.SITRUS_BERRY) && item.getItem().getCount()==2).isEmpty();
+        if ((handReserved || floorReserved) && reserved<0) {
+            if (pokemon.getCurrentHealth()!=initial) throw PokemonProbe.fail("Berry healed before chewing");
+            reserved=now;
+        }
+        if (reserved>=0 && !duplicateChecked && now-reserved>=10) {
+            if (pokemon.getCurrentHealth()!=initial) throw PokemonProbe.fail("Berry healed before the duplicate control");
+            var original=caller.getMainHandItem().copy();
+            var extra=new ItemStack(CobblemonItems.ORAN_BERRY,2);
+            caller.setItemInHand(InteractionHand.MAIN_HAND,extra);
+            var e=new PlayerInteractEvent.EntityInteractSpecific(caller,InteractionHand.MAIN_HAND,mob,Vec3.ZERO);
+            NeoForge.EVENT_BUS.post(e);
+            if (!e.isCanceled() || extra.getCount()!=2 || pokemon.getCurrentHealth()!=initial)
+                throw PokemonProbe.fail("An active chew accepted a duplicate offer after the click debounce");
+            caller.setItemInHand(InteractionHand.MAIN_HAND,original);
+            var drop=new ItemEntity(caller.serverLevel(),mob.getX()+(step==1?-1:1),mob.getY()+.1,mob.getZ(),
+                    new ItemStack(CobblemonItems.ORAN_BERRY,2));
+            drop.setPickUpDelay(240);
+            drop.setDeltaMovement(Vec3.ZERO);
+            NeoForge.EVENT_BUS.post(new ItemTossEvent(drop,caller));
+            caller.serverLevel().addFreshEntity(drop);
+            duplicateDrops.add(drop);
+            duplicateChecked=true;
+            System.out.println("MOBSEAR_POKEMON_DUPLICATE_REJECTED chew="+(step==1?"right-click":"toss")+
+                    " afterTicks="+(now-reserved)+" clickUnspent=true tossObserved=true");
+        }
         if (step==0) {
             if (!CobblemonCalls.visiting(mob,caller)) return;
             arrived=now;
@@ -92,16 +124,11 @@ final class VisitCareProof {
             pokemon.setCurrentHealth(initial);
             clientAction(PokemonProbe.CARE_CLICK,new ItemStack(CobblemonItems.ORAN_BERRY,3));
             step=1;
-        } else if (step==1 && caller.getMainHandItem().getCount()==2 && pokemon.getCurrentHealth()==initial && !duplicateChecked) {
-            duplicateChecked=true;
-            var e=new PlayerInteractEvent.EntityInteractSpecific(caller,InteractionHand.MAIN_HAND,mob,Vec3.ZERO);
-            NeoForge.EVENT_BUS.post(e);
-            if (!e.isCanceled() || caller.getMainHandItem().getCount()!=2 || pokemon.getCurrentHealth()!=initial)
-                throw PokemonProbe.fail("An active chew accepted a duplicate offer");
         } else if (step==1 && caller.getMainHandItem().getCount()==2 && pokemon.getCurrentHealth()!=initial) {
-            if (!duplicateChecked) throw PokemonProbe.fail("Missing duplicate-offer control");
+            verifyChew(now);
             if (pokemon.getCurrentHealth()!=initial+10) throw PokemonProbe.fail("Oran HP delta "+(pokemon.getCurrentHealth()-initial));
-            System.out.println("MOBSEAR_POKEMON_FEED_HAND hp="+initial+"->"+pokemon.getCurrentHealth()+" berries=3->2");
+            System.out.println("MOBSEAR_POKEMON_FEED_HAND hp="+initial+"->"+pokemon.getCurrentHealth()+" berries=3->2 chewTicks="+(now-reserved));
+            reserved=-1;
             next=now+7; step=2;
         } else if (step==2 && now>=next) {
             clientAction(PokemonProbe.CARE_CLICK,ItemStack.EMPTY);
@@ -109,14 +136,17 @@ final class VisitCareProof {
         } else if (step==3 && now>=next) {
             initial=max-2;
             pokemon.setCurrentHealth(initial);
+            duplicateChecked=false;
             clientAction(PokemonProbe.CARE_DROP,new ItemStack(CobblemonItems.SITRUS_BERRY,3));
             step=4;
         } else if (step==4 && pokemon.getCurrentHealth()==max) {
+            verifyChew(now);
             var drops=caller.serverLevel().getEntitiesOfClass(ItemEntity.class,mob.getBoundingBox().inflate(5),
                     item->item.getItem().is(CobblemonItems.SITRUS_BERRY) && item.getItem().getCount()==2);
             if (drops.size()!=1) throw PokemonProbe.fail("Toss did not leave precisely two original berries");
             if (rejected!=null && (!rejected.isAlive() || rejected.getItem().getCount()!=2)) throw PokemonProbe.fail("A stranger's toss was consumed");
-            System.out.println("MOBSEAR_POKEMON_FEED_TOSS hp="+initial+"->"+max+" capped=true berries=3->2");
+            System.out.println("MOBSEAR_POKEMON_FEED_TOSS hp="+initial+"->"+max+" capped=true berries=3->2 chewTicks="+(now-reserved));
+            reserved=-1;
             drops.getFirst().discard();
             if (rejected!=null) rejected.discard();
             step=6;
@@ -129,12 +159,19 @@ final class VisitCareProof {
             if (!rejected.isAlive() || rejected.getItem().getCount()!=2 || pokemon.getCurrentHealth()!=max-12)
                 throw PokemonProbe.fail("Unclaimed toss changed HP or count");
             rejected.discard(); finished=true;
+            if (duplicateDrops.size()!=2) throw PokemonProbe.fail("Missing duplicate-toss controls");
+            duplicateDrops.forEach(ItemEntity::discard);
             caller.setItemInHand(InteractionHand.MAIN_HAND,originalHand);
             caller.inventoryMenu.broadcastChanges();
-            System.out.println("MOBSEAR_POKEMON_VISIT_CARE_PASS healthyTreat=true afterVisitDropUnspent=true bystander="+(caller!=viewer));
+            System.out.println("MOBSEAR_POKEMON_VISIT_CARE_PASS duplicateClicks=2 duplicateTossesUnspentThroughExpiry=2 afterVisitDropUnspent=true bystander="+(caller!=viewer));
         }
         if (step>0 && step<6 && now-arrived>115)
             throw PokemonProbe.fail("Missed visit input stage="+step+" hp="+pokemon.getCurrentHealth()+" hand="+caller.getMainHandItem());
+    }
+
+    private void verifyChew(int now) {
+        if (!duplicateChecked || reserved<0 || now-reserved<39 || now-reserved>41)
+            throw PokemonProbe.fail("Missing timed chew and duplicate control: ticks="+(now-reserved));
     }
 
     private ItemEntity rejectedToss(ServerPlayer player) {

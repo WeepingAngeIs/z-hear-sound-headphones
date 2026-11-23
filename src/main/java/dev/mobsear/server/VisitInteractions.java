@@ -111,7 +111,7 @@ final class VisitInteractions {
         if (!(event.getPlayer() instanceof ServerPlayer caller) || !healing(drop.getItem())) return;
         var visitors = new HashSet<UUID>();
         for (var mob : caller.serverLevel().getEntitiesOfClass(PokemonEntity.class, caller.getBoundingBox().inflate(5),
-                mob -> CobblemonCalls.visiting(mob, caller))) visitors.add(mob.getUUID());
+                mob -> !bites.containsKey(mob) && CobblemonCalls.visiting(mob, caller))) visitors.add(mob.getUUID());
         if (!visitors.isEmpty()) offers.put(drop, new Offer(caller.getUUID(), drop.getItem(), visitors));
     }
 
@@ -169,7 +169,7 @@ final class VisitInteractions {
             var entry = it.next();
             var mob = entry.getKey();
             var bite = entry.getValue();
-            if (mob == null || !mob.isAlive() || mob.isRemoved() || mob.isBusy() || mob.isBattling()
+            if (!CobblemonCalls.available(mob)
                     || mob.level() != bite.level || bite.display.isRemoved()) {
                 it.remove();
                 bite.display.discard();

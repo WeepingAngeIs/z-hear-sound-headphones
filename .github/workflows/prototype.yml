@@ -1,8 +1,8 @@
 name: Prototype checks
 on:
   push:
-    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, main]
-    paths-ignore: ['ci/windows-world/**', '.github/workflows/windows-world.yml', 'ci/fullpack/**', '.github/workflows/fullpack.yml']
+    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/berry-chew-pro-build, main]
+    paths-ignore: ['ci/windows-world/**', '.github/workflows/windows-world.yml', 'ci/fullpack/**', '.github/workflows/fullpack.yml', 'ci/cobblemon/java/**', 'ci/cobblemon/run.py', '.github/workflows/cobblemon-worlds.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,6 +28,7 @@ jobs:
           bash gradlew --no-daemon build
           mkdir -p dist
           cp build/libs/mobsear-0.3.10.jar dist/
+          sha256sum dist/mobsear-0.3.10.jar
           jar tf dist/mobsear-0.3.10.jar > "$RUNNER_TEMP/mod-contents.txt"
           grep -qx 'dev/mobsear/client/recognize.ps1' "$RUNNER_TEMP/mod-contents.txt"
           grep -qx 'dev/mobsear/client/words-win-x64.zip' "$RUNNER_TEMP/mod-contents.txt"

@@ -96,7 +96,7 @@ final class CobblemonCalls {
         return !response.visitExpired(caller.serverLevel().getServer().overworld().getGameTime());
     }
 
-    private static boolean available(PokemonEntity mob) {
+    static boolean available(PokemonEntity mob) {
         var pokemon = mob.getPokemon();
         var brain = mob.getBrain();
         return mob.isAlive() && !mob.isRemoved() && !mob.isNoAi() && !mob.isSleeping()
