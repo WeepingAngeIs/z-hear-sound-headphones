@@ -9,6 +9,8 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 
 /** Use normal client inputs. The server independently checks the visitor, original dropped entity, HP and inventory. */
 final class PackVisitFeeding {
@@ -34,6 +36,17 @@ final class PackVisitFeeding {
     private boolean expiredInReach;
     private ItemEntity actualDrop;
     private ItemStack originalHand;
+    private Vec3 beforeFloorTrial;
+    private ServerPlayer visitingCaller;
+
+    void tossed(ItemTossEvent event) {
+        var offer=requested;
+        if (passed || offer==null || !offer.ground || event.getPlayer()!=visitingCaller) return;
+        var drop=event.getEntity();
+        if (actualDrop!=null || drop.getOwner()!=visitingCaller || !drop.getItem().is(CobblemonItems.ORAN_BERRY) || drop.getItem().getCount()!=1)
+            throw new IllegalStateException("Expected one single-Q Oran berry from the visitor's caller");
+        actualDrop=drop;
+    }
 
     void server(PokemonEntity mob,ServerPlayer caller,boolean reacting) throws ReflectiveOperationException {
         if (passed) return;
@@ -55,11 +68,21 @@ final class PackVisitFeeding {
             if (originalHand==null) {
                 if (!reacting || mob.distanceTo(caller)>2.5 || !mob.getNavigation().isDone()) return;
                 originalHand=caller.getMainHandItem().copy();
+                visitingCaller=caller;
             }
             var pokemon=mob.getPokemon();
             start=pokemon.getMaxHealth()-(next.healthy?0:next.ground?14:11);
             pokemon.setCurrentHealth(start);
             if (next.healthy) pokemon.setCurrentFullness(0);
+            if (next==Offer.HEALTHY_FLOOR) {
+                // Put only the test caller on a floor mark outside the in-flight catch box.
+                // A normal Q dropped straight down here must land before the visitor can eat it.
+                beforeFloorTrial=caller.position();
+                double dx=caller.getX()-mob.getX(), dz=caller.getZ()-mob.getZ();
+                double offset=mob.getBbWidth()*.5+1.60;
+                if (Math.abs(dx)>=Math.abs(dz)) caller.teleportTo(mob.getX()+Math.copySign(offset,dx),caller.getY(),mob.getZ());
+                else caller.teleportTo(mob.getX(),caller.getY(),mob.getZ()+Math.copySign(offset,dz));
+            }
             caller.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(CobblemonItems.ORAN_BERRY,next.stackSize()));
             caller.inventoryMenu.broadcastChanges();
             actualDrop=null;
@@ -69,12 +92,6 @@ final class PackVisitFeeding {
         var offer=requested;
         var pokemon=mob.getPokemon();
         int hp=pokemon.getCurrentHealth();
-        if (offer.ground && actualDrop==null) {
-            var drops=caller.serverLevel().getEntitiesOfClass(ItemEntity.class,caller.getBoundingBox().inflate(5),
-                    d->d.getOwner()==caller && d.getItem().is(CobblemonItems.ORAN_BERRY) && d.getItem().getCount()==1);
-            if (drops.size()==1) actualDrop=drops.getFirst();
-            if (drops.size()>1) throw new IllegalStateException("Ambiguous original single-Q item");
-        }
         if (offer==Offer.EXPIRED_FLOOR) {
             if (hp!=start) throw new IllegalStateException("Expired ground berry changed HP");
             if (actualDrop!=null && actualDrop.onGround()) {
@@ -100,7 +117,9 @@ final class PackVisitFeeding {
         if (caller.getMainHandItem().getCount()!=offer.stackSize()-1) throw new IllegalStateException("Wrong number of berries spent by "+offer);
         if (offer.ground && (actualDrop==null || !actualDrop.onGround() || !actualDrop.isRemoved() || !reachable(mob,actualDrop) ||
                 mob.getBoundingBox().inflate(.9).intersects(actualDrop.getBoundingBox())))
-            throw new IllegalStateException("Original single-Q berry was not eaten from the ground");
+            throw new IllegalStateException("Expected the original single-Q berry to land before eating "+offer+" at "+age+
+                    (actualDrop==null?" no recorded item":" ground="+actualDrop.onGround()+" removed="+actualDrop.isRemoved()+
+                            " reachable="+reachable(mob,actualDrop)+" clearance="+Math.sqrt(mob.getBoundingBox().distanceToSqr(actualDrop.position()))));
         String method=offer.ground?"single-Q-on-floor":"right-click";
         String measured=" visitTick="+age+" hp="+start+"->"+hp+" totalBerries="+offer.stackSize()+"->"+(offer.stackSize()-1);
         if (offer.healthy)
@@ -109,6 +128,7 @@ final class PackVisitFeeding {
             System.out.println("ACOUSTIC_PACK_GROUND_BERRY_PASS input=single-Q landed=true"+measured+" clearance="+
                     Math.sqrt(mob.getBoundingBox().distanceToSqr(actualDrop.position())));
         else System.out.println("ACOUSTIC_PACK_BERRY_PASS species=Lopunny hp="+start+"->"+hp+" stack=2->1"+(testFloor?" visitTick="+age:""));
+        if (offer==Offer.HEALTHY_FLOOR) caller.teleportTo(beforeFloorTrial.x,beforeFloorTrial.y,beforeFloorTrial.z);
         if (!testFloor) { finish(caller); return; }
         next=Offer.values()[offer.ordinal()+1];
         requested=null;
@@ -130,8 +150,8 @@ final class PackVisitFeeding {
                 || mc.player.getMainHandItem().getCount()!=offer.stackSize()) return;
         if (offer.ground) {
             var away=mc.player.position().subtract(mob.position()).multiply(1,0,1).normalize();
-            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
-                    mob.position().add(away.scale(mob.getBbWidth()*.5+1.6)));
+            var floor=offer==Offer.HEALTHY_FLOOR?mc.player.position():mob.position().add(away.scale(mob.getBbWidth()*.5+1.6));
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,floor);
             if (++aimTicks<3) return;
             if (!mc.player.drop(false)) throw new IllegalStateException("Normal single-item Q failed");
             aimTicks=0;

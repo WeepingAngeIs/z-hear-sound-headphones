@@ -160,6 +160,10 @@ public final class PackProbe {
         NeoForge.EVENT_BUS.addListener(this::serverTick);
         NeoForge.EVENT_BUS.addListener(this::render);
         NeoForge.EVENT_BUS.addListener(this::noticeDrawn);
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.item.ItemTossEvent event)->{
+            var trial=current;
+            if (trial!=null && trial.feeding!=null) trial.feeding.tossed(event);
+        });
     }
 
     private void fail(Exception e) {
