@@ -18,6 +18,7 @@ if (-not [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on'),@{})
     throw 'Conversational pause handling must preserve names and custom aliases'
 }
 Add-Type -AssemblyName System.Speech
+Add-Type -Path "$PSScriptRoot/SyntheticPronunciation.cs" -ReferencedAssemblies ([System.Speech.Synthesis.SpeechSynthesizer].Assembly.Location)
 $synth=[System.Speech.Synthesis.SpeechSynthesizer]::new()
 $format=[System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000,16,1)
 $lines=@{
@@ -41,6 +42,8 @@ $lines=@{
     'lilligant-sentence'='The Lilligant is over here.'
     'geodude'='Geodude.'
     'geodude-sentence'='Hey, look at that Geodude.'
+    'geodude-phonetic'='<phoneme alphabet="ipa" ph="&#x2C8;d&#x292;io&#x28A;dud">Geodude</phoneme>.'
+    'geodude-phonetic-sentence'='Look at that <phoneme alphabet="ipa" ph="&#x2C8;d&#x292;io&#x28A;dud">Geodude</phoneme>.'
     'butterfly'='I saw a butterfly in the garden.'
     'elegant'='That is an elegant flower.'
     'geode'='I left a geode on the table.'
@@ -49,11 +52,19 @@ $lines=@{
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {
         $synth.SelectVoice($voice.VoiceInfo.Name)
+        foreach ($word in @('Geodude','geo dude','good dude')) {
+            $phones=[SyntheticPronunciation]::Read($synth,$word,$false)
+            $encoded=$phones.ToCharArray() | ForEach-Object { 'U+{0:X4}' -f [int]$_ }
+            Write-Output ("GENERATED_PRONUNCIATION "+$voice.VoiceInfo.Name+" "+$word+" "+($encoded -join ' '))
+        }
         foreach($key in $lines.Keys) {
             $mem=[IO.MemoryStream]::new()
             try {
                 $synth.SetOutputToAudioStream($mem,$format)
-                $synth.Speak($lines[$key]); $synth.SetOutputToNull()
+                if ($lines[$key].Contains('<phoneme')) {
+                    $synth.SpeakSsml('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">'+$lines[$key]+'</speak>')
+                } else { $synth.Speak($lines[$key]) }
+                $synth.SetOutputToNull()
                 $pcm=[byte[]]::new($mem.Length+640*38)
                 [Array]::Copy($mem.ToArray(),0,$pcm,640*10,$mem.Length)
                 $tag=($voice.VoiceInfo.Name -replace '[^a-zA-Z]','')

@@ -187,7 +187,8 @@ try {
             # word decoder compare those spellings without a prompt full of unrelated creatures.
             if ($focused.Count -ge 2) { $similar = $focused; $context = @() }
         }
-        $hints = @(($context + @($lexicon.Keys) + @('pikachu')) | Where-Object {
+        $commonHints = @($lexicon.Keys | Where-Object { $_ -in @('enderman','lopunny','hoglin','zoglin') })
+        $hints = @(($context + $commonHints + @('pikachu')) | Where-Object {
             $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
         })
         $hints = @(($similar + $hints) | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })

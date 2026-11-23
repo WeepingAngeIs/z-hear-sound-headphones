@@ -19,7 +19,7 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
     voice, label = file.stem[5:].split("_")
     near = {"exact": "raichu pikachu", "pause-name": "raichu pikachu", "nidorine": "nidorina nidorino",
             "bulbasaur": "ivysaur bulbasaur", "charmander": "charmeleon charmander"}
-    family = label.removesuffix("-sentence")
+    family = label.removesuffix("-sentence").removesuffix("-phonetic")
     roster = examples.get(family, near.get(targets.get(label, label), crowded))
     if label == "butterfly":
         roster = examples["butterfree"]
@@ -54,7 +54,7 @@ for index, ((voice, test, roster), reply) in enumerate(zip(cases, actual, strict
         errors.append((test, "invalid guess or worker failure", wire))
     if test in ("exact","pause-name") and (result != "pikachu" or guessed):
         errors.append((test, "exact name did not win", result))
-    base = test.removesuffix("-sentence")
+    base = test.removesuffix("-sentence").removesuffix("-phonetic")
     if base in examples and result != base:
         errors.append((voice, test, "wrong or missing base species", result))
         failed_examples.append(index)

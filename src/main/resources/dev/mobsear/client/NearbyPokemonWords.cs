@@ -21,7 +21,7 @@ public sealed class NearbyPokemonWords
          "can cant could would should will just ran runs went walked walking said say talking called someone " +
          "something nothing getting looking friend bunny funny honey money lantern lanterns chair chairs " +
          "jogging logging talking morning table bridge path fence river outside another anyone holding " +
-         "well really like some next have has had meet met path grass house talking better butterfly butterflies").Split(' '));
+         "well really like some next have has had meet met path grass house talking better good butterfly butterflies").Split(' '));
 
     public NearbyPokemonWords(string[] candidates)
     {
