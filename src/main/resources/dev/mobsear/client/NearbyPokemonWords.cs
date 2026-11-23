@@ -101,7 +101,10 @@ public sealed class NearbyPokemonWords
                 if (phonetic < 0.63) continue;
                 // A matching initial contributes only two points. Short names need stronger evidence.
                 double score = 0.48*letters + 0.50*phonetic + (sound[0] == sounds[i][0] ? 0.02 : 0);
-                double minimum = length <= 4 ? 0.86 : 0.785;
+                // A longer distinctive shared stem is stronger evidence than an initial.
+                bool sharedStem = name.Length >= 8 && text.Length >= 8 &&
+                                  String.CompareOrdinal(name,0,text,0,5) == 0;
+                double minimum = length <= 4 ? 0.86 : sharedStem ? 0.76 : 0.785;
                 if (score >= minimum && score > best + 0.000001) {
                     best = score;
                     choice = names[i];

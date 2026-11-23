@@ -38,6 +38,7 @@ final class PokemonCaseServer {
     private WalkingDeer deerWalk;
     private CalledPokemonVisit visit;
     private VisitCareProof care;
+    private boolean measuredPortion;
     private Mob subject;
     private Mob firstListener;
     private UUID firstListenerId;
@@ -171,6 +172,7 @@ final class PokemonCaseServer {
     private void prepare() {
         c = PokemonCase.values()[index];
         care = null;
+        measuredPortion = false;
         deerWalk = null;
         visit = null;
         var world = caller.serverLevel();
@@ -355,6 +357,11 @@ final class PokemonCaseServer {
             care.tick();
             if (visitDone && !care.finished) return;
         }
+        if (c==PokemonCase.WALKING_LOPUNNY && fired && !measuredPortion && CobblemonCalls.visiting((PokemonEntity)subject,caller)) {
+            VisitCareProof.measurePortion((PokemonEntity)subject,caller);
+            measuredPortion=true;
+        }
+        if (c==PokemonCase.WALKING_LOPUNNY && visitDone && !measuredPortion) throw PokemonProbe.fail("Missing uncapped healing measurement");
         if (visitDone) released=true;
         if (c==PokemonCase.INTERRUPTED && ball!=null && age>interruptionTick) {
             var nav=subject.getNavigation();

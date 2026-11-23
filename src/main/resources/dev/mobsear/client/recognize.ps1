@@ -148,8 +148,8 @@ try {
                     $joined = $label.Replace(' ','')
                     if ($joined.Length -ge 6 -and $nearNames -contains $joined) { $label=$joined }
                 }
-                if (-not $aliases.ContainsKey($label) -or $aliases[$label] -eq 0 -or
-                        $wordBreaks.ContainsKey($label) -or $confirm.ContainsKey($label)) { continue }
+                if (-not $aliases.ContainsKey($label) -or $aliases[$label] -eq 0 -or $wordBreaks.ContainsKey($label) -or
+                        ($confirm.ContainsKey($label) -and $nearPokemon -notcontains $label)) { continue }
                 if ($ordinaryRivals.ContainsKey($label) -and $plainText -match $ordinaryRivals[$label]) { continue }
                 # Leave bare labels and incomplete longer names to the established command recognizer.
                 if (($tokens.Count -eq $size -and $aliases[$label] -ne $shortCode) -or ($compounds.ContainsKey($label) -and $tokens.Count -le $size+3 -and
@@ -175,16 +175,21 @@ try {
 
     function Read-WordAudio([byte[]]$samples, $original, [int]$shortCode, [int]$budget) {
         # Hints come from registered local creatures and an existing pronunciation lexicon. Dictation remains open.
+        # Keep similar local spellings in stable order in the audio prompt. Only the final
+        # similarity ranking should use distance to choose between equally plausible names.
+        $similar = @($nearPokemon | Where-Object { $confirm.ContainsKey($_) } | Sort-Object -Unique)
         $hints = @(($nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
             $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
-        } | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })
+        })
+        $hints = @(($similar + $hints) | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })
         $prompt = (@('Minecraft','Cobblemon') + $hints) -join ', '
         $start = [Diagnostics.ProcessStartInfo]::new()
         $start.FileName = [IO.Path]::Combine($modelDir,'whisper-cli.exe')
         $start.WorkingDirectory = $modelDir
         # The pinned CLI disables its stdout segment callback for stdin unless an output basename
         # is set. No file-output format is enabled. The segment callback writes only into our pipe.
-        $start.Arguments = '-m tiny.en.bin -f - -of pipe-only -t 3 -nt -np -l en -bs 5 -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
+        $beam = if ($samples.Length -lt 46080 -and $original.Count -le 2) { 3 } else { 5 }
+        $start.Arguments = '-m tiny.en.bin -f - -of pipe-only -t 3 -nt -np -l en -bs '+$beam+' -ac 512 --prompt '+[char]34+$prompt+'.'+[char]34
         $start.UseShellExecute = $false
         $start.CreateNoWindow = $true
         $start.RedirectStandardInput = $start.RedirectStandardOutput = $start.RedirectStandardError = $true

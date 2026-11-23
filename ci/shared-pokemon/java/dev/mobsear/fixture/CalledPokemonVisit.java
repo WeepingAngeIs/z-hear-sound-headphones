@@ -62,7 +62,7 @@ public final class CalledPokemonVisit {
             }
             if (approached && distance<=2.55 && mob.getNavigation().isDone()) {
                 if (rested==null) { rested=position; arrivedAt=tick; }
-                if (rested.distanceTo(position)>.48) throw new IllegalStateException("Pokémon drifted away during its stay");
+                if (rested.distanceTo(position)>.48) throw new IllegalStateException("Pokémon drifted during its stay: "+rested+" to "+position+" grounded="+mob.onGround()+" nearTicks="+nearTicks);
                 nearTicks++;
             } else if (rested!=null) throw new IllegalStateException("Pokémon left its caller before finishing the stay");
         } else if (rested!=null) {

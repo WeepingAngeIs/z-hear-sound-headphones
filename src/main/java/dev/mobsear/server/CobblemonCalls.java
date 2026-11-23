@@ -204,6 +204,11 @@ final class CobblemonCalls {
             assignedPath = null;
             mob.getMoveControl().setWantedPosition(mob.getX(), mob.getY(), mob.getZ(), 0);
             mob.setSpeed(0);
+            // A stopped navigation path can leave horizontal momentum from the last walking tick.
+            if (mob.onGround() && mob.hurtTime == 0) {
+                var motion = mob.getDeltaMovement();
+                mob.setDeltaMovement(0, motion.y, 0);
+            }
             brain.setMemory(MemoryModuleType.LOOK_TARGET, eyes);
             var target = caller.getEyePosition();
             float yaw = (float) Math.toDegrees(Math.atan2(target.z - mob.getZ(), target.x - mob.getX())) - 90;

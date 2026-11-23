@@ -17,7 +17,7 @@ for label, rows in (('baseline', before), ('candidate', after)):
     p95 = times[(len(times)-1) * 95 // 100]
     print('FOCUS_LATENCY', label, 'p95_ms='+str(p95), 'max_ms='+str(times[-1]))
     if label == 'candidate':
-        assert p95 < 1000 and times[-1] < 4000, 'Recognition exceeded the player-facing timing budget'
+        candidate_latency = (p95,times[-1])
 counts = Counter()
 wrong = []
 for b, a in zip(before, after):
@@ -54,3 +54,4 @@ for row in after:
         assert row['actual'] == row['expected'], ('Explicit Lopunny pronunciation lost', row['fixture'], row['mode'])
 for neighbor in ('buneary', 'endermite', 'poponee', 'hoglin', 'zoglin'):
     assert counts['candidate', neighbor, 'exact'] >= max(1, counts['baseline', neighbor, 'exact'] - 1), neighbor
+assert candidate_latency[0] < 1000 and candidate_latency[1] < 4000, ('Recognition exceeded the player-facing timing budget', candidate_latency)

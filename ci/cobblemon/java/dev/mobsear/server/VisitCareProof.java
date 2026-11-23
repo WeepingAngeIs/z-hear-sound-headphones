@@ -52,6 +52,22 @@ final class VisitCareProof {
         PacketDistributor.sendToPlayer(caller,new PokemonProbe.Message(stage,scenario.ordinal(),mob.getId()));
     }
 
+    static void measurePortion(PokemonEntity mob, ServerPlayer caller) {
+        var pokemon=mob.getPokemon();
+        int max=pokemon.getMaxHealth();
+        int start=Math.max(1,max/3);
+        pokemon.setCurrentHealth(start);
+        var original=caller.getMainHandItem().copy();
+        var food=new ItemStack(CobblemonItems.SITRUS_BERRY,2);
+        caller.setItemInHand(InteractionHand.MAIN_HAND,food);
+        var click=new PlayerInteractEvent.EntityInteractSpecific(caller,InteractionHand.MAIN_HAND,mob,Vec3.ZERO);
+        NeoForge.EVENT_BUS.post(click);
+        if (!click.isCanceled() || pokemon.getCurrentHealth()!=start+max/4 || food.getCount()!=1)
+            throw PokemonProbe.fail("Native Sitrus fraction was not applied once");
+        caller.setItemInHand(InteractionHand.MAIN_HAND,original);
+        System.out.println("MOBSEAR_POKEMON_NATIVE_SITRUS hp="+start+"->"+pokemon.getCurrentHealth()+" max="+max+" consumed=1");
+    }
+
     void tick() {
         if (finished) return;
         var pokemon=mob.getPokemon();

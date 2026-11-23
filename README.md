@@ -45,9 +45,11 @@ With Cobblemon on the client and server, enable **Local Mob Calls** and say a ne
 
 A calm wild Pokémon pauses its idle walk, faces the player who called its species name and uses its own pathfinding to come over. After reaching the caller, it stays nearby for at least two seconds and then goes back to normal activity. A blocked Pokémon gives up if it cannot make progress. A fight, capture or other incompatible activity takes priority. Each Pokémon has a five-second call cooldown. Owned Pokémon keep their normal behavior.
 
+While the Pokémon is beside you on that visit, right-click with an empty hand to give it a head pat. It shows hearts and makes its own cry. Right-click with a healing berry or toss a berry at its feet to feed it. A damaged visitor can eat one berry from a stack, using Cobblemon’s healing and fullness rules. An uneaten tossed berry stays on the ground. These interactions belong to the player who called the Pokémon and end when the visit ends.
+
 The vocabulary comes from Cobblemon’s synced species registry, including names supplied by datapacks. English desktop recognition uses canonical species names and English display names when the game uses English. Localized labels still appear in the private feedback. Duplicate spoken names are skipped, and existing mob names retain their meanings. For the two Nidoran species, say **Nidoran female** or **Nidoran male**. Each species call identifies the registered species.
 
-For similar-sounding species, a call can go unanswered when the recognizer cannot confirm the name. Try saying the name followed by its ending spelled aloud, such as **Spectreon ending O N** or **Spectrier ending E R**.
+Exact names take priority. If the English decoder hears an imperfect name, it compares the sound and spelling against eligible wild species inside the server’s call radius. For equally plausible names, the closer Pokémon’s species wins. A matching initial alone is insufficient. You can still spell the ending explicitly, such as **Spectreon ending O N** or **Spectrier ending E R**.
 
 ## Server and privacy
 
