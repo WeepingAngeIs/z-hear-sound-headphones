@@ -37,6 +37,7 @@ final class PokemonCaseServer {
     private final NamedCases named=new NamedCases();
     private WalkingDeer deerWalk;
     private CalledPokemonVisit visit;
+    private VisitCareProof care;
     private Mob subject;
     private Mob firstListener;
     private UUID firstListenerId;
@@ -169,6 +170,7 @@ final class PokemonCaseServer {
 
     private void prepare() {
         c = PokemonCase.values()[index];
+        care = null;
         deerWalk = null;
         visit = null;
         var world = caller.serverLevel();
@@ -298,6 +300,7 @@ final class PokemonCaseServer {
             }
             if (c==PokemonCase.COOLDOWN_EXPIRED && caller.serverLevel().getGameTime()-firstCall<110) return;
             if (c==PokemonCase.BATTLE) engageBattle();
+            if (c==PokemonCase.BATTLE || c==PokemonCase.OWNER) VisitCareProof.excluded((PokemonEntity)subject,caller,c.name());
             if (c==PokemonCase.CAPTURE) engageCapture();
             soundOrigin=caller.position();
             phase=PokemonProbe.FIRE;
@@ -347,6 +350,11 @@ final class PokemonCaseServer {
             released=true;
         }
         boolean visitDone=visit!=null && fired && visit.observe(active,c==PokemonCase.WALKING_EEVEE,age);
+        if (c==PokemonCase.WALKING_PIKACHU && fired) {
+            if (care==null) care=new VisitCareProof((PokemonEntity)subject,caller,viewer,c);
+            care.tick();
+            if (visitDone && !care.finished) return;
+        }
         if (visitDone) released=true;
         if (c==PokemonCase.INTERRUPTED && ball!=null && age>interruptionTick) {
             var nav=subject.getNavigation();

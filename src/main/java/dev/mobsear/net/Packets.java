@@ -47,6 +47,16 @@ public final class Packets {
         @Override public Type<NearbySpeciesRequest> type() { return TYPE; }
     }
 
+    /** Only the caller needs to predict a visiting Pokémon's right-click interaction. */
+    public record Visit(UUID pokemonEntity, boolean arrived) implements CustomPacketPayload {
+        public static final Type<Visit> TYPE = id("pokemon_visit");
+        public static final StreamCodec<FriendlyByteBuf, Visit> CODEC = StreamCodec.of((buf, value) -> {
+            buf.writeUUID(value.pokemonEntity);
+            buf.writeBoolean(value.arrived);
+        }, buf -> new Visit(buf.readUUID(), readFlag(buf)));
+        @Override public Type<Visit> type() { return TYPE; }
+    }
+
     /** Registry IDs only, ordered by distance to the nearest eligible individual of each species. */
     public record NearbySpecies(ResourceLocation dimension, List<ResourceLocation> species) implements CustomPacketPayload {
         public static final int MAX_SPECIES = 4096;

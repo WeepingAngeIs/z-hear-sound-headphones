@@ -46,6 +46,7 @@ public final class PokemonCaseClient {
     private net.minecraft.world.phys.Vec3 trackedCaller;
     private boolean visitTurn, visitBeside;
     private int visitNearTicks;
+    private final VisitFeedbackProof careEffects=new VisitFeedbackProof();
 
     public PokemonCaseClient() {
         PokemonProbe.client=this::stage;
@@ -54,6 +55,21 @@ public final class PokemonCaseClient {
         NeoForge.EVENT_BUS.addListener(this::renderDeer);
     }
     private void stage(PokemonProbe.Message request) {
+        if (request.stage()==PokemonProbe.BEFORE) careEffects.stage(PokemonCase.values()[request.scenario()],request.entity());
+        if (request.stage()==PokemonProbe.CARE_CLICK || request.stage()==PokemonProbe.CARE_DROP) {
+            var mob=mc.level.getEntity(request.entity());
+            if (!caller || !(mob instanceof PokemonEntity) || !MobsEar.localVisitor.test(mob.getUUID()))
+                throw PokemonProbe.fail("Missing caller-only visit prediction for a real interaction");
+            if (request.stage()==PokemonProbe.CARE_CLICK) {
+                var hit=new net.minecraft.world.phys.EntityHitResult(mob,mob.position().add(0,.3,0));
+                var result=mc.gameMode.interactAt(mc.player,mob,hit,net.minecraft.world.InteractionHand.MAIN_HAND);
+                if (!result.consumesAction()) throw PokemonProbe.fail("The client handed the visit click to another interaction");
+            } else {
+                mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,mob.position());
+                if (!mc.player.drop(true)) throw PokemonProbe.fail("Client did not drop a real stack");
+            }
+            return;
+        }
         if (request.stage()==PokemonProbe.SOURCE) {
             if (stage==null || stage.stage()!=PokemonProbe.FIRE || request.entity()!=stage.entity() || request.scenario()!=stage.scenario() || !c.accepts())
                 throw PokemonProbe.fail("Unmatched authenticated source observation");
@@ -122,6 +138,7 @@ public final class PokemonCaseClient {
                     waitFor("synced species " + check.species); return;
                 }
             solo=connection.getConnection().isMemoryConnection();
+            careEffects.attach(mc);
             caller=solo || mc.getUser().getName().equals("PokemonCaller");
             if (VoiceClient.options().recognitionDiagnostics()) throw PokemonProbe.fail("Diagnostics unexpectedly enabled by default");
             VoiceClient.options().setRecognitionDiagnostics(acoustic);
@@ -340,6 +357,7 @@ public final class PokemonCaseClient {
     }
 
     private void render(RenderFrameEvent.Post ignored) {
+        careEffects.frame(mc,solo?"solo":caller?"multi-caller":"multi-viewer");
         if (capture==null) return;
         Path output=Path.of(System.getenv("MOBSEAR_POKEMON_ROOT"),"evidence");
         boolean visitFrame="turn".equals(capture) || "beside".equals(capture);

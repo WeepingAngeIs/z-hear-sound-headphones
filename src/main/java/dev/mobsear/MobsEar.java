@@ -25,6 +25,10 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 @Mod("mobsear")
 public final class MobsEar {
+    private static final net.neoforged.neoforge.registries.DeferredRegister<net.minecraft.sounds.SoundEvent> SOUNDS =
+            net.neoforged.neoforge.registries.DeferredRegister.create(net.minecraft.core.registries.Registries.SOUND_EVENT, "mobsear");
+    public static final java.util.function.Supplier<net.minecraft.sounds.SoundEvent> NOM =
+            SOUNDS.register("nom_nom", net.minecraft.sounds.SoundEvent::createVariableRangeEvent);
     private static final ModConfigSpec SERVER_CONFIG;
     private static final ModConfigSpec.IntValue radius, hordeCooldown, hordeCap;
     private static final ModConfigSpec.BooleanValue hordeEnabled;
@@ -48,6 +52,8 @@ public final class MobsEar {
     public static Consumer<Packets.Heard> callHeard = ack -> {};
     public static Consumer<Packets.CallDeclined> callDeclined = reply -> {};
     public static Consumer<Packets.NearbySpecies> nearbySpecies = reply -> {};
+    public static Consumer<Packets.Visit> visitStatus = reply -> {};
+    public static java.util.function.Predicate<java.util.UUID> localVisitor = id -> false;
     public static Consumer<Packets.MobPose> mobPose = pose -> {};
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
@@ -59,6 +65,7 @@ public final class MobsEar {
     }
 
     public MobsEar(IEventBus bus, ModContainer container) {
+        SOUNDS.register(bus);
         PokemonReactions.register();
         NamedMobReactions.register();
         container.registerConfig(ModConfig.Type.SERVER, SERVER_CONFIG);
@@ -124,6 +131,7 @@ public final class MobsEar {
                 ServerVoice.entityCue(player, packet.entityType(), radius.getAsInt());
         });
         if (hasSpecies) {
+            reg.playToClient(Packets.Visit.TYPE, Packets.Visit.CODEC, (packet, ctx) -> visitStatus.accept(packet));
             reg.playToClient(Packets.NearbySpecies.TYPE, Packets.NearbySpecies.CODEC, (packet, ctx) -> nearbySpecies.accept(packet));
             reg.playToServer(Packets.NearbySpeciesRequest.TYPE, Packets.NearbySpeciesRequest.CODEC, (packet, ctx) -> {
                 if (ctx.player() instanceof ServerPlayer player) PokemonReactions.sendNearby(player, radius.getAsInt());

@@ -42,6 +42,7 @@ final class CobblemonCalls {
     }
 
     static void register() {
+        VisitInteractions.register();
         NeoForge.EVENT_BUS.addListener(CobblemonCalls::tick);
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
             responses.clear();
@@ -85,6 +86,14 @@ final class CobblemonCalls {
         return nearest.entrySet().stream().sorted(Map.Entry.<ResourceLocation, Double>comparingByValue()
                 .thenComparing(Map.Entry.comparingByKey())).limit(dev.mobsear.net.Packets.NearbySpecies.MAX_SPECIES)
                 .map(Map.Entry::getKey).toList();
+    }
+
+    static boolean visiting(PokemonEntity mob, ServerPlayer caller) {
+        var response = responses.get(mob);
+        if (response == null || response.caller != caller || response.stage != Stage.STAY || !available(mob)
+                || !caller.isAlive() || caller.isRemoved() || caller.isSpectator() || caller.isCreative()
+                || caller.level() != mob.level() || !response.beside(mob)) return false;
+        return caller.serverLevel().getServer().overworld().getGameTime() - response.arrived < STAY_TICKS;
     }
 
     private static boolean available(PokemonEntity mob) {
@@ -149,19 +158,21 @@ final class CobblemonCalls {
                 return true;
             }
             // A caller can move. Count two continuous seconds beside that same player after arrival.
-            double reach = Math.max(2.5, (mob.getBbWidth() + caller.getBbWidth()) * 0.5 + 1.0);
-            if (mob.distanceToSqr(caller) <= reach * reach && mob.hasLineOfSight(caller)) {
+            if (beside(mob)) {
                 if (stage != Stage.STAY) {
                     stage = Stage.STAY;
                     arrived = now;
+                    VisitInteractions.status(mob, caller, true);
                 }
                 standAndFace(mob);
+                if (now - arrived < STAY_TICKS) VisitInteractions.collect(mob, caller);
                 return now - arrived < STAY_TICKS;
             }
             BlockPos destination = caller.blockPosition();
             if (now >= deadline || !mob.level().hasChunkAt(destination)
                     || !mob.level().getWorldBorder().isWithinBounds(destination) || !mob.isWithinRestriction(destination)) return false;
             if (stage != Stage.WALK) {
+                if (stage == Stage.STAY) VisitInteractions.status(mob, caller, false);
                 stage = Stage.WALK;
                 lastProgress = now;
                 progressPosition = mob.position();
@@ -174,6 +185,11 @@ final class CobblemonCalls {
             if (now - lastProgress >= STUCK_TICKS) return false;
             walk(mob, now, destination);
             return true;
+        }
+
+        private boolean beside(PokemonEntity mob) {
+            double reach = Math.max(2.5, (mob.getBbWidth() + caller.getBbWidth()) * 0.5 + 1.0);
+            return mob.distanceToSqr(caller) <= reach * reach && mob.hasLineOfSight(caller);
         }
 
         private void standAndFace(PokemonEntity mob) {
@@ -215,6 +231,7 @@ final class CobblemonCalls {
         }
 
         private void release(PokemonEntity mob) {
+            if (stage == Stage.STAY) VisitInteractions.status(mob, caller, false);
             var brain = mob.getBrain();
             var walk = brain.getMemory(MemoryModuleType.WALK_TARGET).orElse(null);
             boolean ownsMemory = walk == approach || (stand != null && walk == stand);

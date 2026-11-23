@@ -40,6 +40,7 @@ public final class VoiceClient {
     private static VoiceClient instance;
     private record Seen(MicPresence.Nearby snapshot, long arrival) {}
     private final HashMap<UUID, Seen> nearby = new HashMap<>();
+    private final Map<UUID, Long> visitors = new HashMap<>();
     private final KeyMapping talk = mapping("talk", GLFW.GLFW_KEY_V);
     private final KeyMapping toggle = mapping("recognition", GLFW.GLFW_KEY_N);
     private final KeyMapping settings = mapping("settings", GLFW.GLFW_KEY_G);
@@ -75,6 +76,15 @@ public final class VoiceClient {
         MobsEar.presence = packet -> nearby.put(packet.speaker(), new Seen(packet, System.nanoTime()));
         MobsEar.hordeStatus = enabled -> horde = enabled;
         MobsEar.callHeard = VoiceClient::heard;
+        MobsEar.visitStatus = packet -> {
+            var level = Minecraft.getInstance().level;
+            if (level == null || !packet.arrived()) visitors.remove(packet.pokemonEntity());
+            else visitors.put(packet.pokemonEntity(), level.getGameTime() + 50);
+        };
+        MobsEar.localVisitor = id -> {
+            var level = Minecraft.getInstance().level;
+            return level != null && visitors.getOrDefault(id, Long.MIN_VALUE) >= level.getGameTime();
+        };
         MobsEar.nearbySpecies = reply -> {
             var mc = Minecraft.getInstance();
             if (session == null || !session.recognition || session.suspended || mc.level != session.level
@@ -303,6 +313,7 @@ public final class VoiceClient {
             waitForRelease = talk.isDown();
         }
         nearby.clear();
+        visitors.clear();
         advertised = null;
     }
 
