@@ -16,6 +16,7 @@ public final class CalledPokemonVisit {
     private final BlockPos wanderTarget;
     private Vec3 previous, rested;
     private int stopped, bestStop, nearTicks, arrivedAt = -1, releaseTick = -1, nativeRouteTick = -1;
+    private int stationaryTicksWithPath;
     private boolean movedCaller, approached, resumed;
     private double beforeCall;
 
@@ -39,6 +40,10 @@ public final class CalledPokemonVisit {
     }
 
     public boolean observe(boolean active, boolean moveCaller, int tick) {
+        return observe(active, moveCaller, tick, true);
+    }
+
+    public boolean observe(boolean active, boolean moveCaller, int tick, boolean visitReached) {
         if (resumed) return true;
         var position = mob.position();
         var delta = position.subtract(previous);
@@ -60,11 +65,20 @@ public final class CalledPokemonVisit {
                 movedCaller=true;
                 caller.teleportTo(caller.getX()+1,caller.getY(),caller.getZ()-5);
             }
-            if (approached && distance<=2.55 && mob.getNavigation().isDone()) {
-                if (rested==null) { rested=position; arrivedAt=tick; }
-                if (rested.distanceTo(position)>.48) throw new IllegalStateException("Pokémon drifted during its stay: "+rested+" to "+position+" grounded="+mob.onGround()+" nearTicks="+nearTicks);
+            if (rested==null && approached && visitReached && distance<=2.5 && mob.getNavigation().isDone()) {
+                rested=position;
+                arrivedAt=tick;
+            }
+            if (rested!=null) {
+                double drift=rested.distanceTo(position);
+                if (distance>2.55 || drift>.48) throw new IllegalStateException("Pokémon moved away during its visit"
+                        +" distance="+distance+" drift="+drift+" from="+rested+" to="+position+" caller="+caller.position()
+                        +" held="+nearTicks+" arrived="+arrivedAt+" tick="+tick+" visitReached="+visitReached
+                        +" navigationDone="+mob.getNavigation().isDone()+" activity="+mob.getBrain().getActiveNonCoreActivity());
+                // Native AI can plan a path between tick observers. Measure the actual position every tick.
+                if (!mob.getNavigation().isDone()) stationaryTicksWithPath++;
                 nearTicks++;
-            } else if (rested!=null) throw new IllegalStateException("Pokémon left its caller before finishing the stay");
+            }
         } else if (rested!=null) {
             if (releaseTick<0) {
                 if (tick-arrivedAt<40 || nearTicks<40 || distance>2.55 || rested.distanceTo(position)>.48)
@@ -77,11 +91,12 @@ public final class CalledPokemonVisit {
             if (nativeRouteTick>=0 && position.distanceTo(rested)>.65) resumed=true;
         }
         if (resumed) System.out.printf(java.util.Locale.ROOT,
-                "POKEMON_VISIT_PASS species=%s wanderBefore=%.2f stoppedFacingTicks=%d approached=true callerMoved=%s staySamples=%d besideAtRelease=true unaided=true nativeRouteAfterTicks=%d nativeTravelAfter=%.2f%n",
+                "POKEMON_VISIT_PASS species=%s wanderBefore=%.2f stoppedFacingTicks=%d approached=true callerMoved=%s staySamples=%d besideAtRelease=true unaided=true nativeRouteAfterTicks=%d nativeTravelAfter=%.2f stationaryTicksWithPath=%d%n",
                 mob.getPokemon().getSpecies().getResourceIdentifier(),beforeCall,bestStop,movedCaller,nearTicks,
-                nativeRouteTick-releaseTick,position.distanceTo(rested));
+                nativeRouteTick-releaseTick,position.distanceTo(rested),stationaryTicksWithPath);
         return resumed;
     }
 
     public boolean stayedTwoSeconds() { return nearTicks >= 40; }
+    public int stationarySamples() { return nearTicks; }
 }

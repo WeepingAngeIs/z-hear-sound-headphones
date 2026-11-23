@@ -376,7 +376,10 @@ final class PokemonCaseServer {
             if (active) throw PokemonProbe.fail("Ongoing approach failed to yield to combat");
             released=true;
         }
-        boolean visitDone=visit!=null && fired && visit.observe(active,c==PokemonCase.WALKING_EEVEE,age);
+        boolean visitDone=visit!=null && fired && visit.observe(active,c==PokemonCase.WALKING_EEVEE,age,
+                CobblemonCalls.visiting((PokemonEntity)subject,caller));
+        if (visitDone && Math.abs(visit.stationarySamples()-120)>1)
+            throw PokemonProbe.fail("Expected six seconds of physical rest from arrival, sampled ticks="+visit.stationarySamples());
         if (c==PokemonCase.WALKING_PIKACHU && fired) {
             if (care==null) care=new VisitCareProof((PokemonEntity)subject,caller,viewer,c);
             care.tick();
