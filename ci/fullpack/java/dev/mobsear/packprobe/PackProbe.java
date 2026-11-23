@@ -97,6 +97,7 @@ public final class PackProbe {
         if (liveNearby!=null) {
             cases.add(new Trial("Bulbasaur",16,false,true,true,"nearby-bulbazore"));
             cases.add(new Trial("Bulbasaur",40,false,false,true,"nearby-bulbazore"));
+            cases.add(new Trial("Nidorino",16,false,true,true,"nearby-nidorine"));
         }
         if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
@@ -105,6 +106,8 @@ public final class PackProbe {
         final Trial test;
         final int number, entity;
         final Mob subject; // Accessed only on the server thread.
+        PokemonEntity relative;
+        PackVisitFeeding feeding;
         final long frameBefore, cueBefore;
         final boolean visitTrial;
         CalledPokemonVisit visit; // Server-thread observer, after native navigation becomes available.
@@ -184,6 +187,7 @@ public final class PackProbe {
             if (liveNearby!=null && !liveNearby.server(p)) return;
             if (next) {
                 current.subject.discard();
+                if (current.relative!=null) current.relative.discard();
                 current = null;
                 index++;
                 nextSetup = System.nanoTime() + 2_000_000_000L;
@@ -205,7 +209,7 @@ public final class PackProbe {
                 }
                 var t = tests[index];
                 // Exercise Pikachu repeatedly at night as well as during daytime.
-                boolean nightPikachu=testVisit && t.name.equals("Pikachu") && index>=tests.length-(liveNearby==null?3:5);
+                boolean nightPikachu=testVisit && t.name.equals("Pikachu") && index>=tests.length-(liveNearby==null?3:6);
                 level.setDayTime(t.name.equals("Enderman") || nightPikachu ? 18000 : 1000);
                 boolean visitTrial=testVisit && index==tests.length-1;
                 if (visitTrial) {
@@ -234,11 +238,22 @@ public final class PackProbe {
                 if (!level.addFreshEntity(mob)) throw new IllegalStateException("Spawn failed");
                 System.out.printf(Locale.ROOT,"ACOUSTIC_ARENA %s mode=%s actualDistance=%.1f wildPokemon=%s%n",
                         t.name,p.gameMode.getGameModeForPlayer(),mob.distanceTo(p),mob instanceof PokemonEntity);
-                current = new Observation(t,index,mob,timestamp(p,"lastFrame"),timestamp(p,"lastCue"),visitTrial);
+                var observation = new Observation(t,index,mob,timestamp(p,"lastFrame"),timestamp(p,"lastCue"),visitTrial);
+                if (visitTrial && liveNearby!=null) observation.feeding=new PackVisitFeeding();
+                if (t.recording.equals("nearby-nidorine")) {
+                    var relative=PokemonProperties.Companion.parse("nidorina level=15").createEntity(level);
+                    relative.moveTo(p.getX()-7,160,p.getZ()+2,90,0);
+                    relative.setPersistenceRequired();
+                    if (!level.addFreshEntity(relative) || !relative.getPokemon().isWild()) throw new IllegalStateException("Missing nearer Nidorina");
+                    observation.relative=relative;
+                }
+                current=observation;
             }
             var o = current;
             int tick = e.getServer().getTickCount();
             boolean active = responding(o.subject);
+            if (o.feeding!=null && o.started) o.feeding.server((PokemonEntity)o.subject,p,active);
+            if (o.relative!=null && responding(o.relative)) throw new IllegalStateException("Imperfect name called the wrong relative");
             if (o.visitTrial && !o.finished) {
                 var pokemon=(PokemonEntity)o.subject;
                 if (!o.started && !o.primed) {
@@ -425,6 +440,7 @@ public final class PackProbe {
             var o=current;
             if (o==null || next) return;
             if (mc.level.getEntity(o.entity) instanceof Mob mob) {
+                if (o.feeding!=null && o.started) o.feeding.client(mc,(PokemonEntity)mob);
                 if (o.visitTrial) mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,mob.getEyePosition());
                 double yaw=Math.toDegrees(Math.atan2(mc.player.getZ()-mob.getZ(),mc.player.getX()-mob.getX()))-90;
                 double err=Math.abs(Mth.wrapDegrees(mob.getYHeadRot()-yaw));
@@ -447,6 +463,11 @@ public final class PackProbe {
                     if (o.test.recording.equals("nearby-bulbazore") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
                             LiveNearbyProof.has("cobblemon:bulbasaur")!=o.test.hears)) {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live Bulbasaur pool before speech");
+                        return;
+                    }
+                    if (o.test.recording.equals("nearby-nidorine") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
+                            !LiveNearbyProof.has("cobblemon:nidorina") || !LiveNearbyProof.has("cobblemon:nidorino"))) {
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Missing live pair before generated name");
                         return;
                     }
                     if (o.visitTrial && !o.primed) return;
@@ -503,7 +524,7 @@ public final class PackProbe {
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
             long observationLimit=o.visitTrial ? 90_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
-            boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot;
+            boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot && (o.feeding==null || o.feeding.passed());
             if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");
             boolean capture=Boundary.consumed() && (silent ? Boundary.nonzeroFrames==0 : Boundary.nonzeroFrames>=2);

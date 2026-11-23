@@ -57,15 +57,19 @@ final class VisitCareProof {
         int max=pokemon.getMaxHealth();
         int start=Math.max(1,max/3);
         pokemon.setCurrentHealth(start);
+        var formula=com.cobblemon.mod.common.CobblemonMechanics.INSTANCE.getBerries().getSitrusHealAmount();
+        int expected=com.cobblemon.mod.common.util.MoLangExtensionsKt.resolveInt(
+                com.cobblemon.mod.common.util.MoLangExtensionsKt.getGenericRuntime(),formula,pokemon,java.util.Map.of());
+        if (expected<=0 || start+expected>=max) throw PokemonProbe.fail("Expected a positive uncapped native Sitrus amount");
         var original=caller.getMainHandItem().copy();
         var food=new ItemStack(CobblemonItems.SITRUS_BERRY,2);
         caller.setItemInHand(InteractionHand.MAIN_HAND,food);
         var click=new PlayerInteractEvent.EntityInteractSpecific(caller,InteractionHand.MAIN_HAND,mob,Vec3.ZERO);
         NeoForge.EVENT_BUS.post(click);
-        if (!click.isCanceled() || pokemon.getCurrentHealth()!=start+max/4 || food.getCount()!=1)
-            throw PokemonProbe.fail("Native Sitrus fraction was not applied once");
+        if (!click.isCanceled() || pokemon.getCurrentHealth()!=start+expected || food.getCount()!=1)
+            throw PokemonProbe.fail("Native Sitrus expected="+expected+" hp="+start+"->"+pokemon.getCurrentHealth()+" food="+food.getCount());
         caller.setItemInHand(InteractionHand.MAIN_HAND,original);
-        System.out.println("MOBSEAR_POKEMON_NATIVE_SITRUS hp="+start+"->"+pokemon.getCurrentHealth()+" max="+max+" consumed=1");
+        System.out.println("MOBSEAR_POKEMON_NATIVE_SITRUS hp="+start+"->"+pokemon.getCurrentHealth()+" max="+max+" configured="+expected+" consumed=1");
     }
 
     void tick() {
