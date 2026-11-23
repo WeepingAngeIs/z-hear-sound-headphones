@@ -24,6 +24,8 @@ $lines=@{
     'ordinary'='Nobody noticed the new notebook.'
     'money'='We are low on money.'
     'lantern'='There is a lantern by the wall.'
+    'notebook'='I need your notebook right here.'
+    'needle'='I saw a needle in the sewing kit.'
 }
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {

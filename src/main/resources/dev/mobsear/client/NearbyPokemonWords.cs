@@ -66,6 +66,24 @@ public sealed class NearbyPokemonWords
         return 1.0 - (double)Edits(a,b)/Math.Max(a.Length,b.Length);
     }
 
+    // Only spelling context for the audio decoder. A starting sound never selects a Pokémon.
+    public static string[] MatchingStarts(string independent, string[] similar)
+    {
+        if (similar.Length < 2 || String.IsNullOrWhiteSpace(independent)) return new string[0];
+        var starts = new HashSet<string>();
+        foreach (Match word in Words.Matches(independent.ToLowerInvariant())) {
+            if (Ordinary.Contains(word.Value) || word.Length < 3) continue;
+            string sound = Sound(word.Value);
+            if (sound.Length >= 3) starts.Add(sound.Substring(0,3));
+        }
+        var matches = new List<string>();
+        foreach (string name in similar) {
+            string sound = Sound(name.Replace(" ",""));
+            if (sound.Length >= 3 && starts.Contains(sound.Substring(0,3))) matches.Add(name);
+        }
+        return matches.ToArray();
+    }
+
     public string Pick(string decoded, string independent)
     {
         if (names.Length == 0 || String.IsNullOrWhiteSpace(decoded) || decoded.Length > 500) return null;

@@ -21,6 +21,7 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
     trials = [(label, near.get(targets.get(label, label), crowded))]
     if label == "nidorine":
         trials.append(("reverse", "nidorino nidorina"))
+        trials.append(("crowded", "pikachu lopunny bulbasaur nidorina nidorino ivysaur lanturn"))
     if label in targets:
         trials.append(("out-" + label, "nidorina lanturn"))
     for test, roster in trials:
@@ -43,7 +44,7 @@ for (voice, test, roster), reply in zip(cases, actual, strict=True):
         errors.append((test, "invalid guess or worker failure", wire))
     if test == "exact" and (result != "pikachu" or guessed):
         errors.append((test, "exact name did not win", result))
-    if test in ("ordinary", "money", "lantern") and result != "neutral":
+    if test in ("ordinary", "money", "lantern", "notebook", "needle") and result != "neutral":
         errors.append((test, result))
     if test.startswith("out-") and (guessed or result not in ("neutral", targets[test[4:]])):
         errors.append((test, "redirected out-of-range speech", result))
@@ -52,12 +53,12 @@ for (voice, test, roster), reply in zip(cases, actual, strict=True):
             hits.add(voice)
         elif result != "neutral":
             errors.append((test, "wrong species", result))
-    if test in ("nidorine", "reverse"):
-        if result in roster:
+    if test in ("nidorine", "reverse", "crowded"):
+        if result in ("nidorina","nidorino"):
             similar.add(voice)
-        elif result != "neutral":
+        elif result != "neutral" or test=="crowded":
             errors.append((test, "wrong relative", result))
-    if guessed and (test in targets or test in ("nidorine", "reverse")):
+    if guessed and (test in targets or test in ("nidorine", "reverse", "crowded")):
         guesses.append((voice, test, result))
 assert not errors and guesses and len(hits) >= 2 and similar, (errors, guesses, hits, similar)
 print("NEARBY_SPEECH_PASS voices="+str(len(hits)), "imperfect="+str(guesses), "similar="+str(sorted(similar)), flush=True)

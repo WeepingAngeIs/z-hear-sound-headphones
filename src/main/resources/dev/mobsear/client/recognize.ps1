@@ -178,7 +178,14 @@ try {
         # Keep similar local spellings in stable order in the audio prompt. Only the final
         # similarity ranking should use distance to choose between equally plausible names.
         $similar = @($nearPokemon | Where-Object { $confirm.ContainsKey($_) } | Sort-Object -Unique)
-        $hints = @(($nearNames + @($lexicon.Keys) + @('pikachu')) | Where-Object {
+        $context = $nearNames
+        if ($similar.Count -ge 2 -and $null -ne $nearMatcher) {
+            $focused = @([NearbyPokemonWords]::MatchingStarts(($original -join ' '),[string[]]$similar))
+            # If the independent recognizer heard the start of two local relatives, let the
+            # word decoder compare those spellings without a prompt full of unrelated creatures.
+            if ($focused.Count -ge 2) { $similar = $focused; $context = @() }
+        }
+        $hints = @(($context + @($lexicon.Keys) + @('pikachu')) | Where-Object {
             $aliases.ContainsKey($_) -and $aliases[$_] -gt 0 -and -not $confirm.ContainsKey($_)
         })
         $hints = @(($similar + $hints) | Select-Object -Unique -First 24 | ForEach-Object { $english.Culture.TextInfo.ToTitleCase($_) })
