@@ -16,7 +16,7 @@ def verify_capture(root):
         assert captured==source, f"Pikachu trial {trial} lost or changed part of the generated word"
     print("ACOUSTIC_PIKACHU_INPUT_PASS all nonzero frames identical on open mic and push-to-talk",flush=True)
 
-def verify(path):
+def verify(path, creative_calls=False):
     enabled = False
     disabled_success = False
     windows = []
@@ -43,5 +43,5 @@ def verify(path):
         for want in ("detected","heard","no_eligible_mob"):
             matches = [(e,t,i) for e,t,i in events if e==want and t==name]
             assert matches and (want=="detected" or int(matches[0][2])>0), (want,name)
-    assert any(e=="game_mode" for e,_,_ in events)
-    print("ACOUSTIC_LOCAL_LOG_PASS default-off ready detected no-match confirmed no-eligible game-mode disabled-during-confirmed-call no-transcript",flush=True)
+    assert any(e=="game_mode" for e,_,_ in events) != creative_calls, "Unexpected Creative eligibility in local feedback"
+    print("ACOUSTIC_LOCAL_LOG_PASS default-off ready detected no-match confirmed no-eligible disabled-during-confirmed-call no-transcript creativeCalls="+str(creative_calls),flush=True)

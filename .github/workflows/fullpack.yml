@@ -131,6 +131,7 @@ jobs:
           nearby = False
           distractions = False
           berries = False
+          base_calls = False
           if os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
               item = json.loads(pin.read_text(encoding='utf8'))
               build, digest = str(item['run']), item['sha256']
@@ -140,6 +141,7 @@ jobs:
               nearby = item.get('testNearby',False)
               distractions = item.get('testDistractions',False)
               berries = item.get('testVisitBerries',False)
+              base_calls = item.get('testBaseCalls',False)
           if os.environ['MOBSEAR_EARLIER']=='1' or os.environ['MOBSEAR_INSTALLED_REFERENCE']=='1':
               build, digest = '', ''
           if build or digest:
@@ -149,6 +151,7 @@ jobs:
               print('MOBSEAR_TEST_FEEDBACK='+('1' if build and feedback else '0'),file=f)
               print('MOBSEAR_TEST_VISIT='+('1' if build and visit else '0'),file=f)
               print('MOBSEAR_TEST_VISIT_BERRIES='+('1' if build and berries else '0'),file=f)
+              print('MOBSEAR_TEST_BASE_CALLS='+('1' if build and base_calls else '0'),file=f)
               print('MOBSEAR_TEST_SENTENCES='+('1' if build and sentences else '0'),file=f)
               print('MOBSEAR_TEST_NEARBY='+('1' if build and nearby else '0'),file=f)
               if build and distractions:

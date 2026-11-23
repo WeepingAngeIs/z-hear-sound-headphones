@@ -191,11 +191,13 @@ def run():
                             count+=7
                         if os.environ.get("MOBSEAR_TEST_NEARBY")=="1":
                             count+=4
+                        if os.environ.get("MOBSEAR_TEST_BASE_CALLS")=="1":
+                            count+=4
                         assert len(observations)==count
                         if os.getenv("MOBSEAR_TEST_SENTENCES")=="1":
                             from check_debug import verify, verify_capture
                             try:
-                                verify(game/"logs/latest.log")
+                                verify(game/"logs/latest.log", creative_calls=os.getenv("MOBSEAR_TEST_BASE_CALLS")=="1")
                                 verify_capture(root)
                             except AssertionError as error:
                                 print("ACOUSTIC_DEBUG_CHECK_FAILED",error,flush=True)

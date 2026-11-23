@@ -52,7 +52,7 @@ public final class PackProbe {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
         boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary").contains(recording); }
-        boolean distantImperfect() { return recording.equals("nearby-bulbazore") && range>32; }
+        boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude")); }
         String expectedName() { return recording.equals("pikachu") ? "Pikachu" : name; }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
@@ -60,6 +60,7 @@ public final class PackProbe {
     private final boolean testFeedback = "1".equals(System.getenv("MOBSEAR_TEST_FEEDBACK"));
     private final boolean testVisit = "1".equals(System.getenv("MOBSEAR_TEST_VISIT"));
     private final boolean testSentences = "1".equals(System.getenv("MOBSEAR_TEST_SENTENCES"));
+    private final boolean baseCalls = "1".equals(System.getenv("MOBSEAR_TEST_BASE_CALLS"));
     private final LiveNearbyProof liveNearby = "1".equals(System.getenv("MOBSEAR_TEST_NEARBY")) ? new LiveNearbyProof() : null;
     private final Trial[] tests = trials();
 
@@ -70,7 +71,7 @@ public final class PackProbe {
         new Trial("Pikachu", 12, false, true, true),
         new Trial("Lopunny", 16, false, true, true),
         new Trial("Pikachu", 40, false, false, true),
-        new Trial("Enderman", 24, true, false, true),
+        new Trial("Enderman", 24, true, baseCalls, true),
         new Trial("Enderman", 24, false, true, false)));
         if ("1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"))) {
             cases.add(new Trial("Enderman",24,false,true,true,"enderman-alternate"));
@@ -101,6 +102,12 @@ public final class PackProbe {
             cases.add(new Trial("Nidorino",16,false,true,true,"nearby-nidorine"));
             cases.add(new Trial("Pikachu",12,false,true,false,"sentence-pikachu-middle"));
         }
+        if (baseCalls) {
+            cases.add(new Trial("Geodude", 14, true, true, true));
+            cases.add(new Trial("Butterfree", 12, false, true, true));
+            cases.add(new Trial("Lilligant", 14, true, true, true));
+            cases.add(new Trial("Geodude", 40, true, false, true));
+        }
         if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
     }
@@ -109,6 +116,8 @@ public final class PackProbe {
         final int number, entity;
         final Mob subject; // Accessed only on the server thread.
         PokemonEntity relative;
+        PokemonEntity alolan;
+        volatile int alolanFacingTicks;
         PackVisitFeeding feeding;
         final long frameBefore, cueBefore;
         final boolean visitTrial;
@@ -198,6 +207,7 @@ public final class PackProbe {
             if (next) {
                 current.subject.discard();
                 if (current.relative!=null) current.relative.discard();
+                if (current.alolan!=null) current.alolan.discard();
                 current = null;
                 index++;
                 nextSetup = System.nanoTime() + 2_000_000_000L;
@@ -255,6 +265,18 @@ public final class PackProbe {
                 System.out.printf(Locale.ROOT,"ACOUSTIC_ARENA %s mode=%s actualDistance=%.1f wildPokemon=%s%n",
                         t.name,p.gameMode.getGameModeForPlayer(),mob.distanceTo(p),mob instanceof PokemonEntity);
                 var observation = new Observation(t,index,mob,timestamp(p,"lastFrame"),timestamp(p,"lastCue"),visitTrial);
+                if (baseCalls && t.name.equals("Geodude") && t.hears) {
+                    var ordinary = ((PokemonEntity) mob).getPokemon();
+                    var regional = PokemonProperties.Companion.parse("geodude alolan=true level=15").createEntity(level);
+                    if (regional.getPokemon().getSpecies() != ordinary.getSpecies() || ordinary.getAspects().contains("alolan")
+                            || !regional.getPokemon().getAspects().contains("alolan") || !regional.getPokemon().isWild())
+                        throw new IllegalStateException("Expected wild standard and Alolan Geodude");
+                    regional.moveTo(.5,160,2.5,90,0);
+                    regional.setYHeadRot(90);
+                    regional.setPersistenceRequired();
+                    if (!level.addFreshEntity(regional)) throw new IllegalStateException("Missing Alolan Geodude");
+                    observation.alolan = regional;
+                }
                 if (visitTrial && liveNearby!=null) observation.feeding=new PackVisitFeeding();
                 if (t.recording.equals("nearby-nidorine")) {
                     var relative=PokemonProperties.Companion.parse("nidorina level=15").createEntity(level);
@@ -268,6 +290,15 @@ public final class PackProbe {
             var o = current;
             int tick = e.getServer().getTickCount();
             boolean active = responding(o.subject);
+            if (baseCalls && Set.of("Geodude","Butterfree","Lilligant").contains(o.test.name)
+                    && !o.acceptedCue && !active && timestamp(p,"lastCue")==o.cueBefore) {
+                LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
+                if (o.alolan!=null) LiveNearbyProof.prepareIdle(o.alolan,.5,2.5);
+            }
+            if (o.alolan!=null && responding(o.alolan)) {
+                double desired=Math.toDegrees(Math.atan2(p.getZ()-o.alolan.getZ(),p.getX()-o.alolan.getX()))-90;
+                if (Math.abs(Mth.wrapDegrees(o.alolan.getYHeadRot()-desired))<=30) o.alolanFacingTicks++;
+            }
             if (o.feeding!=null && o.started) o.feeding.server((PokemonEntity)o.subject,p,active);
             if (o.relative!=null && responding(o.relative)) throw new IllegalStateException("Imperfect name called the wrong relative");
             if (o.relative!=null && !active && !o.acceptedCue && timestamp(p,"lastCue")==o.cueBefore) {
@@ -483,6 +514,11 @@ public final class PackProbe {
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
+                    if (baseCalls && Set.of("Geodude","Butterfree","Lilligant").contains(o.test.name)
+                            && LiveNearbyProof.has("cobblemon:"+o.test.name.toLowerCase(Locale.ROOT))!=o.test.hears) {
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Wrong live roster for "+o.test);
+                        return;
+                    }
                     if (o.test.recording.equals("nearby-bulbazore") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
                             LiveNearbyProof.has("cobblemon:bulbasaur")!=o.test.hears)) {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live Bulbasaur pool before speech");
@@ -583,14 +619,19 @@ public final class PackProbe {
                     +" issue="+o.decision.issue());
             else System.out.println("ACOUSTIC_LIVE_DECISION sample="+o.test.recording+" returned=false");
             // Open dictation may spell the remote species exactly. A near-only guess must never redirect it.
-            boolean expectedName=o.test.distantImperfect() ? o.decision!=null && o.decision.matched() : o.test.spokenName();
-            boolean expectWire=expectedName && !o.test.creative;
+            boolean expectedName=o.test.outsideGuessRange() ? o.decision!=null && o.decision.matched() : o.test.spokenName();
+            boolean expectWire=expectedName && (baseCalls || !o.test.creative);
             boolean correctDecision=expectedName || (silent ? o.decision==null : o.decision!=null && !o.decision.matched()
                     && o.decision.timely() && o.decision.issue().equals("NONE"));
             boolean success=capture && o.wireAudio!=silent && o.recognized==expectedName && correctDecision
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot))) && completedVisit;
+            if (o.alolan!=null) {
+                success &= o.alolanFacingTicks>=2;
+                System.out.println("ACOUSTIC_BASE_NAME name=Geodude mode=Creative forms=Normal,Alola regularFacingTicks="+o.aligned
+                        +" alolanFacingTicks="+o.alolanFacingTicks+" heardNotice="+o.notice+" passed="+success);
+            }
             if (o.visitTrial) System.out.println("ACOUSTIC_POKEMON_VISIT audio="+o.wireAudio+" recognized="+o.recognized+
                     " dispatched="+o.dispatched+" wandering="+o.primed+" fullVisit="+o.finished+" besideFrame="+o.besideScreenshot);
             if (!success && !o.lastNativeState.isEmpty()) System.out.println("ACOUSTIC_NATIVE_OBSERVATION trial="+o.number+
@@ -600,7 +641,7 @@ public final class PackProbe {
                     case "hold-on" -> o.guess;
                     case "fan" -> o.noMatch;
                     case "sentence-partial-mob", "sentence-ordinary" -> o.noMatch || o.guess;
-                    case "nearby-bulbazore" -> o.recognized || o.test.distantImperfect() && (o.noMatch || o.guess);
+                    case "nearby-bulbazore", "geodude" -> o.recognized || o.test.outsideGuessRange() && (o.noMatch || o.guess);
                     case "silence" -> o.waiting && !o.listening && !o.checking;
                     default -> o.recognized;
                 };

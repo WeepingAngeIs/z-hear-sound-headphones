@@ -8,12 +8,15 @@ try {
     $english = $speaker.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq 'en' } | Select-Object -First 1
     $speaker.SelectVoice($english.VoiceInfo.Name)
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
-    foreach ($name in @('Enderman','Pikachu','Lopunny','nearby-bulbazore','nearby-nidorine')) {
+    foreach ($name in @('Enderman','Pikachu','Lopunny','Geodude','Lilligant','Butterfree','nearby-bulbazore','nearby-nidorine')) {
         $stream = New-Object System.IO.MemoryStream
         try {
             $speaker.SetOutputToAudioStream($stream,$format)
             if ($name -eq 'nearby-bulbazore') { $speaker.Speak('There is a Bulbazore here.') }
             elseif ($name -eq 'nearby-nidorine') { $speaker.Speak('That Nidorine is standing right here.') }
+            elseif ($name -eq 'Geodude') {
+                $speaker.SpeakSsml('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US"><phoneme alphabet="ipa" ph="&#x2C8;d&#x292;io&#x28A;dud">Geodude</phoneme></speak>')
+            }
             else { $speaker.Speak($name) }
             $speaker.SetOutputToNull()
             $data = [byte[]]::new(640 * 3 + $stream.Length + 640 * 28)
