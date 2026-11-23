@@ -78,16 +78,18 @@ final class VisitWindowProof {
                 mob.getPokemon().setCurrentHealth(initialHp);
             } else require(t<60,"Healthy visitor ignored the treat");
         }
-        if (t==65 && other!=caller && ground) {
+        if (t==55 && other!=caller && ground) {
             other.setGameMode(GameType.ADVENTURE);
-            var perpendicular=caller.position().subtract(mob.position()).multiply(1,0,1).normalize();
-            other.teleportTo(mob.getX()-2.1*perpendicular.z,mob.getY(),mob.getZ()+2.1*perpendicular.x);
-            action(other,PokemonProbe.DROP_ONE);
+            double dx=caller.getX()-mob.getX(), dz=caller.getZ()-mob.getZ();
+            double offset=mob.getBbWidth()*.5+1.45;
+            if (Math.abs(dx)>=Math.abs(dz)) other.teleportTo(mob.getX(),mob.getY(),mob.getZ()+Math.copySign(offset,dx));
+            else other.teleportTo(mob.getX()-Math.copySign(offset,dz),mob.getY(),mob.getZ());
         }
+        if (t==65 && other!=caller && ground) action(other,PokemonProbe.DROP_ONE);
         if (otherDrop!=null && !checkedOther && otherDrop.onGround()) {
-            require(otherDrop.isAlive() && otherDrop.getItem().getCount()==1 && hp==initialHp && reachable(otherDrop),
-                    "Bystander's normal drop changed or missed the visitor at "+t);
-            if (++otherRest==5) {
+            require(otherDrop.isAlive() && otherDrop.getItem().getCount()==1 && hp==initialHp && other.getMainHandItem().getCount()==2,
+                    "Bystander drop was spent at "+t+" ground="+otherDrop.getItem().getCount()+" hp="+hp+" expected="+initialHp);
+            if (reachable(otherDrop) && ++otherRest==5) {
                 checkedOther=true;
                 System.out.println("MOBSEAR_POKEMON_VISIT_STRANGER_Q grounded=true hp="+hp+" hand="+other.getMainHandItem().getCount()+" ground=1");
                 other.setGameMode(GameType.SPECTATOR);
@@ -97,7 +99,8 @@ final class VisitWindowProof {
             }
         }
         if (!lateSent && t>=(ground?101:111)) {
-            require(!ground || other==caller || checkedOther,"Missing bystander ground control");
+            require(!ground || other==caller || checkedOther,"Missing five grounded bystander samples in reach at "+t+
+                    (otherDrop==null?" no item":" clearance="+Math.sqrt(mob.getBoundingBox().distanceToSqr(otherDrop.position()))));
             lateSent=true;
             action(caller,ground?PokemonProbe.DROP_ONE:PokemonProbe.CARE_CLICK);
         }

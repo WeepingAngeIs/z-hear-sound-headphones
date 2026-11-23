@@ -60,7 +60,7 @@ public final class PokemonCaseClient {
         if (request.stage()==PokemonProbe.DROP_ONE) {
             if (!(mc.level.getEntity(request.entity()) instanceof PokemonEntity mob)) throw PokemonProbe.fail("Missing visitor for ground drop");
             var away=mc.player.position().subtract(mob.position()).multiply(1,0,1).normalize();
-            var floor=mob.position().add(away.scale(mob.getBbWidth()*.5+1.6));
+            var floor=caller?mob.position().add(away.scale(mob.getBbWidth()*.5+1.6)):mc.player.position();
             mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,floor);
             // Allow the normal movement packet to send the look direction before the regular Q action.
             dropAfterTicks=3;
