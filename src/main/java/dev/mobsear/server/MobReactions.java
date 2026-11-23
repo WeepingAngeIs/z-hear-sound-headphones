@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.entity.ai.navigation.WallClimberNavigation;
@@ -35,7 +36,7 @@ public final class MobReactions {
         var area = speaker.getBoundingBox().inflate(radius);
         Mob nearest = null;
         for (Mob mob : level.getEntitiesOfClass(Mob.class, area, mob ->
-                mob instanceof Enemy && mob.isAlive() && !mob.isNoAi()
+                hostile(mob) && mob.isAlive() && !mob.isNoAi()
                     && !mob.isAlliedTo(speaker) && mob.canAttack(speaker)
                     && mob.distanceToSqr(speaker) <= distanceLimit && matches(mob, cue))) {
             if (reactToSpeaker(mob, speaker, distanceLimit)
@@ -45,18 +46,18 @@ public final class MobReactions {
     }
 
     private static boolean reactToSpeaker(Mob mob, ServerPlayer speaker, double distanceLimit) {
-        // Vanilla still owns eye contact, targets, retaliation and escape.
-        if (mob instanceof EnderMan || mob instanceof Spider)
+        // A calm spider and an Enderman keep their established hearing and provocation rules.
+        if (mob instanceof EnderMan || mob instanceof Spider && mob.getTarget() == null)
             return calm(mob) && listenGoal(mob).hear(speaker.getEyePosition());
-        if (!(mob instanceof Zombie zombie)) return NamedMobReactions.glanceIfCalm(speaker, mob, distanceLimit);
-        zombie.lookAt(speaker, 45.0F, 45.0F);
-        zombie.getLookControl().setLookAt(speaker, 45.0F, 45.0F);
-        boolean heard = listenGoal(zombie).hear(speaker.getEyePosition());
-        if (zombie.getTarget() != speaker && zombie.isWithinRestriction(speaker.blockPosition())) {
-            zombie.setTarget(speaker);
-            return heard || zombie.getTarget() == speaker;
-        }
-        return heard;
+        return NamedMobReactions.respond(speaker, mob, distanceLimit);
+    }
+
+    static boolean hostile(Mob mob) {
+        return (mob instanceof Enemy || mob.getType().getCategory() == MobCategory.MONSTER) && !PokemonReactions.isPokemon(mob);
+    }
+
+    static void pauseZombie(Zombie mob, Vec3 sound) {
+        listenGoal(mob).hear(sound);
     }
 
     private static boolean matches(Mob mob, Cue cue) {

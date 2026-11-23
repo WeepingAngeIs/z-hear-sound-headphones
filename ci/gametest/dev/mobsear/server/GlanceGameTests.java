@@ -169,7 +169,7 @@ public final class GlanceGameTests {
     }
 
     @GameTest(template = "hearing_floor")
-    public static void combatAndPassiveGoalsKeepControl(GameTestHelper test) {
+    public static void fightingSpiderDivertsWhileEndermanAndCowKeepControl(GameTestHelper test) {
         var spider = test.spawn(EntityType.SPIDER, 6, 2, 6);
         var enderman = test.spawn(EntityType.ENDERMAN, 6, 2, 4);
         var cow = test.spawn(EntityType.COW, 4, 2, 5);
@@ -183,18 +183,16 @@ public final class GlanceGameTests {
             mob.yBodyRot = initial;
             mob.getLookControl().setLookAt(owner, 45, 45);
         }
-        var mobs = List.of(spider, enderman, cow);
+        var mobs = List.of(enderman, cow);
         var goalsBefore = mobs.stream().map(mob -> mob.goalSelector.getAvailableGoals().size()).toList();
         for (Cue cue : List.of(Cue.SPIDER, Cue.ENDERMAN, Cue.MOBS)) MobReactions.handle(caller, cue, 32);
-        test.assertTrue(spider.getTarget() == owner && enderman.getTarget() == owner && cow.getTarget() == null,
-                "Voice stole or created a combat target");
-        for (var mob : List.of(spider, enderman, cow)) {
+        test.assertTrue(spider.getTarget() == caller && enderman.getTarget() == owner && cow.getTarget() == null,
+                "A hostile spider should divert and the Enderman and cow should keep their targets");
+        for (var mob : mobs) {
             test.assertTrue(mob.getLookControl().getWantedX() == owner.getX(), "Voice interrupted combat or passive look");
         }
         test.runAfterDelay(8, () -> {
-            for (var mob : List.of(spider, enderman)) {
-                test.assertTrue(mob.getTarget() == owner, "An established target was pacified");
-            }
+            test.assertTrue(enderman.getTarget() == owner, "The Enderman lost its original target");
             // A fighting mob can turn or teleport during eight native AI ticks. Measure the
             // actual effect of a second call from its current position and check both pose owners.
             for (int i = 0; i < mobs.size(); i++) {

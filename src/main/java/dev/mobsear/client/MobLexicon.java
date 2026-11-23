@@ -34,6 +34,7 @@ final class MobLexicon {
         add(phrases, Cue.MOBS, "mob");
         add(phrases, Cue.ENDERMAN, "endermen", "ender man", "ender men");
         add(phrases, Cue.SKELETON, "skeletons", "stray", "bogged", "wither skeleton");
+        add(phrases, Cue.CREEPER, "creepers");
         add(phrases, Cue.SPIDER, "spiders", "cave spider");
         add(phrases, Cue.SLIME, "slimes", "magma cube");
         add(phrases, Cue.GUARDIAN, "elder guardian");

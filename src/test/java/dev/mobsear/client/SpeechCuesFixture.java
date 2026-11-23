@@ -489,8 +489,9 @@ public final class SpeechCuesFixture {
                 throw new AssertionError("End-to-end cue was " + actual + " with outgoing cents " + cents);
             }
         }
-        var phrases = new byte[][] {namedEnderman, spider, singular, mobs};
-        var calls = new Cue[] {Cue.ENDERMAN, Cue.SPIDER, Cue.MOBS, Cue.MOBS};
+        var phrases = new byte[][] {namedEnderman, spider, singular, mobs,
+                synthesize("Hey skeletons, look over here."), greetingZombie, synthesize("Hey creeper."), synthesize("Hey mobs.")};
+        var calls = new Cue[] {Cue.ENDERMAN, Cue.SPIDER, Cue.MOBS, Cue.MOBS, Cue.SKELETON, Cue.ZOMBIE, Cue.CREEPER, Cue.MOBS};
         var results = new ArrayList<String>();
         for (boolean automatic : new boolean[]{false, true}) {
             for (int i = 0; i < phrases.length; i++) {
@@ -520,8 +521,12 @@ public final class SpeechCuesFixture {
             System.out.println("MOBSEAR_CALL_INPUT_PASS automatic=" + automatic + " noiseSuppression=true");
         }
         String proof = System.getenv("MOBSEAR_CUE_PROOF");
-        if (proof != null) Files.write(Path.of(proof), results, StandardCharsets.US_ASCII);
-        System.out.println("MOBSEAR_SYNTH_CALL_PASS Enderman, spider, mob, mobs -> " + results);
+        if (proof != null) {
+            Files.write(Path.of(proof), results.subList(0,4), StandardCharsets.US_ASCII);
+            Files.write(Path.of(proof).resolveSibling("recognized-distractions.txt"), results.subList(4,8), StandardCharsets.US_ASCII);
+        }
+        System.out.println("MOBSEAR_SYNTH_CALL_PASS Enderman, spider, mob, mobs -> " + results.subList(0,4));
+        System.out.println("MOBSEAR_SPOKEN_DISTRACTIONS hey skeletons look over here, hey zombie, hey creeper, hey mobs -> "+results.subList(4,8));
         speech.setEnabled(false);
         require(speech.status() == SpeechCues.Status.OFF && received.isEmpty(), "Opt-out or duplicate cue");
     }

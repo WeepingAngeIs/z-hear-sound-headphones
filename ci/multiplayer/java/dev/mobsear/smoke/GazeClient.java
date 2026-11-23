@@ -93,7 +93,7 @@ final class GazeClient {
                     .set(new dev.mobsear.net.Packets.Call(cue));
         } catch (ReflectiveOperationException e) { throw SmokeControl.failure("recognizer mailbox " + e); }
     }
-    private static void capture(String filename) {
+    static void capture(String filename) {
         var folder = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"), "visuals");
         try (var pic = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget())) {
             Files.createDirectories(folder);

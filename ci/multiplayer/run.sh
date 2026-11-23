@@ -168,6 +168,7 @@ for call in enderman spider mob mobs mob-spider mobs-enderman; do
   snapshots+=("gaze-$call-before" "gaze-$call-after" "gaze-$call-feedback")
 done
 snapshots+=(menu-uwu_lotus-reduced menu-uwu_lotus-reduced-check)
+for call in skeletons zombie creeper mobs; do snapshots+=("distraction-$call"); done
 for name in "${snapshots[@]}"; do test -s "build/state-previews/$name.png" || { echo "Missing $name"; exit 1; }; done
 printf 'MOBSEAR_CAPTURE %s.png\n' "${snapshots[@]}"
 

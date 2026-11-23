@@ -59,6 +59,7 @@ public final class SmokeControl {
     }
 
     private void receive(ServerPlayer player, int value) {
+        if (DistractionSmoke.handles(value)) { DistractionSmoke.photographed(player,value); return; }
         if (GazeSmoke.handles(value)) { GazeSmoke.acknowledge(player, value); return; }
         var server = player.serverLevel().getServer();
         var speaker = server.getPlayerList().getPlayerByName(SPEAKER);

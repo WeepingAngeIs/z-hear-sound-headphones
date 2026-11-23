@@ -19,21 +19,21 @@ A standalone proximity voice mod for Minecraft Java 1.21.1, Java 21 and NeoForge
 | Say while speaking | In-game response |
 | --- | --- |
 | zombie, zombies, zombified piglin | Eligible zombies pause, face you and can switch their target to you. The family includes husks, drowned, zombie villagers and zombified piglins. |
-| mob, mobs | Eligible nearby hostiles look toward you. Zombies, calm Endermen and calm spiders use their normal voice reactions. |
+| hey mobs, mob, mobs | Draws the attention and attack target of each eligible hostile within earshot. Calm Endermen and spiders use their usual listening response. |
 | enderman, endermen | A calm Enderman briefly pauses and turns its head toward the sound. Eye contact, anger and an existing fight continue under vanilla AI. |
-| skeleton, spider, guardian, slime | The named family looks toward the speaker, including variants such as bogged, cave spiders, elder guardians or magma cubes. |
-| creeper, witch, blaze, breeze and other supported hostile names | The matching eligible mob looks toward the speaker. |
+| hey skeletons, look over here | Each eligible skeleton, including strays, bogged and wither skeletons, turns on you. Other mob families keep their targets. |
+| hey creeper, hey zombie, guardian, slime and other supported hostile names | Matching hostiles can switch from a friend to you and use their normal attacks. A creeper walks into fuse range on its own. |
 | hey | No mob cue. |
 
 Passive mobs can hear their individual type names. The broad **mob** and **mobs** calls apply to hostiles. Creative players can talk to other players. Mob calls require an eligible Survival or Adventure speaker. A zombie can pause for ten game ticks at most once per forty ticks.
 
-Calm Endermen, spiders and cave spiders can pause for up to 18 game ticks (about 0.9 seconds) and then resume walking. Each can react once every 40 ticks. With the default server setting, their hearing range extends through 32 blocks in the same dimension.
+Calm Endermen, spiders and cave spiders can pause for up to 18 game ticks (about 0.9 seconds) and then resume walking. A spider already attacking someone can be drawn to the caller. The default hearing range is 32 blocks in the same dimension. A successful hostile distraction has a two-second cooldown per mob. An active creeper fuse, the Warden's anger system and scripted boss fights keep their native behavior.
 
 After first enabling recognition on Windows, edit `config/mobsear-aliases.properties` to add local aliases. For example, `skeleton=bone walker,bones`. Use up to four comma-separated English aliases per supported name, each one to three words. Toggle mob calls off and on after editing. Built-in names retain their meaning and a standalone “hey” stays silent. Supported names beyond the table include pillager, ghast, phantom, silverfish, endermite, shulker, vindicator, evoker, vex, ravager, hoglin, zoglin, piglin brute, warden and wither.
 
 ## Calling vanilla and modded mobs
 
-The client reads English mob names from Minecraft’s entity registry and includes the type’s registry spelling with underscores spoken as spaces. Say its name or **call** followed by the full name. A matching, calm mob within the voice radius can turn toward the caller. Its navigation, combat target and attack phases remain under its own AI. Some bosses have scripted poses or models that cannot display a head turn in every state. Items, projectiles, players and armor stands are outside the mob vocabulary.
+The client reads English mob names from Minecraft’s entity registry and includes the type’s registry spelling with underscores spoken as spaces. Say its name or **call** followed by the full name. An ordinary hostile can take the caller as its attack target through Minecraft's goal or brain targeting. The mob controls its own path, attacks and later target changes. Calm passive mobs and eligible bosses can turn briefly toward the sound. Some bosses have scripted poses or models that cannot display a head turn in every state. Items, projectiles, players and armor stands are outside the mob vocabulary.
 
 In **UwU Dimension**, the Guardian’s English name is **Owl Guardian**. The girl and male variants both use `uwudimension:blossom_warden`. The mod also accepts the name **UwU Guardian**. **Velvet Vesper** is a separate boss. **Guardian** alone keeps the Minecraft underwater guardian call. Other pack examples include **Twilight Lich**, **Ender Guardian**, **Ancient Remnant** and **Valkyrie Queen**. For the UwU boss, **call oo woo Guardian** worked in the generated Windows speech test.
 

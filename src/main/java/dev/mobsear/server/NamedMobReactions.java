@@ -15,19 +15,28 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.Spider;
+import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.monster.warden.Warden;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.CommonHooks;
+import net.neoforged.neoforge.common.Tags;
+import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent.LivingTargetType;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
-/** Exact entity-type calls give a brief visual turn. Target, navigation and physical heading belong to the mob. */
+/** Voice can draw an ordinary hostile's attack target. Its own AI controls pursuit and attacks. */
 public final class NamedMobReactions {
     private static final int LOOK_TICKS = 20, COOLDOWN_TICKS = 60;
     private static final int POSE_INTERVAL = 5;
@@ -54,7 +63,7 @@ public final class NamedMobReactions {
         Mob nearest = null;
         for (var mob : level.getEntitiesOfClass(Mob.class, caller.getBoundingBox().inflate(radius), candidate ->
                 candidate.distanceToSqr(caller) <= limit && (dungeonMimic ? candidate.getTags().contains("cu_mimic") : candidate.getType() == type))) {
-            if (glanceIfCalm(caller, mob, limit)
+            if (respond(caller, mob, limit)
                     && (nearest == null || mob.distanceToSqr(caller) < nearest.distanceToSqr(caller))) {
                 nearest = mob;
             }
@@ -67,18 +76,57 @@ public final class NamedMobReactions {
         return BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
     }
 
-    static boolean glanceIfCalm(ServerPlayer caller, Mob mob, double limit) {
+    static boolean respond(ServerPlayer caller, Mob mob, double limit) {
         long now = caller.serverLevel().getServer().overworld().getGameTime();
-        if (cooldowns.getOrDefault(mob.getUUID(), 0L) > now || !canGlance(mob)) return false;
-        var glance = new Glance(caller, caller.getEyePosition(), limit, now, mob.getYHeadRot(), mob.yBodyRot);
+        if (cooldowns.getOrDefault(mob.getUUID(), 0L) > now
+                || mob instanceof Creeper creeper && (creeper.isIgnited() || creeper.getSwellDir() > 0)) return false;
+        boolean aggro = canDrawAggro(caller, mob);
+        if (aggro) {
+            if (!targetCaller(mob, caller)) return false;
+            if (mob instanceof Zombie zombie) MobReactions.pauseZombie(zombie, caller.getEyePosition());
+        } else if (!canGlance(mob)) return false;
+        var glance = new Glance(caller, caller.getEyePosition(), limit, now, mob.getYHeadRot(), mob.yBodyRot, aggro);
         active.put(mob, glance);
-        cooldowns.put(mob.getUUID(), now + COOLDOWN_TICKS);
+        cooldowns.put(mob.getUUID(), now + (aggro ? 40 : COOLDOWN_TICKS));
         turn(mob, glance, now);
         return true;
     }
 
     private static boolean eligibleCaller(ServerPlayer player) {
         return player.isAlive() && !player.isRemoved() && !player.isSpectator() && !player.isCreative();
+    }
+
+    private static boolean canDrawAggro(ServerPlayer caller, Mob mob) {
+        if (!MobReactions.hostile(mob) || !mob.isAlive() || mob.isRemoved() || mob.isNoAi() || mob.isSleeping()
+                || mob.isInvulnerable() || mob.isPassenger() || mob.isVehicle() || mob.isAlliedTo(caller)
+                || !mob.canAttack(caller) || !mob.isWithinRestriction(caller.blockPosition())
+                || mob instanceof TamableAnimal tamed && tamed.isTame()) return false;
+        if (mob instanceof EnderMan || mob instanceof Spider && mob.getTarget() == null) return false;
+        // Encounter brains, disguises and the Warden's anger meter own their targeting.
+        if (mob instanceof Warden || mob instanceof EnderDragon || mob instanceof WitherBoss || mob.getType().is(Tags.EntityTypes.BOSSES)
+                || mob.getTags().contains("cu_mimic") || SCRIPT_IDLE.get(mob.getClass()) != ORDINARY_AI) return false;
+        return !mob.getBrain().hasMemoryValue(MemoryModuleType.AVOID_TARGET)
+                && !mob.getBrain().hasMemoryValue(MemoryModuleType.IS_PANICKING);
+    }
+
+    private static boolean targetCaller(Mob mob, ServerPlayer caller) {
+        var brain = mob.getBrain();
+        if (brain.checkMemory(MemoryModuleType.ATTACK_TARGET, MemoryStatus.REGISTERED)) {
+            if (brain.isMemoryValue(MemoryModuleType.ATTACK_TARGET, caller)) return true;
+            // Mirror vanilla StartAttacking's NeoForge event and respect cancellations and replacement targets.
+            var event = CommonHooks.onLivingChangeTarget(mob, caller, LivingTargetType.BEHAVIOR_TARGET);
+            var target = event.getNewAboutToBeSetTarget();
+            if (event.isCanceled() || target == null) return false;
+            brain.setMemory(MemoryModuleType.ATTACK_TARGET, target);
+            brain.eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
+            return target == caller;
+        }
+        if (mob.getTarget() != caller) mob.setTarget(caller);
+        return mob.getTarget() == caller;
+    }
+
+    private static boolean targeting(Mob mob, ServerPlayer caller) {
+        return mob.getTarget() == caller || mob.getBrain().isMemoryValue(MemoryModuleType.ATTACK_TARGET, caller);
     }
 
     private static boolean canGlance(Mob mob) {
@@ -98,6 +146,7 @@ public final class NamedMobReactions {
 
     // These optional pack entities expose encounter states independently of Minecraft's attack target.
     // Resolve their read-only API once, without linking the standalone jar against the dimension mod.
+    private static final Predicate<Mob> ORDINARY_AI = mob -> true;
     private static final ClassValue<Predicate<Mob>> SCRIPT_IDLE = new ClassValue<>() {
         @Override protected Predicate<Mob> computeValue(Class<?> clazz) {
             return switch (clazz.getName()) {
@@ -112,7 +161,7 @@ public final class NamedMobReactions {
                                     && mob.distanceToSqr(player) < 400 && Math.abs(player.getY() - mob.getY()) < 9
                                     && player instanceof ServerPlayer target && courtCanAim(mob, target, validVictim));
                 }
-                default -> mob -> true;
+                default -> ORDINARY_AI;
             };
         }
     };
@@ -163,7 +212,8 @@ public final class NamedMobReactions {
             if (mob.isRemoved()) return true;
             if (mob.level() != level) return false;
             if (now >= glance.start + LOOK_TICKS || !eligibleCaller(glance.caller) || mob.level() != glance.caller.level()
-                    || mob.distanceToSqr(glance.caller) > glance.limit || !canGlance(mob)) {
+                    || mob.distanceToSqr(glance.caller) > glance.limit
+                    || (glance.aggro ? !mob.isAlive() || mob.isNoAi() || !targeting(mob,glance.caller) : !canGlance(mob))) {
                 syncPose(mob, level, 0, 0);
                 return true;
             }
@@ -185,7 +235,7 @@ public final class NamedMobReactions {
     }
 
     private static float turn(Mob mob, Glance glance, long now) {
-        Vec3 sound = glance.sound;
+        Vec3 sound = glance.aggro ? glance.caller.getEyePosition() : glance.sound;
         float yaw = (float) Math.toDegrees(Math.atan2(sound.z - mob.getZ(), sound.x - mob.getX())) - 90;
         float ticks = (float) (now - glance.start + 1);
         mob.getLookControl().setLookAt(sound.x, sound.y, sound.z, 40, 35);
@@ -194,5 +244,5 @@ public final class NamedMobReactions {
         return yaw;
     }
 
-    private record Glance(ServerPlayer caller, Vec3 sound, double limit, long start, float head, float body) {}
+    private record Glance(ServerPlayer caller, Vec3 sound, double limit, long start, float head, float body, boolean aggro) {}
 }

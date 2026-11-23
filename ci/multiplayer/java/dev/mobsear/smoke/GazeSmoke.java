@@ -105,9 +105,7 @@ final class GazeSmoke {
                 if (++index < CASES.length) begin();
                 else {
                     finished = true;
-                    // The independent reboot fixture reconnects as an eligible voice client.
-                    observer.setGameMode(GameType.CREATIVE);
-                    System.out.println("MOBSEAR_MULTIPLAYER_PASS");
+                    DistractionSmoke.start(speaker,observer);
                 }
             }
         }

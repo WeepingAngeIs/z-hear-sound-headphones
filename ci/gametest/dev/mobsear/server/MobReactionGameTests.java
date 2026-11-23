@@ -65,14 +65,15 @@ public final class MobReactionGameTests {
         for (Mob mob : List.of(creeper, spider, cow)) mob.getLookControl().setLookAt(mob.position());
         MobReactions.handle(speaker, Cue.SKELETON, 4);
         for (var skeleton : skeletons) {
-            helper.assertTrue(lookingAt(skeleton, speaker.getEyePosition()), "Skeleton family member missed its call");
+            helper.assertTrue(lookingAt(skeleton, speaker.getEyePosition()) && skeleton.getTarget()==speaker,
+                    "Skeleton family member did not face and target the caller");
             skeleton.getLookControl().setLookAt(skeleton.position());
         }
         helper.assertTrue(lookingAt(creeper, creeper.position()) && lookingAt(spider, spider.position()),
                 "A non-skeleton reacted to the skeleton family call");
         MobReactions.handle(speaker, Cue.CREEPER, 4);
-        helper.assertTrue(lookingAt(creeper, speaker.getEyePosition()) && creeper.getTarget() == null,
-                "An exact creeper call failed to look or forced an attack");
+        helper.assertTrue(lookingAt(creeper, speaker.getEyePosition()) && creeper.getTarget()==speaker && !creeper.isIgnited(),
+                "A creeper call must redirect the target and leave ignition to its own AI");
         for (var skeleton : skeletons) helper.assertTrue(lookingAt(skeleton, skeleton.position()), "Wrong named family");
         helper.assertTrue(lookingAt(spider, spider.position()), "A cave spider reacted to a creeper call");
         MobReactions.handle(speaker, Cue.SPIDER, 4);
@@ -146,6 +147,24 @@ public final class MobReactionGameTests {
             helper.assertTrue(walk.running, "Zombie did not return movement control to its normal goals");
             helper.succeed();
         });
+    }
+
+    @GameTest(template = "hearing_floor")
+    public static void namedBrainTargetAndCreeperFuse(GameTestHelper test) {
+        var caller=speaker(test.getLevel(),test.absoluteVec(new Vec3(3.5,2,5.5)));
+        var friend=speaker(test.getLevel(),test.absoluteVec(new Vec3(8.5,2,5.5)));
+        var hoglin=test.spawn(EntityType.HOGLIN,5,2,5);
+        var target=net.minecraft.world.entity.ai.memory.MemoryModuleType.ATTACK_TARGET;
+        hoglin.getBrain().setMemory(target,friend);
+        var id=net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(hoglin.getType());
+        test.assertTrue(id.equals(NamedMobReactions.hear(caller,id,32)) && hoglin.getBrain().isMemoryValue(target,caller),
+                "The registry-name call did not transfer a brain-driven hostile");
+        var creeper=test.spawn(EntityType.CREEPER,6,2,6);
+        creeper.setTarget(friend);
+        creeper.ignite();
+        test.assertTrue(MobReactions.react(caller,Cue.CREEPER,32)==null && creeper.isIgnited() && creeper.getTarget()==friend,
+                "A call interrupted an active creeper fuse");
+        test.succeed();
     }
 
     private static void assertCalm(GameTestHelper helper, EnderMan enderman) {
