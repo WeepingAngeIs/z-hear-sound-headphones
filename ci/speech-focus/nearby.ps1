@@ -15,7 +15,7 @@ Add-Type -AssemblyName System.Speech
 $synth=[System.Speech.Synthesis.SpeechSynthesizer]::new()
 $format=[System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000,16,1)
 $lines=@{
-    'exact'='I saw a Pikachu by the river.'
+    'exact'='The Pikachu ran past me.'
     'charmandor'='I saw a Charmandor by the river.'
     'bulbazore'='There is a Bulbazore here.'
     'nidorine'='That Nidorine is standing right here.'

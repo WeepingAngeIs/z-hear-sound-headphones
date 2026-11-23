@@ -32,7 +32,9 @@ script=Path("src/main/resources/dev/mobsear/client/recognize.ps1").read_text(enc
 script=script.replace("$pcm = $reader.ReadBytes($length)",'[Console]::Error.WriteLine("NEXT"); $pcm = $reader.ReadBytes($length)')
 script=script.replace("if ($text.Length -le 500)",'[Console]::Error.WriteLine("decoded="+$text.Trim()+" independent="+($original -join " ")); if ($text.Length -le 500)')
 shell=Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"
-proc=subprocess.run([str(shell),"-NoProfile","-NonInteractive","-Command",script],input=data,capture_output=True,
+worker=root/"trace-known-generated-input.ps1"
+worker.write_text(script,encoding="utf-8-sig")
+proc=subprocess.run([str(shell),"-NoProfile","-NonInteractive","-ExecutionPolicy","RemoteSigned","-File",str(worker)],input=data,capture_output=True,
                     timeout=180,check=True,env=dict(os.environ,MOBSEAR_LOCAL_WORD_MODEL=str(model)))
 assert proc.stdout[0]==82 and len(proc.stdout)==1+2*len(cases)
 traces=proc.stderr.decode(errors="replace").split("NEXT")[1:]
