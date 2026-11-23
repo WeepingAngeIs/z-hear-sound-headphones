@@ -254,6 +254,12 @@ public final class PackProbe {
             boolean active = responding(o.subject);
             if (o.feeding!=null && o.started) o.feeding.server((PokemonEntity)o.subject,p,active);
             if (o.relative!=null && responding(o.relative)) throw new IllegalStateException("Imperfect name called the wrong relative");
+            if (o.relative!=null && !active && !o.acceptedCue && timestamp(p,"lastCue")==o.cueBefore) {
+                // The input comparison requires two eligible, idle relatives. Release both
+                // untouched as soon as the real production packet reaches the server.
+                LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
+                LiveNearbyProof.prepareIdle(o.relative,o.test.range-6.5,2.5);
+            }
             if (o.visitTrial && !o.finished) {
                 var pokemon=(PokemonEntity)o.subject;
                 if (!o.started && !o.primed) {
@@ -467,7 +473,11 @@ public final class PackProbe {
                     }
                     if (o.test.recording.equals("nearby-nidorine") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
                             !LiveNearbyProof.has("cobblemon:nidorina") || !LiveNearbyProof.has("cobblemon:nidorino"))) {
-                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Missing live pair before generated name");
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) {
+                            System.out.println("ACOUSTIC_RELATIVES_TIMEOUT nidorina="+LiveNearbyProof.has("cobblemon:nidorina")+
+                                    " nidorino="+LiveNearbyProof.has("cobblemon:nidorino"));
+                            throw new IllegalStateException("Missing live pair before generated name");
+                        }
                         return;
                     }
                     if (o.visitTrial && !o.primed) return;

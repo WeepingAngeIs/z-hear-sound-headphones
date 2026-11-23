@@ -49,10 +49,7 @@ final class LiveNearbyProof {
         for(int i=0;i<subjects.length;i++){
             var mob=subjects[i];
             mob.setNoAi(i==1 && stage==5);
-            mob.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
-            mob.getBrain().setActiveActivityIfPossible(net.minecraft.world.entity.schedule.Activity.IDLE);
-            mob.getNavigation().stop(); mob.setDeltaMovement(Vec3.ZERO);
-            mob.moveTo(.5+distances[stage][i],160,.5,90,0);
+            prepareIdle(mob,.5+distances[stage][i],.5);
         }
         if (System.nanoTime()-began>12_000_000_000L) {
             missed=true;
@@ -67,6 +64,16 @@ final class LiveNearbyProof {
     }
 
     boolean passed() { return complete && !missed; }
+
+    static void prepareIdle(PokemonEntity mob,double x,double z) {
+        mob.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+        mob.getBrain().setActiveActivityIfPossible(net.minecraft.world.entity.schedule.Activity.IDLE);
+        mob.getNavigation().stop();
+        mob.setDeltaMovement(Vec3.ZERO);
+        mob.moveTo(x,160,z,90,0);
+        mob.setYHeadRot(90);
+        mob.setYBodyRot(90);
+    }
 
     void client() throws ReflectiveOperationException {
         int phase=stage;
