@@ -595,8 +595,10 @@ public final class PackProbe {
             }
             // Capture/render time varies with pack load. Allow real frames for the notice after
             // the generated voice finishes; the production recognizer's own freshness test still decides.
-            if (!o.visitTrial && o.test.hears && Boundary.lastSignalAt>o.startedAt)
+            if (!o.visitTrial && o.test.spokenName() && Boundary.lastSignalAt>o.startedAt)
                 observationLimit=Math.max(observationLimit,Math.min(18_000_000_000L,Boundary.lastSignalAt-o.startedAt+7_000_000_000L));
+            if (!o.test.hears && o.dispatchedAt>0 && !o.acceptedCue)
+                observationLimit=Math.max(observationLimit,Math.min(18_000_000_000L,o.dispatchedAt-o.startedAt+1_500_000_000L));
             boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot && (o.feeding==null || o.feeding.passed());
             if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");
