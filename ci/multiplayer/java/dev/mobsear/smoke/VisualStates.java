@@ -29,6 +29,7 @@ import org.lwjgl.glfw.GLFW;
 final class VisualStates {
     private static final List<String> FAMILIES = List.of("uwu", "emo", "vanilla", "amethyst");
     private static final UUID SPEAKER = UUID.nameUUIDFromBytes(("OfflinePlayer:" + SmokeControl.SPEAKER).getBytes(StandardCharsets.UTF_8));
+    private static final UUID LISTENER = UUID.nameUUIDFromBytes(("OfflinePlayer:" + SmokeControl.LISTENER).getBytes(StandardCharsets.UTF_8));
     private static final Path SYNC = Path.of(System.getenv("MOBSEAR_SMOKE_DIR"));
     private record Case(String style, MicState state, String effects, String name, boolean hidden, boolean menu) {}
     private static final List<Case> CASES = cases();
@@ -59,6 +60,7 @@ final class VisualStates {
     private final BufferedImage[] atlases = new BufferedImage[FAMILIES.size()];
     private int index, rendered, firstFrame = -1, observedTag = -2;
     private boolean configured, captured, reported, requestedMenu, vanillaWouldRender;
+    private boolean wasMuted, wasVoiceActivated;
     private int namePhase;
     private final java.util.BitSet teamLetters = new java.util.BitSet();
     private long deadline, firstAt, tagAt;
@@ -119,6 +121,16 @@ final class VisualStates {
             prefs.setHudVisible(!sender || !c.hidden);
             prefs.setNameplates(sender || !c.hidden);
             prefs.setEffects(c.effects);
+            if (c.name.equals("uwu-speaking")) {
+                FixtureSound.checkPeerTone(sender?800:400);
+                if (!sender) {
+                    wasMuted=prefs.muted();
+                    wasVoiceActivated=VoiceClient.voiceActivated();
+                    prefs.setMuted(false);
+                    VoiceClient.setVoiceActivated(true);
+                    FixtureSound.tone=true;
+                }
+            }
             if (sender) {
                 prefs.setMicStyle(c.style);
                 prefs.setMuted(c.state == MicState.MUTED);
@@ -149,6 +161,16 @@ final class VisualStates {
             configured = true;
         }
         if (captured && Files.isRegularFile(marker(!sender))) {
+            if (c.name.equals("uwu-speaking")) {
+                System.out.println("MOBSEAR_TWO_WAY_PLAYBACK player="+mc.getUser().getName()+" peerHz="+(sender?800:400)+
+                        " matchingOutputFrames="+FixtureSound.peerToneFrames.get()+" bothSpeaking=true");
+                FixtureSound.checkPeerTone(0);
+                if (!sender) {
+                    FixtureSound.tone=false;
+                    VoiceClient.options().setMuted(wasMuted);
+                    VoiceClient.setVoiceActivated(wasVoiceActivated);
+                }
+            }
             System.out.println("MOBSEAR_VISUAL_STEP " + c.name + " passed");
             index++;
             configured = captured = requestedMenu = false;
@@ -178,7 +200,8 @@ final class VisualStates {
         String style = sender ? VoiceClient.localStyle() : VoiceClient.remoteStyle(SPEAKER);
         if (state != c.state || !style.equals(c.style)) return;
         if (c.state == MicState.SPEAKING && (sender ? VoiceClient.inputLevel() : VoiceClient.remoteLevel(SPEAKER)) <= 0) return;
-        if (!sender && c.name.equals("uwu-speaking") && FixtureSound.played.get() == 0) return;
+        if (c.name.equals("uwu-speaking") && (VoiceClient.localState()!=MicState.SPEAKING ||
+                VoiceClient.remoteState(sender?LISTENER:SPEAKER)!=MicState.SPEAKING || FixtureSound.peerToneFrames.get()<4)) return;
         if (c.menu) {
             if (sender) { finish(); return; }
             String label = FixtureSound.rowStatus();

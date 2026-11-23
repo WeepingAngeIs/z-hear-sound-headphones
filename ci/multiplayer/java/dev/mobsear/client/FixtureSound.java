@@ -11,6 +11,8 @@ public final class FixtureSound {
     public static volatile boolean tone;
     public static final AtomicLong played = new AtomicLong();
     public static final AtomicLong inputOpens = new AtomicLong();
+    public static final AtomicLong peerToneFrames = new AtomicLong();
+    private static volatile int expectedPeerHz;
     private static byte[] phrase;
     private static int offset;
 
@@ -31,6 +33,24 @@ public final class FixtureSound {
     }
 
     private FixtureSound() {}
+
+    public static void checkPeerTone(int hz) {
+        expectedPeerHz=hz;
+        peerToneFrames.set(0);
+    }
+
+    private static void observeOutput(byte[] bytes,int start,int count) {
+        int hz=expectedPeerHz;
+        if (hz==0 || count!=640) return;
+        int crossings=0, prior=0, peak=0;
+        for (int i=start;i<start+count;i+=2) {
+            int sample=(bytes[i]&255) | bytes[i+1]<<8;
+            if (prior<=0 && sample>0) crossings++;
+            peak=Math.max(peak,Math.abs(sample));
+            prior=sample;
+        }
+        if (peak>128 && Math.abs(crossings-hz/50)<=1) peerToneFrames.incrementAndGet();
+    }
 
     public static void install() {
         try {
@@ -61,6 +81,7 @@ public final class FixtureSound {
                     case "getLineInfo" -> info;
                     case "write" -> {
                         played.incrementAndGet();
+                        observeOutput((byte[])args[0], (int)args[1], (int)args[2]);
                         PitchFixtureAudio.write((byte[])args[0], (int)args[1], (int)args[2]);
                         yield (int)args[2];
                     }
@@ -68,8 +89,9 @@ public final class FixtureSound {
                         byte[] bytes = (byte[]) args[0];
                         int start = (int) args[1], count = (int) args[2];
                         int amplitude = tone ? 9100 : 0;
+                        double step = expectedPeerHz==400 ? Math.PI/10 : Math.PI/20;
                         for (int n = 0; n < count / 2; n++) {
-                            int sample = (int) (amplitude * Math.sin(n * Math.PI / 20));
+                            int sample = (int) (amplitude * Math.sin(n * step));
                             bytes[start + 2*n] = (byte) sample;
                             bytes[start + 2*n + 1] = (byte) (sample >> 8);
                         }
