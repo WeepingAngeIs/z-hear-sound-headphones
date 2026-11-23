@@ -670,14 +670,15 @@ public final class SpeechCuesFixture {
         Process synth = powershell(script, ProcessBuilder.Redirect.DISCARD).start();
         killAfter(synth, 15);
         try (var input = synth.getInputStream()) {
-            byte[] pcm = input.readNBytes(96001);
-            if (pcm.length > 96000 || pcm.length == 0 || (pcm.length & 1) != 0) {
+            int maxBytes = SpeechCues.Utterances.MAX_FRAMES * FRAME;
+            byte[] pcm = input.readNBytes(maxBytes + 1);
+            if (pcm.length > maxBytes || pcm.length == 0 || (pcm.length & 1) != 0) {
                 throw new IOException("Invalid synthetic PCM length");
             }
             require(synth.waitFor(5, TimeUnit.SECONDS) && synth.exitValue() == 0, "Synthetic voice unavailable");
             // The recognizer normally receives a short pre-roll and silence endpoint from Utterances.
             byte[] utterance = new byte[3 * FRAME + pcm.length + 18 * FRAME];
-            require(utterance.length <= 96000, "Synthetic phrase exceeds production duration");
+            require(utterance.length <= maxBytes, "Synthetic phrase exceeds production duration");
             System.arraycopy(pcm, 0, utterance, 3 * FRAME, pcm.length);
             return utterance;
         } finally {
