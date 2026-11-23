@@ -5,7 +5,6 @@ import com.cobblemon.mod.common.api.tags.CobblemonItemTags;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import com.cobblemon.mod.common.item.berry.HealingBerryItem;
 import com.cobblemon.mod.common.item.berry.PortionHealingBerryItem;
-import com.mojang.math.Transformation;
 import dev.mobsear.MobsEar;
 import dev.mobsear.net.Packets;
 import java.util.HashSet;
@@ -17,6 +16,8 @@ import java.util.WeakHashMap;
 import net.minecraft.core.particles.ItemParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -35,8 +36,6 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 /** Interactions are authorized against the existing visit on the server, including on the pickup tick. */
 final class VisitInteractions {
@@ -161,8 +160,13 @@ final class VisitInteractions {
         var visual = display.saveWithoutId(new CompoundTag());
         visual.putString("billboard", "center");
         visual.putString("item_display", "fixed");
+        var transform = new CompoundTag();
+        transform.put("translation", floats(0, 0, 0));
+        transform.put("left_rotation", floats(0, 0, 0, 1));
+        transform.put("scale", floats(.30F, .30F, .30F));
+        transform.put("right_rotation", floats(0, 0, 0, 1));
+        visual.put("transformation", transform);
         display.load(visual);
-        display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(), new Vector3f(.30F), new Quaternionf()));
         display.addTag(PROP_TAG);
         var mouth = mouth(mob);
         display.setPos(mouth.x, mouth.y, mouth.z);
@@ -171,6 +175,12 @@ final class VisitInteractions {
         bites.put(mob, new Bite(food, caller, display, level, level.getGameTime()));
         chew(mob, food);
         return true;
+    }
+
+    private static ListTag floats(float... values) {
+        var list = new ListTag();
+        for (float value : values) list.add(FloatTag.valueOf(value));
+        return list;
     }
 
     private static void tickBites(ServerTickEvent.Post event) {
