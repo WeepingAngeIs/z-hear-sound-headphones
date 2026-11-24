@@ -193,7 +193,9 @@ def run():
                             count+=4
                         if os.environ.get("MOBSEAR_TEST_BASE_CALLS")=="1":
                             count+=4
-                        assert len(observations)==count
+                        if os.environ.get("MOBSEAR_TEST_WORDPLAY")=="1":
+                            count+=4
+                        assert len(observations)==count, f"Expected {count} speech trials, observed {len(observations)}"
                         if os.getenv("MOBSEAR_TEST_SENTENCES")=="1":
                             from check_debug import verify, verify_capture
                             try:
