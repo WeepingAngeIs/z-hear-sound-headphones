@@ -284,7 +284,6 @@ public final class SpeechCuesFixture {
                             s -> System.out.println("SYNTH_DECISION " + index + " species=" + s),
                             e -> System.out.println("SYNTH_DECISION " + index + " entity=" + e));
                 }
-                diagnoseSyntheticDecisions(clips, grammar);
                 throw new AssertionError("Full English catalog decisions " + Arrays.toString(result)
                         + " allowed " + Arrays.deepToString(expected));
             }
@@ -442,7 +441,6 @@ public final class SpeechCuesFixture {
         int[] expected = {1, 2, 3, 0, 0, 0, 1, 1, 0, 0, 1, 4, 5, 4, 2, 3, 6};
         int[] decisions = decisions(SpeechCues.launch(), new SpeechGrammar(aliasFile, Map.of()), cases);
         if (!Arrays.equals(decisions, expected)) {
-            diagnoseSyntheticDecisions(cases, aliasFile);
             throw new AssertionError("Synthetic SAPI decisions " + Arrays.toString(decisions)
                     + " expected " + Arrays.toString(expected));
         }
@@ -485,7 +483,6 @@ public final class SpeechCuesFixture {
             if (actual != Cue.ZOMBIE) {
                 System.err.println("End-to-end status=" + speech.status() + " clip bytes="
                         + acousticClips.stream().map(a -> a.length).toList() + " source bytes=" + zombie.length);
-                diagnoseSyntheticDecisions(acousticClips.toArray(byte[][]::new), aliasFile);
                 throw new AssertionError("End-to-end cue was " + actual + " with outgoing cents " + cents);
             }
         }
@@ -513,7 +510,6 @@ public final class SpeechCuesFixture {
                 // Open mic must finish by itself. PTT also accepts a key release.
                 if (!automatic) endpoint.run();
                 Cue recognized = received.poll(8, TimeUnit.SECONDS);
-                if (recognized != calls[i]) diagnoseSyntheticDecisions(clips.toArray(byte[][]::new), aliasFile);
                 require(recognized == calls[i], "Synthetic call " + i + " auto=" + automatic
                         + " expected " + calls[i] + " got " + recognized);
                 if (!automatic) results.add(recognized.name());
@@ -576,72 +572,6 @@ public final class SpeechCuesFixture {
             return actual;
         } finally {
             helper.destroyForcibly();
-        }
-    }
-
-    // This instrumentation exists only in the fixture source set. It prints fixed grammar labels,
-    // scores and exception locations for synthetic cases, without displaying words or PCM.
-    private static void diagnoseSyntheticDecisions(byte[][] cases, Path aliasFile) throws Exception {
-        diagnoseSyntheticDecisions(cases, new SpeechGrammar(aliasFile, Map.of()));
-    }
-
-    private static void diagnoseSyntheticDecisions(byte[][] cases, SpeechGrammar grammar) throws Exception {
-        try (var source = SpeechCues.class.getResourceAsStream("recognize.ps1")) {
-            require(source != null, "Missing speech helper resource");
-            String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
-            helper = helper.replace("$engine.LoadGrammar($calls)", "$engine.MaxAlternates = 8\n    $engine.LoadGrammar($calls)");
-            String recognize = "$result = $engine.Recognize()";
-            helper = helper.replace(recognize, recognize + """
-
-                        if ($null -eq $result) { [Console]::Error.WriteLine('SAPI no match') }
-                        else {
-                            $known = $result.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
-                            $id = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
-                            [Console]::Error.WriteLine(('SAPI callGrammar={0} confidence={1:F3} aliasId={2}' -f
-                                ($result.Grammar.Name -eq 'mob call'), $result.Confidence, $id))
-                            $alternates = foreach ($alt in $result.Alternates) {
-                                $name = $alt.Text.ToLowerInvariant() -replace '^(hey|call) ', ''
-                                $altId = if ($aliases.ContainsKey($name)) { $aliases[$name] } else { 0 }
-                                ('{0}/{1:F3}' -f $altId, $alt.Confidence)
-                            }
-                            [Console]::Error.WriteLine(('SAPI alternative IDs/scores ' + ($alternates -join ',')))
-                        }
-                    """);
-            String cleanup = "$engine.SetInputToNull()\n            $stream.Dispose()\n            [Array]::Clear";
-            helper = helper.replace("\r\n", "\n").replace(cleanup, """
-                    $engine.SetInputToNull()
-                    $stream.Position = 0
-                    $calls.Enabled = $false
-                    try {
-                        $engine.SetInputToAudioStream($stream, $format)
-                        $native = $engine.Recognize()
-                        $known = if ($null -eq $native) { '' } else { $native.Text.ToLowerInvariant() -replace '^(hey|call) ', '' }
-                        $nativeId = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
-                        [Console]::Error.WriteLine(('SAPI native dictation registryId={0} confidence={1:F3} guardianToken={2} nWords={3}' -f
-                            $nativeId, $native.Confidence, ($known -match '\\bguardian\\b'), $known.Split(' ').Count))
-                    } finally {
-                        $engine.SetInputToNull()
-                        $calls.Enabled = $true
-                    }
-                    $stream.Position = 0
-                    $background.Enabled = $false
-                    try {
-                        $engine.SetInputToAudioStream($stream, $format)
-                        $forced = $engine.Recognize()
-                        $known = if ($null -eq $forced) { '' } else { $forced.Text.ToLowerInvariant() -replace '^(hey|call) ', '' }
-                        $forcedId = if ($aliases.ContainsKey($known)) { $aliases[$known] } else { 0 }
-                        [Console]::Error.WriteLine(('SAPI command-only registryId={0} confidence={1:F3}' -f $forcedId, $forced.Confidence))
-                    } finally {
-                        $engine.SetInputToNull()
-                        $background.Enabled = $true
-                    }
-                    """ + cleanup);
-            helper = helper.replace("    exit 1", """
-                        [Console]::Error.WriteLine(('SAPI helper error line={0} type={1} hresult={2}' -f
-                            $_.InvocationInfo.ScriptLineNumber, $_.Exception.GetType().Name, $_.Exception.HResult))
-                        exit 1""");
-            var diagnostic = powershell(helper, ProcessBuilder.Redirect.INHERIT);
-            decisions(diagnostic.start(), grammar, cases);
         }
     }
 

@@ -13,6 +13,4 @@ for row in rows:
           "segments=" + row["segments"], "ms=" + row["maxMillis"], flush=True)
 wrong = failures(rows)
 if wrong:
-    from trace_mentions import show
-    show(root)
     raise AssertionError(wrong)

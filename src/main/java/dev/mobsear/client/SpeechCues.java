@@ -219,29 +219,7 @@ public final class SpeechCues implements AutoCloseable {
     }
 
     private static Process launch(boolean trackedStartup) throws IOException {
-        String windows = System.getenv("SystemRoot");
-        if (windows == null) throw new IOException("Missing Windows system directory");
-        Path shell = Path.of(windows, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-        try (InputStream source = SpeechCues.class.getResourceAsStream("recognize.ps1")) {
-            if (source == null) throw new IOException("Missing speech helper");
-            // The command contains only the bundled helper. All PCM travels in a binary pipe.
-            String helper = new String(source.readAllBytes(), StandardCharsets.UTF_8);
-            var process = new ProcessBuilder(shell.toString(), "-NoLogo", "-NoProfile", "-NonInteractive",
-                    "-WindowStyle", "Hidden", "-Command", helper)
-                    .redirectError(trackedStartup ? ProcessBuilder.Redirect.PIPE : ProcessBuilder.Redirect.DISCARD);
-            try (var matcher = SpeechCues.class.getResourceAsStream("NearbyPokemonWords.cs")) {
-                if (matcher == null) throw new IOException("Missing nearby name matcher");
-                process.environment().put("MOBSEAR_NEARBY_MATCHER", new String(matcher.readAllBytes(), StandardCharsets.UTF_8));
-            }
-            if (!trackedStartup && "github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))
-                    && "1".equals(System.getenv("MOBSEAR_SYNTHETIC_WORKER_FAULTS")))
-                process.redirectError(ProcessBuilder.Redirect.INHERIT);
-            process.environment().put("MOBSEAR_STARTUP_STEPS", trackedStartup ? "1" : "0");
-            process.environment().remove("MOBSEAR_LOCAL_WORD_MODEL");
-            Path localModel = OfflineWordModel.prepare();
-            if (localModel != null) process.environment().put("MOBSEAR_LOCAL_WORD_MODEL", localModel.toString());
-            return process.start();
-        }
+        return WindowsSpeechWorker.launch(trackedStartup);
     }
 
     private record Clip(byte[] pcm, long endedAt, long inputRevision, long testAttempt) {

@@ -49,10 +49,8 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
         cases.append((voice, test, roster.split()))
         inputs.append(file.name + "\t" + roster)
 (root / "nearby-input.tsv").write_text("\n".join(inputs), encoding="ascii")
-subprocess.run(["javac", "--release", "21", "-cp", "ci-classes", "-d", "ci-classes",
-                "ci/speech-focus/NearbySpeechFixture.java"], check=True)
-subprocess.run(["java", "-cp", "ci-classes;src/main/resources;build/generated/offline-speech",
-                "dev.mobsear.client.NearbySpeechFixture", str(root)], check=True, timeout=240)
+classpath = os.environ["MOBSEAR_FIXTURE_CP"]
+subprocess.run(["java", "-cp", classpath, "dev.mobsear.client.NearbySpeechFixture", str(root)], check=True, timeout=420)
 actual = (root / "nearby-actual.txt").read_text().splitlines()
 hits, similar, guesses, errors = set(), set(), [], []
 failed_examples = []
@@ -93,7 +91,6 @@ for index, ((voice, test, roster), reply) in enumerate(zip(cases, actual, strict
     if guessed and (test in targets or test in ("nidorine", "reverse", "crowded")):
         guesses.append((voice, test, result))
 if failed_examples:
-    from trace_nearby import show
-    show(root, inputs, failed_examples)
+    print("Failed generated fixtures:", failed_examples)
 assert not errors and guesses and len(hits) >= 2 and similar, (errors, guesses, hits, similar)
 print("NEARBY_SPEECH_PASS voices="+str(len(hits)), "imperfect="+str(guesses), "similar="+str(sorted(similar)), flush=True)

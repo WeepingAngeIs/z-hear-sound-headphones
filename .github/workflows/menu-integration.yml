@@ -1,8 +1,8 @@
 name: Menu integration
 on:
   push:
-    branches: [codex/proximity-voice-prototype, codex/gui-scale, codex/hud-appearance, main]
-    paths: ['src/main/java/dev/mobsear/client/**', 'src/main/resources/**', 'ci/multiplayer/**', '.github/workflows/menu-integration.yml', 'build.gradle']
+    branches: [codex/proximity-voice-prototype, codex/gui-scale, codex/hud-appearance, codex/portable-speech, main]
+    paths: ['ci/**', 'src/main/java/dev/mobsear/client/**', 'src/main/resources/**', 'ci/multiplayer/**', '.github/workflows/menu-integration.yml', 'build.gradle']
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,8 +29,8 @@ jobs:
           sha256sum dist/*.jar
       - name: Open each original and animated menu in a modded client
         env:
-          MOBSEAR_PUBLIC_MENU_STACK: ${{ github.ref_name == 'codex/hud-appearance' && '0' || '1' }}
-          MOBSEAR_HUD_ONLY: ${{ github.ref_name == 'codex/hud-appearance' && '1' || '0' }}
+          MOBSEAR_PUBLIC_MENU_STACK: ${{ (github.ref_name == 'codex/hud-appearance' || github.ref_name == 'codex/portable-speech') && '0' || '1' }}
+          MOBSEAR_HUD_ONLY: ${{ (github.ref_name == 'codex/hud-appearance' || github.ref_name == 'codex/portable-speech') && '1' || '0' }}
           MOBSEAR_GUI_ONLY: ${{ github.ref_name == 'codex/gui-scale' && '1' || '0' }}
         run: xvfb-run -a -s '-screen 0 1440x900x24' bash ci/multiplayer/run.sh
       - name: Keep the verified GUI build
@@ -47,3 +47,74 @@ jobs:
           name: menu-integration-previews
           path: build/state-previews/menu-*.png
           if-no-files-found: error
+
+  portable-package:
+    name: Build, audit and test the packaged mod
+    if: github.ref_name == 'codex/portable-speech'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Build the actual installable archive and inspect all nested content
+        run: |
+          bash gradlew --no-daemon build
+          mkdir -p dist
+          cp build/libs/mobsear-0.3.14.jar 'dist/Mic Voice Chat - Mobs & Cobblemon Hear You.jar'
+          python3 ci/audit_archive.py dist/*.jar --version 0.3.14 --report dist/archive-audit.json
+          (cd dist && sha256sum *.jar > SHA256SUMS.txt)
+      - name: Attach candidate for independent downstream verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: voice-archive-verification
+          path: dist/
+          if-no-files-found: error
+      - name: Exercise server mob behavior on NeoForge 21.1.249
+        run: |
+          set -o pipefail
+          bash gradlew --no-daemon -PvoiceGameTests runGameTestServer 2>&1 | tee "$RUNNER_TEMP/games.log"
+          grep -Ei 'all [1-9][0-9]* required tests passed' "$RUNNER_TEMP/games.log"
+  portable-windows:
+    name: Windows speech from exact scanned JAR
+    if: github.ref_name == 'codex/portable-speech'
+    needs: portable-package
+    runs-on: windows-2022
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: voice-archive-verification
+          path: dist
+      - name: Verify SHA, prepare the exact Windows libraries and generated PCM
+        shell: powershell
+        run: |
+          $expected=(Get-Content dist/SHA256SUMS.txt).Split(' ')[0]
+          if ((Get-FileHash (Get-ChildItem 'dist/*.jar').FullName).Hash -ne $expected) { throw 'Unexpected JAR hash' }
+          ./ci/portable_speech_checks.ps1 prepare
+      - name: Standalone mob, entity and species calls plus negative controls
+        shell: powershell
+        run: ./ci/portable_speech_checks.ps1 commands
+      - name: Whole names in natural speech
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: ./ci/portable_speech_checks.ps1 sentences
+      - name: Nearby species, pronunciation variants and ordinary speech
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: ./ci/portable_speech_checks.ps1 nearby

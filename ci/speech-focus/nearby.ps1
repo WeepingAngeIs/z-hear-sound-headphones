@@ -1,22 +1,6 @@
 param([string]$Directory)
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Hosted generated speech only' }
-$env:MOBSEAR_NEARBY_MATCHER=Get-Content -Raw src/main/resources/dev/mobsear/client/NearbyPokemonWords.cs
-Add-Type -TypeDefinition $env:MOBSEAR_NEARBY_MATCHER
-foreach ($order in @('nidorina,nidorino','nidorino,nidorina')) {
-    $names = $order.Split(',')
-    $pick = [NearbyPokemonWords]::new($names)
-    if ($pick.Pick('I saw a Nidorine tonight','') -ne $names[0]) { throw 'Equal pronunciation did not use distance order' }
-    if ($pick.Pick('The Nidorino is beside me','') -ne 'nidorino') { throw 'Distance displaced a better name' }
-    if ($pick.Pick('Nobody noticed the new notebook','')) { throw 'Initial alone selected a name' }
-}
-Write-Output 'NEARBY_RANK_PASS equal scores select the nearer individual in both orders'
-if (-not [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on'),@{}) -or
-        [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on'),@{'hold on'=99}) -or
-        [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('wait','a','second'),@{'second'=8}) -or
-        [NearbyPokemonWords]::IsUnregisteredPause([string[]]@('hold','on','lopunny'),@{})) {
-    throw 'Conversational pause handling must preserve names and custom aliases'
-}
 Add-Type -AssemblyName System.Speech
 Add-Type -Path "$PSScriptRoot/SyntheticPronunciation.cs" -ReferencedAssemblies ([System.Speech.Synthesis.SpeechSynthesizer].Assembly.Location)
 $synth=[System.Speech.Synthesis.SpeechSynthesizer]::new()

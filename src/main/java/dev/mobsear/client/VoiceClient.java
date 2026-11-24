@@ -69,6 +69,7 @@ public final class VoiceClient {
     private long lastRequestId, pendingRequestId, pendingInputRevision;
 
     public VoiceClient(IEventBus bus, ModContainer container) {
+        WindowsSpeechWorker.installedMod = container.getModInfo().getOwningFile().getFile().getFilePath();
         instance = this;
         preferences.initializeProfile();
         bus.addListener(MobCallNotice::register);
