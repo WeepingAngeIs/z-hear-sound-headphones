@@ -180,6 +180,7 @@ public static class EnglishNameAlternatives
             words.Add(bird, "wattrel");
             foreach (string prefix in new[] { "kilo ", "killa ", "kill a " }) words.Add(prefix + bird, "kilowattrel");
         }
+        foreach (string prefix in new[] { "kilo ", "killa ", "kill a " }) words.Add(prefix + "wattrel", "kilowattrel");
         foreach (string butterfly in new[] { "vivian", "vivien", "vivienne", "viv ee yon", "vivi yon",
                      "vivvy on", "viv ill on", "viv il on", "vivillion" }) words.Add(butterfly, "vivillon");
         return words;
@@ -211,11 +212,18 @@ public static class EnglishNameAlternatives
         string result = null;
         for (int first = 0; first < parts.Count; first++) {
             string span = "";
+            string selected = null;
+            int end = -1;
             for (int i = first; i < parts.Count && i < first + 5; i++) {
                 span += (i == first ? "" : " ") + parts[i].Value;
-                if (registry.Contains(span)) return null;
                 string target;
-                if (result == null && Phrases.TryGetValue(span, out target) && registry.Contains(target)) result = target;
+                if (registry.Contains(span)) { end = i; selected = null; }
+                else if (Phrases.TryGetValue(span, out target) && registry.Contains(target)) { end = i; selected = target; }
+            }
+            if (end >= first) {
+                if (selected == null) return null; // Independent, complete registry names retain priority.
+                if (result == null) result = selected;
+                first = end;
             }
         }
         return result;

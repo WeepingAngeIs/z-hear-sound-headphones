@@ -35,9 +35,11 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
     if label.startswith("usual-"):
         roster = birds + " vivillon"
     trials = [(label, roster)]
-    if label in ("wattrel-and", "kilowattrel-split", "vivillon-vivian"):
-        other = {"wattrel-and": "kilowattrel", "kilowattrel-split": "wattrel", "vivillon-vivian": "vibrava"}
-        trials.append(("absent-"+label, other[label]))
+    if label in ("wattrel-and", "kilowattrel-split", "kilowattrel-base", "vivillon-vivian"):
+        other = "kilowattrel" if species == "wattrel" else "wattrel" if species == "kilowattrel" else "vibrava"
+        trials.append(("absent-"+label, other))
+        if label == "wattrel-and":
+            trials.append(("absent-both", "eevee"))
     if label == "nidorine":
         trials.append(("reverse", "nidorino nidorina"))
         trials.append(("crowded", "pikachu lopunny bulbasaur nidorina nidorino ivysaur lanturn"))

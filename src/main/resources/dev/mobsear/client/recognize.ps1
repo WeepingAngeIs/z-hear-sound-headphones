@@ -244,10 +244,10 @@ try {
             if ($child.ExitCode -ne 0) { return 65534 }
             $text = $stdout.GetAwaiter().GetResult()
             if ($text.Length -le 500) {
-                $exact = Find-WholeName $text $original $shortCode
-                if ($exact) { return $exact }
                 $alternative = Read-NearbyAlternative $text
                 if ($null -ne $alternative) { return $alternative }
+                $exact = Find-WholeName $text $original $shortCode
+                if ($exact) { return $exact }
                 if ($null -ne $nearMatcher) {
                     $plain = $original -join ' '
                     # Never redirect an exactly named, absent species to its local relative.

@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: prototype-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -65,6 +66,11 @@ jobs:
         with:
           name: mobs-hear-u
           path: dist
+      - name: Restore the original public Guardian fixture for the pack target
+        if: matrix.loader == '21.1.249'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci/cobblemon/stage.py --guardian-input
       - name: Boot and stop the exact production jar in an isolated server
         run: python3 ci/packaged_server.py ${{ matrix.loader }} dist/*.jar
   windows-speech:
