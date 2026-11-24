@@ -8,7 +8,8 @@ try {
     $english = $speaker.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq 'en' } | Select-Object -First 1
     $speaker.SelectVoice($english.VoiceInfo.Name)
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
-    foreach ($name in @('Enderman','Pikachu','Lopunny','Geodude','Lilligant','Butterfree','nearby-bulbazore','nearby-nidorine')) {
+    $alternateCalls = @{'watch-and-roll'='Watch and roll.'; 'kilo-watch-roll'='Kilo watch roll.'; 'vivian-call'='Vivian.'}
+    foreach ($name in (@('Enderman','Pikachu','Lopunny','Geodude','Lilligant','Butterfree','nearby-bulbazore','nearby-nidorine') + @($alternateCalls.Keys))) {
         $stream = New-Object System.IO.MemoryStream
         try {
             $speaker.SetOutputToAudioStream($stream,$format)
@@ -17,6 +18,7 @@ try {
             elseif ($name -eq 'Geodude') {
                 $speaker.SpeakSsml('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US"><phoneme alphabet="ipa" ph="&#x2C8;d&#x292;io&#x28A;dud">Geodude</phoneme></speak>')
             }
+            elseif ($alternateCalls.ContainsKey($name)) { $speaker.Speak($alternateCalls[$name]) }
             else { $speaker.Speak($name) }
             $speaker.SetOutputToNull()
             $data = [byte[]]::new(640 * 3 + $stream.Length + 640 * 28)

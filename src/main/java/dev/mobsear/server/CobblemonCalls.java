@@ -8,6 +8,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -24,6 +25,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /** Server-side species calls. Loaded only when Cobblemon is present. */
 final class CobblemonCalls {
+    private static final ResourceLocation HERD_ACTIVITY = ResourceLocation.fromNamespaceAndPath("cobblemon", "pokemon_herd");
     private static final int FACE_TICKS = 14;
     private static final int STUCK_TICKS = 100;
     private static final float WALK_SPEED = 1.0F;
@@ -93,6 +95,7 @@ final class CobblemonCalls {
     static boolean available(PokemonEntity mob) {
         var pokemon = mob.getPokemon();
         var brain = mob.getBrain();
+        var activity = brain.getActiveNonCoreActivity().orElse(Activity.IDLE);
         return mob.isAlive() && !mob.isRemoved() && !mob.isNoAi() && !mob.isSleeping()
                 && !mob.isPassenger() && !mob.isVehicle() && !mob.isLeashed()
                 && pokemon.isWild() && !mob.isTame() && mob.getOwnerUUID() == null
@@ -100,7 +103,8 @@ final class CobblemonCalls {
                 && !pokemon.isFainted() && !mob.isBusy() && !mob.isBattling() && !mob.isBattleClone()
                 && !mob.isEvolving() && mob.getBeamMode() == 0 && mob.getPhasingTargetId() == -1 && !mob.getQueuedToDespawn()
                 && !mob.isAggressive() && mob.getTarget() == null && mob.getLastHurtByMob() == null
-                && brain.getActiveNonCoreActivity().orElse(Activity.IDLE) == Activity.IDLE
+                // A calm follower can visit its caller while retaining its native herd leader.
+                && (activity == Activity.IDLE || HERD_ACTIVITY.equals(BuiltInRegistries.ACTIVITY.getKey(activity)))
                 && !brain.hasMemoryValue(MemoryModuleType.ATTACK_TARGET)
                 && !brain.hasMemoryValue(MemoryModuleType.AVOID_TARGET)
                 && !brain.hasMemoryValue(MemoryModuleType.IS_PANICKING)

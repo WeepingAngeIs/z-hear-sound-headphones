@@ -1,5 +1,7 @@
 package dev.mobsear.packprobe;
 
+import com.cobblemon.mod.common.CobblemonActivities;
+import com.cobblemon.mod.common.CobblemonMemories;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import dev.mobsear.client.VoiceClient;
@@ -52,7 +54,17 @@ public final class PackProbe {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
         boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary").contains(recording); }
-        boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude")); }
+        boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude") || recording.equals("watch-and-roll")); }
+        boolean checkRoster() { return Set.of("Geodude","Butterfree","Lilligant","Wattrel","Kilowattrel","Vivillon").contains(name); }
+        boolean flockMember() { return hears && recording.equals("watch-and-roll"); }
+        String rival() {
+            return switch(recording) {
+                case "nearby-nidorine" -> "nidorina";
+                case "watch-and-roll" -> "kilowattrel";
+                case "kilo-watch-roll" -> "wattrel";
+                default -> null;
+            };
+        }
         String expectedName() { return recording.equals("pikachu") ? "Pikachu" : name; }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
@@ -108,6 +120,12 @@ public final class PackProbe {
             cases.add(new Trial("Lilligant", 14, true, true, true));
             cases.add(new Trial("Geodude", 40, true, false, true));
         }
+        if ("1".equals(System.getenv("MOBSEAR_TEST_WORDPLAY"))) {
+            cases.add(new Trial("Wattrel",12,false,true,true,"watch-and-roll"));
+            cases.add(new Trial("Kilowattrel",14,false,true,true,"kilo-watch-roll"));
+            cases.add(new Trial("Vivillon",12,false,true,true,"vivian-call"));
+            cases.add(new Trial("Wattrel",40,false,false,true,"watch-and-roll"));
+        }
         if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
     }
@@ -118,6 +136,7 @@ public final class PackProbe {
         PokemonEntity relative;
         PokemonEntity alolan;
         volatile int alolanFacingTicks;
+        volatile boolean flockReady, flockVisited;
         PackVisitFeeding feeding;
         final long frameBefore, cueBefore;
         final boolean visitTrial;
@@ -278,21 +297,26 @@ public final class PackProbe {
                     observation.alolan = regional;
                 }
                 if (visitTrial && liveNearby!=null) observation.feeding=new PackVisitFeeding();
-                if (t.recording.equals("nearby-nidorine")) {
-                    var relative=PokemonProperties.Companion.parse("nidorina level=15").createEntity(level);
+                if (t.rival()!=null) {
+                    var relative=PokemonProperties.Companion.parse(t.rival()+" level=15").createEntity(level);
                     relative.moveTo(p.getX()-7,160,p.getZ()+2,90,0);
                     relative.setPersistenceRequired();
-                    if (!level.addFreshEntity(relative) || !relative.getPokemon().isWild()) throw new IllegalStateException("Missing nearer Nidorina");
+                    if (!level.addFreshEntity(relative) || !relative.getPokemon().isWild()) throw new IllegalStateException("Missing nearer "+t.rival());
                     observation.relative=relative;
+                    if (t.flockMember()) {
+                        // Establish the normal follower relationship once. Cobblemon selects the activity itself.
+                        ((PokemonEntity)mob).getBrain().setMemory(CobblemonMemories.HERD_LEADER,relative.getStringUUID());
+                    }
                 }
                 current=observation;
             }
             var o = current;
             int tick = e.getServer().getTickCount();
             boolean active = responding(o.subject);
-            if (baseCalls && Set.of("Geodude","Butterfree","Lilligant").contains(o.test.name)
+            if (baseCalls && o.test.checkRoster()
                     && !o.acceptedCue && !active && timestamp(p,"lastCue")==o.cueBefore) {
-                LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
+                if (o.test.flockMember()) LiveNearbyProof.arrangePosition((PokemonEntity)o.subject,.5,.5);
+                else LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
                 if (o.alolan!=null) LiveNearbyProof.prepareIdle(o.alolan,.5,2.5);
             }
             if (o.alolan!=null && responding(o.alolan)) {
@@ -304,8 +328,16 @@ public final class PackProbe {
             if (o.relative!=null && !active && !o.acceptedCue && timestamp(p,"lastCue")==o.cueBefore) {
                 // The input comparison requires two eligible, idle relatives. Release both
                 // untouched as soon as the real production packet reaches the server.
-                LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
+                if (!o.test.checkRoster()) LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
                 LiveNearbyProof.prepareIdle(o.relative,o.test.range-6.5,2.5);
+            }
+            if (o.test.flockMember()) {
+                var bird = (PokemonEntity)o.subject;
+                boolean sameLeader = bird.getBrain().getMemory(CobblemonMemories.HERD_LEADER).orElse("").equals(o.relative.getStringUUID());
+                boolean flocking = bird.getBrain().getActiveNonCoreActivity().orElse(null) == CobblemonActivities.POKEMON_HERD;
+                if (!o.started) o.flockReady = sameLeader && flocking;
+                if (o.flockReady && active && sameLeader && bird.distanceToSqr(p) <= 9 && bird.hasLineOfSight(p))
+                    o.flockVisited = true;
             }
             if (o.visitTrial && !o.finished) {
                 var pokemon=(PokemonEntity)o.subject;
@@ -514,7 +546,7 @@ public final class PackProbe {
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
-                    if (baseCalls && Set.of("Geodude","Butterfree","Lilligant").contains(o.test.name)
+                    if (baseCalls && o.test.checkRoster()
                             && LiveNearbyProof.has("cobblemon:"+o.test.name.toLowerCase(Locale.ROOT))!=o.test.hears) {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Wrong live roster for "+o.test);
                         return;
@@ -524,16 +556,17 @@ public final class PackProbe {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live Bulbasaur pool before speech");
                         return;
                     }
-                    if (o.test.recording.equals("nearby-nidorine") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
-                            !LiveNearbyProof.has("cobblemon:nidorina") || !LiveNearbyProof.has("cobblemon:nidorino"))) {
-                        if (System.nanoTime()-o.seenAt>15_000_000_000L) {
-                            System.out.println("ACOUSTIC_RELATIVES_TIMEOUT nidorina="+LiveNearbyProof.has("cobblemon:nidorina")+
-                                    " nidorino="+LiveNearbyProof.has("cobblemon:nidorino"));
-                            throw new IllegalStateException("Missing live pair before generated name");
-                        }
+                    if (o.test.rival()!=null && (System.nanoTime()-o.seenAt<1_500_000_000L ||
+                            !LiveNearbyProof.has("cobblemon:"+o.test.rival()) ||
+                            LiveNearbyProof.has("cobblemon:"+o.test.name.toLowerCase(Locale.ROOT))!=o.test.hears)) {
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live pair before "+o.test);
                         return;
                     }
                     if (o.visitTrial && !o.primed) return;
+                    if (o.test.flockMember() && !o.flockReady) {
+                        if (System.nanoTime()-o.seenAt>20_000_000_000L) throw new IllegalStateException("Wattrel never started following its Kilowattrel");
+                        return;
+                    }
                     o.initialError=err;
                     if (earlier) mc.gui.setOverlayMessage(Component.empty(),false);
                     else o.initialRequest=(long)Boundary.get(Boundary.client(),"lastRequestId");
@@ -587,6 +620,7 @@ public final class PackProbe {
             long elapsed=System.nanoTime()-o.startedAt;
             if (!Boundary.consumed() && elapsed<12_000_000_000L) return;
             long observationLimit=o.visitTrial ? 90_000_000_000L : o.test.hears ? 12_000_000_000L : 6_000_000_000L;
+            if (o.test.flockMember()) observationLimit=40_000_000_000L;
             // The first negative checks must also photograph the fully drawn diagnostic.
             // Give the renderer time after a slow frame, without extending decision freshness.
             if (testFeedback && o.test.detail && ((o.test.recording.equals("fan") && !testPreviews.contains("no-match"))
@@ -600,6 +634,7 @@ public final class PackProbe {
             if (!o.test.hears && o.dispatchedAt>0 && !o.acceptedCue)
                 observationLimit=Math.max(observationLimit,Math.min(18_000_000_000L,o.dispatchedAt-o.startedAt+1_500_000_000L));
             boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot && (o.feeding==null || o.feeding.passed());
+            if (o.test.flockMember()) completedVisit &= o.flockVisited;
             if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");
             boolean capture=Boundary.consumed() && (silent ? Boundary.nonzeroFrames==0 : Boundary.nonzeroFrames>=2);
@@ -634,6 +669,9 @@ public final class PackProbe {
                 System.out.println("ACOUSTIC_BASE_NAME name=Geodude mode=Creative forms=Normal,Alola regularFacingTicks="+o.aligned
                         +" alolanFacingTicks="+o.alolanFacingTicks+" heardNotice="+o.notice+" passed="+success);
             }
+            if (o.test.flockMember())
+                System.out.println("ACOUSTIC_FLOCK_CALL follower=Wattrel leader=Kilowattrel startedInHerd="+o.flockReady+
+                        " approachedCallerWithLeaderRetained="+o.flockVisited+" facingTicks="+o.aligned+" passed="+success);
             if (o.visitTrial) System.out.println("ACOUSTIC_POKEMON_VISIT audio="+o.wireAudio+" recognized="+o.recognized+
                     " dispatched="+o.dispatched+" wandering="+o.primed+" fullVisit="+o.finished+" besideFrame="+o.besideScreenshot);
             if (!success && !o.lastNativeState.isEmpty()) System.out.println("ACOUSTIC_NATIVE_OBSERVATION trial="+o.number+
@@ -643,7 +681,7 @@ public final class PackProbe {
                     case "hold-on" -> o.guess;
                     case "fan" -> o.noMatch;
                     case "sentence-partial-mob", "sentence-ordinary" -> o.noMatch || o.guess;
-                    case "nearby-bulbazore", "geodude" -> o.recognized || o.test.outsideGuessRange() && (o.noMatch || o.guess);
+                    case "nearby-bulbazore", "geodude", "watch-and-roll" -> o.recognized || o.test.outsideGuessRange() && (o.noMatch || o.guess);
                     case "silence" -> o.waiting && !o.listening && !o.checking;
                     default -> o.recognized;
                 };

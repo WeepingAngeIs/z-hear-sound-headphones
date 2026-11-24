@@ -69,6 +69,10 @@ final class LiveNearbyProof {
         mob.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
         mob.getBrain().setActiveActivityIfPossible(net.minecraft.world.entity.schedule.Activity.IDLE);
         mob.getNavigation().stop();
+        arrangePosition(mob,x,z);
+    }
+
+    static void arrangePosition(PokemonEntity mob,double x,double z) {
         mob.setDeltaMovement(Vec3.ZERO);
         mob.moveTo(x,160,z,90,0);
         mob.setYHeadRot(90);

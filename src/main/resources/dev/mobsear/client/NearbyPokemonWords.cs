@@ -9,6 +9,7 @@ public sealed class NearbyPokemonWords
     private readonly string[] names;
     private readonly string[] spellings;
     private readonly string[] sounds;
+    private readonly Dictionary<string,string> alternateSpellings = new Dictionary<string,string>();
     private static readonly Regex Words = new Regex("[a-z]+", RegexOptions.Compiled);
     private static readonly Regex Repeated = new Regex("(.)\\1+", RegexOptions.Compiled);
     private static readonly HashSet<string> Pauses = new HashSet<string> {
@@ -31,6 +32,10 @@ public sealed class NearbyPokemonWords
         for (int i = 0; i < names.Length; i++) {
             spellings[i] = names[i].Replace(" ", "");
             sounds[i] = Sound(spellings[i]);
+            foreach (string alternative in EnglishNameAlternatives.Spellings(spellings[i])) {
+                // Candidates are supplied nearest first, including when two variants coincide.
+                if (!alternateSpellings.ContainsKey(alternative)) alternateSpellings.Add(alternative, names[i]);
+            }
         }
     }
 
@@ -130,6 +135,12 @@ public sealed class NearbyPokemonWords
                 (name == "lanturn" && Regex.IsMatch(reference, @"\blanterns?\b"))) continue;
             foreach (var word in observed) {
                 string text = word.Key, sound = word.Value;
+                string alternative;
+                if (text != name && alternateSpellings.TryGetValue(text, out alternative) && alternative == names[i]) {
+                    // A canonical exact match scores 1.0 and always wins in either order.
+                    if (0.98 > best) { best = 0.98; choice = names[i]; }
+                    continue;
+                }
                 int length = Math.Max(name.Length,text.Length);
                 if (Math.Abs(name.Length-text.Length) > length/3) continue;
                 double letters = Similarity(text,name);
@@ -149,5 +160,96 @@ public sealed class NearbyPokemonWords
             }
         }
         return choice;
+    }
+}
+
+// English spellings which a listener may hear when an invented name is said out loud.
+// Only whole alternatives can match. A longer evolution phrase owns its entire span,
+// even when that evolution has moved out of range.
+public static class EnglishNameAlternatives
+{
+    private static readonly Dictionary<string,string> Phrases = Build();
+    private static readonly HashSet<string> Owners = new HashSet<string>(Phrases.Values);
+    private static readonly Regex Tokens = new Regex("[a-z]+", RegexOptions.Compiled);
+
+    private static Dictionary<string,string> Build()
+    {
+        var words = new Dictionary<string,string>();
+        foreach (string bird in new[] { "watt rel", "wat rel", "watt rul", "watt roll", "wat roll",
+                     "watt trel", "wah trel", "watchroll", "watch roll", "watch and roll" }) {
+            words.Add(bird, "wattrel");
+            foreach (string prefix in new[] { "kilo ", "killa ", "kill a " }) words.Add(prefix + bird, "kilowattrel");
+        }
+        foreach (string prefix in new[] { "kilo ", "killa ", "kill a " }) words.Add(prefix + "wattrel", "kilowattrel");
+        foreach (string butterfly in new[] { "vivian", "vivien", "vivienne", "viv ee yon", "vivi yon",
+                     "vivvy on", "viv ill on", "viv il on", "vivillion" }) words.Add(butterfly, "vivillon");
+        return words;
+    }
+
+    public static bool InRange(string[] species)
+    {
+        foreach (string name in species) if (Owners.Contains(name)) return true;
+        return false;
+    }
+
+    public static string[] Commands(System.Collections.IDictionary registry)
+    {
+        var commands = new List<string>();
+        foreach (var pair in Phrases) {
+            if (!registry.Contains(pair.Value) || registry.Contains(pair.Key)) continue;
+            commands.Add(pair.Key);
+            commands.Add("hey " + pair.Key);
+            commands.Add("call " + pair.Key);
+        }
+        return commands.ToArray();
+    }
+
+    public static string Find(string text, System.Collections.IDictionary registry)
+    {
+        if (String.IsNullOrEmpty(text) || text.Length > 500) return null;
+        var parts = Tokens.Matches(text.ToLowerInvariant());
+        if (parts.Count > 80) return null;
+        string result = null;
+        for (int first = 0; first < parts.Count; first++) {
+            string span = "";
+            string selected = null;
+            int end = -1;
+            for (int i = first; i < parts.Count && i < first + 5; i++) {
+                span += (i == first ? "" : " ") + parts[i].Value;
+                string target;
+                if (registry.Contains(span)) { end = i; selected = null; }
+                else if (Phrases.TryGetValue(span, out target) && registry.Contains(target)) { end = i; selected = target; }
+            }
+            if (end >= first) {
+                if (selected == null) return null; // Independent, complete registry names retain priority.
+                if (result == null) result = selected;
+                first = end;
+            }
+        }
+        return result;
+    }
+
+    // One spelling substitution per generated reading. No combinations or tiny fragments.
+    // These are checked against whole decoded words only for Pokémon in the live roster.
+    public static IEnumerable<string> Spellings(string name)
+    {
+        if (name.Length < 5 || name.Length > 30) yield break;
+        for (int i = 0; i < name.Length; i++) {
+            char ch = name[i];
+            string replacement;
+            switch (ch) {
+                case 'a': replacement = "ah"; break;
+                case 'e': replacement = "eh"; break;
+                case 'i': replacement = "ee"; break;
+                case 'o': replacement = "oh"; break;
+                case 'u': replacement = "oo"; break;
+                case 'c': replacement = i+1 < name.Length && "eiy".IndexOf(name[i+1]) >= 0 ? "s" : "k"; break;
+                default: continue;
+            }
+            yield return name.Substring(0,i) + replacement + name.Substring(i+1);
+        }
+        if (name.Contains("ph")) yield return name.Replace("ph","f");
+        if (name.EndsWith("saur",StringComparison.Ordinal)) yield return name.Substring(0,name.Length-4) + "zore";
+        if (name.EndsWith("chu",StringComparison.Ordinal)) yield return name.Substring(0,name.Length-3) + "choo";
     }
 }

@@ -425,7 +425,7 @@ final class PokemonCaseServer {
         }
         if ((c==PokemonCase.INTERRUPTED || c==PokemonCase.NEW_AGGRO) && !released) return;
         if (age < (c.controlled()?45:27)) return;
-        if (c==PokemonCase.REPEAT_FIRST && active) {
+        if ((c==PokemonCase.REPEAT_FIRST || c==PokemonCase.REPEAT_QUICK) && active) {
             // End this visit by leaving range. The next call must succeed as soon as the visit has released.
             if (caller.distanceToSqr(subject)<=32*32) caller.teleportTo(caller.getX()+48,caller.getY(),caller.getZ());
             return;

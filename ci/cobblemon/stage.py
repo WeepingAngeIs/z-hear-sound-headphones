@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from shutil import copyfile, copyfileobj
 import sys
-import tarfile
+import subprocess
 from tempfile import NamedTemporaryFile
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -39,10 +39,8 @@ MEGA_FILES = (
 )
 
 OWL_JAR = "UwU-Dimension-1.21.1-1.5.0-beta.13-combined-rc.2-playtest.9-integrated.1.jar"
-OWL_INPUTS = ("https://nightly.link/WeepingAngeIs/z-UwU_dm/actions/runs/44973577287/"
-              "cumulative-ci-inputs-eb534710706ec9c495d1e84071715e7f9d87d640.zip")
 OWL_FILES = (
-    (OWL_JAR, OWL_INPUTS, "0e865bbe4cf695144b70889138d82ad36ed8288a019bcb0e6b8b4851a6f1a04f"),
+    (OWL_JAR, None, "0e865bbe4cf695144b70889138d82ad36ed8288a019bcb0e6b8b4851a6f1a04f"),
     ("lootr-neoforge-1.21.1-1.11.38.125.jar",
      "https://edge.forgecdn.net/files/8811/105/lootr-neoforge-1.21.1-1.11.38.125.jar",
      "091878598fa5cb51cd304bf9324afe46420d328b6f77a9ba38acc15e26945e9e"),
@@ -81,22 +79,22 @@ MIMIC_FILES = (
 )
 
 
-def copy_guardian_baseline(source, output):
-    # This publicly accessible test archive includes the exact previous production baseline.
-    # Read only the known member, verifying the outer published archive and the inner JAR.
-    data = source.read(16_981_919)
-    assert len(data) == 16_981_918 and sha256(data).hexdigest() == "7f619ad21a052277cc410f9f138ac7868acf35ae4117efbdfb7c31c03ea0f744"
-    with ZipFile(BytesIO(data)) as archive, archive.open("cumulative-inputs.tar.gz") as compressed:
-        with tarfile.open(fileobj=compressed, mode="r:gz") as tar:
-            member = tar.getmember("build/cumulative/input/integrated-baseline.jar")
-            assert member.isfile() and member.size == 6_365_448
-            with tar.extractfile(member) as jar:
-                copyfileobj(jar, output)
+def fetch_guardian():
+    # The auxiliary tar expired. The original, unarchived public JAR has the same digest.
+    target = Path(os.environ["RUNNER_TEMP"]) / OWL_JAR
+    with target.open("wb") as out:
+        subprocess.run(["gh", "api", "repos/WeepingAngeIs/z-UwU_dm/actions/artifacts/14723910544/zip"],
+                       stdout=out, check=True)
+    with target.open("rb") as jar:
+        assert file_digest(jar, "sha256").hexdigest() == OWL_FILES[0][2]
 
 
 def main():
     if os.environ.get("GITHUB_ACTIONS") != "true" or len(sys.argv) < 2:
         raise SystemExit("Usage on the hosted runner: python ci/cobblemon/stage.py MOD_DIRECTORY [MOD_DIRECTORY ...]")
+    if sys.argv[1:] == ["--guardian-input"]:
+        fetch_guardian()
+        return
     destinations = list(dict.fromkeys(Path(arg).resolve() for arg in sys.argv[1:]))
     for directory in destinations:
         directory.mkdir(parents=True, exist_ok=True)
@@ -110,10 +108,9 @@ def main():
         with NamedTemporaryFile(dir=dest, delete=False) as handle:
             temp = Path(handle.name)
         try:
-            with urlopen(url, timeout=120) as source, temp.open("wb") as out:
-                if name == OWL_JAR:
-                    copy_guardian_baseline(source, out)
-                elif name == MIMIC_JAR:
+            source = (Path(os.environ["RUNNER_TEMP"]) / OWL_JAR).open("rb") if name == OWL_JAR else urlopen(url, timeout=120)
+            with source, temp.open("wb") as out:
+                if name == MIMIC_JAR:
                     archive_data = source.read(914_224)
                     assert sha256(archive_data).hexdigest() == "a88d9eb24f737fb24fcf70c9712492fb55c32428d46fd432e4f12b39561f7f1e"
                     with ZipFile(BytesIO(archive_data)) as archive, archive.open("build/libs/" + MIMIC_JAR) as jar:

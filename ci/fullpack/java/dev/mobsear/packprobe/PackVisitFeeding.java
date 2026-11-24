@@ -132,6 +132,7 @@ final class PackVisitFeeding {
             return;
         }
         if (testFloor && (reservedAt<0 || age-reservedAt<39 || age-reservedAt>41)) throw new IllegalStateException("Wrong chew duration "+(age-reservedAt));
+        if (testFloor) System.out.println("ACOUSTIC_PACK_BERRY_CHEW offer="+offer+" reservedAt="+reservedAt+" effectAt="+age+" duration="+(age-reservedAt));
         if (caller.getMainHandItem().getCount()!=offer.stackSize()-1) throw new IllegalStateException("Wrong number of berries spent by "+offer);
         if (offer.ground && (actualDrop==null || !actualDrop.onGround() || !actualDrop.isRemoved() || !reachable(mob,actualDrop) ||
                 mob.getBoundingBox().inflate(.9).intersects(actualDrop.getBoundingBox())))
