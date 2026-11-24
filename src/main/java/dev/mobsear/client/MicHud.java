@@ -23,6 +23,8 @@ public final class MicHud {
     private static final int CELL = 22, FRAMES = 13;
     private static final List<ResourceLocation> TEXTURES = FAMILIES.stream()
             .map(id -> ResourceLocation.fromNamespaceAndPath("mobsear", "textures/font/mic_" + id + ".png")).toList();
+    private static final List<ResourceLocation> FRAMELESS = FAMILIES.stream()
+            .map(id -> ResourceLocation.fromNamespaceAndPath("mobsear", "textures/gui/mics/mic_" + id + ".png")).toList();
     private static final Style GLYPH = Style.EMPTY
             .withFont(ResourceLocation.fromNamespaceAndPath("mobsear", "microphones"))
             .withColor(0xffffff).withBold(false).withItalic(false).withUnderlined(false)
@@ -55,7 +57,7 @@ public final class MicHud {
         int y = graphics.guiHeight() - CELL - (graphics.guiWidth() < 232 ? 29 : 7);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        graphics.blit(TEXTURES.get(family), 7, y, frame * CELL, accent * CELL, CELL, CELL,
+        graphics.blit((prefs.micFrame() ? TEXTURES : FRAMELESS).get(family), 7, y, frame * CELL, accent * CELL, CELL, CELL,
                 FRAMES * CELL, ACCENTS.size() * CELL);
         RenderSystem.disableBlend();
     }

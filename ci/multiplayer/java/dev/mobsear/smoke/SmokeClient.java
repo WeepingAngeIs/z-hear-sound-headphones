@@ -27,6 +27,10 @@ public final class SmokeClient {
     private boolean installedSound;
 
     public SmokeClient() {
+        if ("1".equals(System.getenv("MOBSEAR_HUD_ONLY"))) {
+            new HudAppearanceProof();
+            return;
+        }
         if ("1".equals(System.getenv("MOBSEAR_GUI_ONLY"))) {
             new ScaleRulesProof();
             return;

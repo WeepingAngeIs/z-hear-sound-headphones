@@ -188,6 +188,15 @@ public final class VoicePreferences {
     }
     public synchronized boolean hudVisible() { return flag("hudVisible", true); }
     public synchronized void setHudVisible(boolean value) { setFlag("hudVisible", value); }
+    public synchronized boolean micFrame() { return flag("micFrame", true); }
+    public synchronized void setMicFrame(boolean value) { setFlag("micFrame", value); }
+    public synchronized int menuTransparency() {
+        try { return Math.clamp(Integer.parseInt(values.getProperty("menuTransparency", "0")), 0, 100); }
+        catch (NumberFormatException ignored) { return 0; }
+    }
+    public synchronized void setMenuTransparency(int value) {
+        values.setProperty("menuTransparency", Integer.toString(Math.clamp(value, 0, 100)));
+    }
     public synchronized boolean nameplates() { return flag("nameplates", true); }
     public synchronized void setNameplates(boolean value) { setFlag("nameplates", value); }
 

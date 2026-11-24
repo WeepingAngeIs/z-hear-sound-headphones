@@ -103,6 +103,10 @@ public final class VoiceSettingsScreen extends Screen {
         cycle("mic_style", prefs.micStyle(), List.of("auto","uwu","emo","vanilla","amethyst"), prefs::setMicStyle);
         cycle("accent", prefs.accent(), List.of("auto","rose","gold","mint","aqua","violet"), prefs::setAccent);
         toggle("hud", prefs.hudVisible(), true, prefs::setHudVisible);
+        toggle("mic_frame", prefs.micFrame(), true, prefs::setMicFrame);
+        addAudio("menu_background", new VoiceWidgets.Slider(x, y, w, rowHeight, t("menu_background.label"),
+                prefs.menuTransparency(), 100, colors, n -> t("menu_background.value", n), prefs::setMenuTransparency))
+                .setTooltip(Tooltip.create(t("menu_background.hint")));
         toggle("nameplates", prefs.nameplates(), true, prefs::setNameplates);
         cycle("motion", prefs.effects(), List.of("full","reduced","off"), prefs::setEffects);
 
@@ -251,7 +255,7 @@ public final class VoiceSettingsScreen extends Screen {
 
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         if (minecraft.level == null) renderPanorama(g, partialTick);
-        drawFrame(g, colors, scene, sceneFrame(), font, getTitle(), width, height, left, top, panelWidth, panelHeight, bodyY);
+        drawFrame(g, colors, scene, sceneFrame(), font, getTitle(), width, height, left, top, panelWidth, panelHeight, bodyY, prefs.menuTransparency());
         section(g, leftX, bodyY, leftWidth, appearanceY - 2, t("audio"));
         if (!inlineAppearance) section(g, leftX, appearanceY, leftWidth, footerY - 4, t("appearance"));
         section(g, rightX, bodyY, rightWidth, footerY - 4, t("players"));
@@ -268,41 +272,60 @@ public final class VoiceSettingsScreen extends Screen {
     static void drawFrame(GuiGraphics g, Palette colors, ResourceLocation scene, int frame,
                           net.minecraft.client.gui.Font font, Component title, int width, int height,
                           int left, int top, int panelWidth, int panelHeight, int bodyY) {
-        int right = left + panelWidth, bottom = top + panelHeight;
-        g.fillGradient(0, 0, width, height, colors.backdropTop(), colors.backdropBottom());
-        g.fill(left + 2, top + 3, right + 2, bottom + 3, 0x89000000);
-        Screen.renderMenuBackgroundTexture(g, MENU_BACKGROUND, left, top, 0, 0, panelWidth, panelHeight);
-        g.fill(left, top, right, bottom, 0xc0000000 | (colors.panel() & 0xffffff));
-        g.renderOutline(left, top, panelWidth, panelHeight, colors.line());
-        g.fillGradient(left + 1, top + 1, right - 1, bodyY - 3, colors.header(), colors.panel());
-        if (scene != null) {
-            RenderSystem.enableBlend();
-            RenderSystem.defaultBlendFunc();
-            g.blit(scene, left + 1, top + 2, panelWidth - 2, panelHeight - 4,
-                    0f, frame * 96f, 192, 96, 192, 768);
-            // The small panorama in the header lets players see all of a scene even with a full roster.
-            int stampH = bodyY - top - 8;
-            g.blit(scene, right - 6 - stampH * 2, top + 4, stampH * 2, stampH,
-                    0f, frame * 96f, 192, 96, 192, 768);
-            RenderSystem.disableBlend();
-        }
-        g.fill(left + 1, top + 1, right - 1, top + 2, colors.accent());
+        drawFrame(g, colors, scene, frame, font, title, width, height, left, top, panelWidth, panelHeight, bodyY, 0);
+    }
+
+    static void drawFrame(GuiGraphics g, Palette colors, ResourceLocation scene, int frame,
+                          net.minecraft.client.gui.Font font, Component title, int width, int height,
+                          int left, int top, int panelWidth, int panelHeight, int bodyY, int transparency) {
         int titleY = top + (bodyY - top - 9) / 2;
-        if (scene != null) g.fill(left + panelWidth / 2 - 50, titleY - 3,
-                left + panelWidth / 2 + 50, titleY + 11, 0xa018131b);
+        backdrop(g, transparency, () -> {
+            int right = left + panelWidth, bottom = top + panelHeight;
+            g.fillGradient(0, 0, width, height, colors.backdropTop(), colors.backdropBottom());
+            g.fill(left + 2, top + 3, right + 2, bottom + 3, 0x89000000);
+            Screen.renderMenuBackgroundTexture(g, MENU_BACKGROUND, left, top, 0, 0, panelWidth, panelHeight);
+            g.fill(left, top, right, bottom, 0xc0000000 | (colors.panel() & 0xffffff));
+            g.renderOutline(left, top, panelWidth, panelHeight, colors.line());
+            g.fillGradient(left + 1, top + 1, right - 1, bodyY - 3, colors.header(), colors.panel());
+            if (scene != null) {
+                RenderSystem.enableBlend();
+                RenderSystem.defaultBlendFunc();
+                g.blit(scene, left + 1, top + 2, panelWidth - 2, panelHeight - 4,
+                        0f, frame * 96f, 192, 96, 192, 768);
+                // The small panorama in the header lets players see all of a scene even with a full roster.
+                int stampH = bodyY - top - 8;
+                g.blit(scene, right - 6 - stampH * 2, top + 4, stampH * 2, stampH,
+                        0f, frame * 96f, 192, 96, 192, 768);
+                RenderSystem.disableBlend();
+            }
+            g.fill(left + 1, top + 1, right - 1, top + 2, colors.accent());
+            if (scene != null) g.fill(left + panelWidth / 2 - 50, titleY - 3,
+                    left + panelWidth / 2 + 50, titleY + 11, 0xa018131b);
+        });
         g.drawCenteredString(font, title.copy().withStyle(ChatFormatting.BOLD), left + panelWidth / 2,
                 titleY, colors.text());
+    }
+
+    static void backdrop(GuiGraphics g, int transparency, Runnable draw) {
+        if (transparency == 100) return;
+        if (transparency == 0) { draw.run(); return; }
+        g.flush();
+        g.setColor(1, 1, 1, (100 - transparency) / 100f);
+        try { draw.run(); }
+        finally { g.flush(); g.setColor(1, 1, 1, 1); }
     }
 
     int sceneFrame() { return prefs.effects().equals("full") ? (int)(Util.getMillis() / 400L % 8L) : 0; }
 
     private void section(GuiGraphics g, int x, int y, int w, int bottom, Component title) {
-        if (scene == null) Screen.renderMenuBackgroundTexture(g, MENU_BACKGROUND, x, y, 0, 0, w, bottom - y);
-        int tint = scene == null ? 0xdb000000 : 0x52000000;
-        g.fill(x, y, x + w, bottom, tint | (colors.panel() & 0xffffff));
-        g.renderOutline(x, y, w, bottom - y, colors.line());
-        g.fillGradient(x + 1, y + 1, x + w - 1, y + sectionHeight, colors.header(), colors.control());
-        g.fill(x + 1, y + sectionHeight - 1, x + w - 1, y + sectionHeight, colors.line());
+        backdrop(g, prefs.menuTransparency(), () -> {
+            if (scene == null) Screen.renderMenuBackgroundTexture(g, MENU_BACKGROUND, x, y, 0, 0, w, bottom - y);
+            int tint = scene == null ? 0xdb000000 : 0x52000000;
+            g.fill(x, y, x + w, bottom, tint | (colors.panel() & 0xffffff));
+            g.renderOutline(x, y, w, bottom - y, colors.line());
+            g.fillGradient(x + 1, y + 1, x + w - 1, y + sectionHeight, colors.header(), colors.control());
+            g.fill(x + 1, y + sectionHeight - 1, x + w - 1, y + sectionHeight, colors.line());
+        });
         VoiceWidgets.text(g, font, title.copy().withStyle(ChatFormatting.BOLD), x + 5, x + w - 4,
                 y + (sectionHeight - 9) / 2, colors.text(), false);
     }

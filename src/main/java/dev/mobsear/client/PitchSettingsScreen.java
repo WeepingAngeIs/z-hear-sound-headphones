@@ -122,10 +122,10 @@ public final class PitchSettingsScreen extends Screen {
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partial) {
         if (minecraft.level == null) renderPanorama(g, partial);
         VoiceSettingsScreen.drawFrame(g, colors, scene, parent.sceneFrame(), font, title,
-                width, height, x, y, widthPanel, heightPanel, y + 21);
+                width, height, x, y, widthPanel, heightPanel, y + 21, prefs.menuTransparency());
         if (scrolling != null) return;
         int left = controlX, right = controlX + controlW;
-        g.fill(left - 3, y + 42, right + 3, y + 75, 0xab17141b);
+        VoiceSettingsScreen.backdrop(g, prefs.menuTransparency(), () -> g.fill(left - 3, y + 42, right + 3, y + 75, 0xab17141b));
         int textY = y + 64;
         g.drawString(font, t("pitch.deep"), left + 2, textY, colors.text(), false);
         g.drawCenteredString(font, t("pitch.natural"), (left + right) / 2, textY, colors.text());

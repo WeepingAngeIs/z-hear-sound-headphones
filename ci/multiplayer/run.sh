@@ -130,6 +130,20 @@ fi
 launch smokeServer
 wait_for smokeServer 'Done (' 240
 launch smokeSpeaker
+if [[ ${MOBSEAR_HUD_ONLY:-} == 1 ]]; then
+  wait_for smokeSpeaker 'MOBSEAR_HUD_MATRIX_PASS' 480
+  grep -F 'MOBSEAR_HUD_' "$MOBSEAR_SMOKE_DIR/smokeSpeaker.console"
+  mkdir -p build/state-previews
+  cp "$MOBSEAR_SMOKE_DIR"/smokeSpeaker/screenshots/menu-*.png build/state-previews/
+  kill -TERM -- "-${pids[1]}" 2>/dev/null || true
+  wait "${pids[1]}" 2>/dev/null || true
+  unset 'pids[1]'
+  export MOBSEAR_HUD_RELOAD=1
+  launch smokeSpeaker
+  wait_for smokeSpeaker 'MOBSEAR_HUD_RESTART_PASS' 180
+  grep -F 'MOBSEAR_HUD_RESTART_PASS' "$MOBSEAR_SMOKE_DIR/smokeSpeaker.console"
+  exit 0
+fi
 wait_for smokeSpeaker 'MOBSEAR_CLIENT_READY' 200
 launch smokeListener
 if [[ ${MOBSEAR_GUI_ONLY:-} == 1 ]]; then

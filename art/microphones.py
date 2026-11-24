@@ -23,7 +23,7 @@ def tint(color, target, percent):
     a, b = ImageColor.getrgb(color), ImageColor.getrgb(target)
     return tuple(round(x + (y-x)*percent) for x, y in zip(a, b))
 
-def badge(family, accent_name, frame):
+def badge(family, accent_name, frame, framed=True):
     shadow, rim, native = THEMES[family]
     accent = ACCENTS.get(accent_name, native)
     lit = frame >= 3
@@ -35,8 +35,9 @@ def badge(family, accent_name, frame):
     mid = tint(accent, rim, 0.28 if lit else 0.65)
     pic = Image.new("RGBA", (SIZE, SIZE))
     canvas = ImageDraw.Draw(pic)
-    canvas.polygon([(1,1),(19,1),(20,2),(20,19),(19,20),(1,20),(0,19),(0,2)], fill=(*ink,225))
-    canvas.line([(1,3),(1,2),(18,2)],fill=rim)
+    if framed:
+        canvas.polygon([(1,1),(19,1),(20,2),(20,19),(19,20),(1,20),(0,19),(0,2)], fill=(*ink,225))
+        canvas.line([(1,3),(1,2),(18,2)],fill=rim)
     mic = Image.new("RGBA",(SIZE,SIZE)); d = ImageDraw.Draw(mic)
     d.line([(5,11),(5,13),(7,15),(12,15),(14,13),(14,11)], fill=light, width=1)
     d.rectangle((9,15,10,17),fill=mid)
@@ -94,14 +95,18 @@ def main():
     providers=[]
     for family_index,family in enumerate(FAMILIES):
         image=Image.new("RGBA",(SIZE*FRAMES,SIZE*len(COLORS)))
+        hud=Image.new("RGBA",image.size)
         rows=[]
         for accent_id,accent in enumerate(COLORS):
             row=""
             for frame in range(FRAMES):
                 image.paste(badge(family,accent,frame),(frame*SIZE,accent_id*SIZE))
+                hud.paste(badge(family,accent,frame,False),(frame*SIZE,accent_id*SIZE))
                 row+=chr(0xe100+(family_index*len(COLORS)+accent_id)*FRAMES+frame)
             rows.append(row)
         image.save(image_dir/f"mic_{family}.png")
+        hud_dir=ROOT/"textures/gui/mics"; hud_dir.mkdir(parents=True,exist_ok=True)
+        hud.save(hud_dir/f"mic_{family}.png")
         providers.append(dict(type="bitmap",file=f"mobsear:font/mic_{family}.png",height=11,ascent=9,chars=rows))
     (font_dir/"microphones.json").write_text(json.dumps({"providers":providers},indent=2)+"\n",encoding="utf-8")
 
