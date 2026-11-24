@@ -78,7 +78,7 @@ final class CallVocabulary {
         for (int i=0;i<tokens.size();i++) {
             for (int j=Math.min(tokens.size(),i+8);j>i;j--) {
                 String phrase = String.join(" ",tokens.subList(i,j));
-                if (names.containsKey(phrase) && (!explicit.contains(phrase) || allowExplicit))
+                if (names.containsKey(phrase) && (!explicit.contains(phrase) || allowExplicit && i>0 && tokens.get(i-1).equals("call")))
                     return new Match(phrase,names.get(phrase));
                 String alt = spoken.get(phrase);
                 if (alt != null) return new Match(alt,live(alt) ? NEAR|names.get(alt) : 0);
@@ -122,10 +122,21 @@ final class CallVocabulary {
         return false;
     }
 
+    boolean splitInflection(String text, String independent) {
+        List<String> tokens = words(text);
+        List<String> open = words(independent);
+        for (int i = 1; i < tokens.size(); i++) {
+            String base = tokens.get(i - 1), ending = tokens.get(i);
+            if (base.length() >= 4 && names.containsKey(base) && !names.containsKey(base + " " + ending)
+                    && Set.of("e", "ee", "y", "ish").contains(ending) && !open.contains(base)) return true;
+        }
+        return false;
+    }
+
     Match spokenRecovery(String text,String independent) {
         if(live("lopunny") && !rival("lopunny",independent)) {
             String heard=" "+String.join(" ",words(text))+" ";
-            if(heard.matches(".*\\b(la[ph]?on[ein]+|lopon[ein]+|la punny|lop bunny|la ponee)\\b.*"))
+            if(heard.matches(".*\\b(la[ph]?on[einy]+|lopon[einy]+|la punny|lop bunny|la ponee)\\b.*"))
                 return new Match("lopunny",NEAR|names.get("lopunny"));
         }
         return null;

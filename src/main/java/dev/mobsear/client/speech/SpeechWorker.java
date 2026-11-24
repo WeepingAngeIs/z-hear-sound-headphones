@@ -30,7 +30,7 @@ public final class SpeechWorker {
         var choices=new LinkedHashSet<>(vocab.names.keySet());
         choices.addAll(pronounced.keySet());
         choices.addAll(REJECT);
-        commandGrammar(commands,choices);
+        commandGrammar(commands,choices,vocab.explicit);
         dictation=engine.grammar();
         dictation.dictation();
         if(engine.language==0x409) {
@@ -45,19 +45,24 @@ public final class SpeechWorker {
         }
     }
 
-    private static void commandGrammar(Sapi.Grammar grammar,Collection<String> words) {
+    private static void commandGrammar(Sapi.Grammar grammar, Collection<String> words, Set<String> explicit) {
         grammar.reset();
-        var root=grammar.rule("command",1,true);
-        var names=grammar.rule("name",2,false);
-        var prefix=grammar.state(root);
-        grammar.word(root,prefix,"hey");
-        grammar.word(root,prefix,"call");
-        grammar.branch(root,null,names);
-        grammar.branch(prefix,null,names);
-        for(String word:words) grammar.word(names,null,word);
+        var root = grammar.rule("command", 1, true);
+        var names = grammar.rule("name", 2, false);
+        var greeting = grammar.state(root);
+        var call = grammar.state(root);
+        grammar.word(root, greeting, "hey");
+        grammar.word(root, call, "call");
+        grammar.branch(root, null, names);
+        grammar.branch(greeting, null, names);
+        grammar.branch(call, null, names);
+        for (String word : words) {
+            // Split spellings cue the recognizer only after the player explicitly says "call".
+            grammar.word(explicit.contains(word) ? call : names, null, word);
+        }
         grammar.commit();
         grammar.activate("command");
-        grammar.priority("command",1);
+        grammar.priority("command", 1);
     }
 
     void roster(List<String> hints,List<String> live) {
@@ -74,7 +79,7 @@ public final class SpeechWorker {
         if(any) alternatives.addAll(vocab.spoken.keySet()); // an absent evolution must still own its complete phrase
         if(!alternatives.isEmpty()) {
             nearCommands=engine.grammar();
-            commandGrammar(nearCommands,alternatives);
+            commandGrammar(nearCommands,alternatives,Set.of());
         }
         var labels=new LinkedHashSet<>(hints);
         labels.addAll(live);
@@ -171,6 +176,8 @@ public final class SpeechWorker {
                 syntheticFault(failed);
                 return new Reply(65534,"");
             }
+            if(vocab.unregisteredInflection(decoded) && match(decoded)==null || vocab.splitInflection(decoded,plain))
+                return new Reply(0,hint);
             var exactWord=match(decoded);
             if(exactWord!=null) {
                 if(vocab.conflicts(exactWord.label(),plain) || vocab.partialCompound(exactWord.label(),decoded))
@@ -209,9 +216,18 @@ public final class SpeechWorker {
             try {
                 var restricted=engine.recognize(pcm);
                 var m=match(restricted.text());
-                if(restricted.accepted() && restricted.confidence()>=(vocab.names.size()>256?.90:.72) && m!=null
-                        && !vocab.confirm.contains(m.label()) && !vocab.partialCompound(m.label(),plain) && !CallVocabulary.rival(m.label(),plain))
-                    return new Reply(m.code(),"");
+                if (m != null && restricted.accepted() && !vocab.confirm.contains(m.label())
+                        && !vocab.partialCompound(m.label(), plain) && !CallVocabulary.rival(m.label(), plain)) {
+                    // Both command passes must independently identify the same explicit split spelling.
+                    // Free dictation must also hear the "call" prefix; ordinary large-catalog retries stay strict.
+                    boolean corroboratedSplit = exact != null && exact.code() == m.code() && vocab.explicit.contains(m.label())
+                            && first.grammar() == commands.id && first.confidence() >= .50
+                            && first.text().toLowerCase(Locale.ROOT).startsWith("call ")
+                            && plain.toLowerCase(Locale.ROOT).startsWith("call ")
+                            && restricted.text().toLowerCase(Locale.ROOT).startsWith("call ");
+                    double minimum = corroboratedSplit ? .82 : vocab.names.size() > 256 ? .90 : .72;
+                    if (restricted.confidence() >= minimum) return new Reply(m.code(), "");
+                }
             } finally { dictation.enabled(true); }
         }
         return new Reply(0,hint);

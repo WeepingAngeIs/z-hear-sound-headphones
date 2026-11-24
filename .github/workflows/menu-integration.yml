@@ -143,7 +143,7 @@ jobs:
         run: ./ci/portable_speech_checks.ps1 nearby
   portable-game:
     name: Packaged Windows client and integrated server
-    needs: [portable-package, portable-windows]
+    needs: portable-package
     if: github.ref_name == 'codex/portable-speech'
     uses: ./.github/workflows/fullpack.yml
     with:

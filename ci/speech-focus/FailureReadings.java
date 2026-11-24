@@ -23,7 +23,7 @@ public final class FailureReadings {
             var cmdField=SpeechWorker.class.getDeclaredField("commands");cmdField.setAccessible(true);
             var commands=(Sapi.Grammar)cmdField.get(worker);
             decoder.warm();
-            for(var path:files.filter(p->p.getFileName().toString().matches(catalog?"synthetic-catalog-[0-9]+\\.pcm":"miss-voice-.*\\.pcm")).sorted().limit(20).toList()){
+            for(var path:files.filter(p->p.getFileName().toString().matches(catalog?"synthetic-catalog-[0-9]+\\.pcm":"miss-voice-.*\\.pcm")).sorted().limit(70).toList()){
                 var pcm=Files.readAllBytes(path);
                 var mixed=engine.recognize(pcm);
                 commands.enabled(false);var plain=engine.recognize(pcm);commands.enabled(true);

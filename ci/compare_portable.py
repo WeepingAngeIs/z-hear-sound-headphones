@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import sys
+import urllib.request
 import zipfile
 import onnx
 from audit_archive import audit
@@ -14,6 +15,26 @@ OPS = {"Identity","Cast","Transpose","Conv","Erf","Mul","Add","Sub","ReduceMean"
 BASE = "dev/mobsear/client/speech/model/"
 
 
+def platform_libraries():
+    # Mojang's 1.21.1 manifest provides both libraries. These remain launcher-owned, outside the mod.
+    pinned = {"jna": "67bf3eaea4f0718cb376a181a629e5f88fa1c9dd",
+              "jna-platform": "28934d48aed814f11e4c584da55c49fa7032b31b"}
+    inventory = {}
+    for name, expected in pinned.items():
+        url = f"https://libraries.minecraft.net/net/java/dev/jna/{name}/5.14.0/{name}-5.14.0.jar"
+        with urllib.request.urlopen(url, timeout=60) as response:
+            data = response.read(3_000_001)
+        assert hashlib.sha1(data).hexdigest() == expected
+        result = audit(data)
+        pe = [f["entry"] for f in result["findings"] if f["reason"].startswith("Windows PE")]
+        assert all(entry.lower().endswith("/jnidispatch.dll") for entry in pe)
+        assert bool(pe) == (name == "jna")
+        assert not any(f["entry"].lower().endswith((".exe",".bat",".cmd")) for f in result["findings"])
+        inventory[name] = {"version":"5.14.0","origin":url,"sha256":result["sha256"],"windows_native_entries":pe}
+        print("External Minecraft launcher library", name, "sha256", result["sha256"], "native Windows entries", pe)
+    return inventory
+
+
 def main(previous, current):
     raw = previous.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == OLD
@@ -22,6 +43,8 @@ def main(previous, current):
     assert native == {"whisper-cli.exe","whisper.dll","ggml.dll","ggml-cpu.dll","ggml-base.dll"}
     assert not any(entry["entry"].lower().endswith((".bat",".cmd")) for entry in original_report["findings"])
     print("Original nested Windows PE files:", ", ".join(sorted(native)))
+    external = platform_libraries()
+    (current.parent/"launcher-libraries.json").write_text(json.dumps(external,indent=2)+"\n",encoding="utf8")
     with zipfile.ZipFile(io.BytesIO(raw)) as old, zipfile.ZipFile(current) as new:
         protected = [n for n in old.namelist() if n.startswith("assets/") or
                      n.endswith(".class") and n.startswith("dev/mobsear/") and

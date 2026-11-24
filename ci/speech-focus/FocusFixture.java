@@ -84,8 +84,8 @@ public final class FocusFixture {
                         output.write(clip);
                         output.flush();
                         String reply=id(grammar,input.readUnsignedShort());
-                        if (mentions && !automatic && (f[2].startsWith("sentence-") || f[2].equals("low-money")) && !reply.equals(f[4]))
-                            Files.write(dir.resolve("miss-" + f[0] + "-" + clips.indexOf(clip) + ".pcm"), clip);
+                        if (mentions && (f[2].startsWith("sentence-") || f[2].equals("low-money")) && !reply.equals(f[4]))
+                            Files.write(dir.resolve("miss-" + f[0] + (automatic ? "-open-" : "-ptt-") + clips.indexOf(clip) + ".pcm"), clip);
                         maxMillis = Math.max(maxMillis, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
                         if (!reply.equals("neutral")) replies.add(reply);
                     }
