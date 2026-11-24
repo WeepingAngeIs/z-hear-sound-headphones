@@ -10,7 +10,8 @@ $english = $voice.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.Voice
 $voice.SelectVoice($english.VoiceInfo.Name)
 $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 $index = 0
-$words = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { @('Pikachu', 'Eevee', 'Lopunny') } else { @('Enderman', 'spider', 'mob', 'mobs') }
+$alternatives = @{'watch and roll'='wattrel'; 'kilo watch roll'='kilowattrel'; 'Vivian'='vivillon'}
+$words = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { @('Pikachu', 'Eevee', 'Lopunny') + @($alternatives.Keys) } else { @('Enderman', 'spider', 'mob', 'mobs') }
 if ($env:MOBSEAR_OWL_ACOUSTIC -eq '1') { $words += @('oo woo guardian', 'call oo woo guardian') }
 foreach ($word in $words) {
     $stream = New-Object System.IO.MemoryStream
@@ -23,6 +24,7 @@ foreach ($word in $words) {
     $stem = if ($env:MOBSEAR_POKEMON_ACOUSTIC -eq '1') { $word.ToLowerInvariant() } else { [string]$index }
     if ($word -eq 'oo woo guardian') { $stem = 'owl-guardian' }
     if ($word -eq 'call oo woo guardian') { $stem = 'owl-guardian-explicit' }
+    if ($alternatives.ContainsKey($word)) { $stem = $alternatives[$word] }
     [IO.File]::WriteAllBytes((Join-Path $audioDir "$stem.pcm"), $data)
     $index++
     $stream.Dispose()

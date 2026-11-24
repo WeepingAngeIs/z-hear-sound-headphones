@@ -4,7 +4,8 @@ import dev.mobsear.net.MobCallTypes;
 import net.minecraft.resources.ResourceLocation;
 
 enum PokemonCase {
-    PIKACHU("pikachu", 12), EEVEE("eevee", 24), LOPUNNY("lopunny", 16), LOPUNNY_FAR("lopunny", 36),
+    PIKACHU("pikachu", 12), EEVEE("eevee", 24), LOPUNNY("lopunny", 16),
+    WATTREL("wattrel", 12), KILOWATTREL("kilowattrel", 14), VIVILLON("vivillon", 12), LOPUNNY_FAR("lopunny", 36),
     LOOK("pikachu", 14), APPROACH("eevee", 10),
     ADDON("acideon", 18), NAMESPACE("hearfixture:chimekin", 18), NEAR_EDGE("pikachu", 31),
     FAR("eevee", 36), WRONG("eevee", 15), OWNER("pikachu", 12), OFFLINE_OWNER("eevee", 12),
@@ -29,7 +30,7 @@ enum PokemonCase {
     }
     boolean accepts() {
         return switch (this) {
-            case PIKACHU, EEVEE, LOPUNNY, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
+            case PIKACHU, EEVEE, LOPUNNY, WATTREL, KILOWATTREL, VIVILLON, LOOK, APPROACH, ADDON, NAMESPACE, NEAR_EDGE, BLOCKED, COOLDOWN_PRIME, COOLDOWN_EXPIRED,
                     WALKING_PIKACHU, WALKING_EEVEE, WALKING_LOPUNNY, NEW_AGGRO, INTERRUPTED, PACK_FORM, PACK_CUSTOM, GLOBAL_PACK, CREATIVE_GEODUDE,
                     NAMED_COW, NAMED_HOSTILE, FOREST_DEER, WALKING_DEER, OWL_GUARDIAN, VELVET_IDLE, DUNGEON_MIMIC, ZOMBIE_CALL_MIMIC -> true;
             case LOPUNNY_FAR, FAR, WRONG, OWNER, OFFLINE_OWNER, BATTLE, CAPTURE, PASSIVE, AGGRO, COOLDOWN_HELD, OTHER_NAME, NAMED_FAR,
