@@ -51,6 +51,22 @@ $lines=@{
     'geode'='I left a geode on the table.'
     'good-dude'='He is a good dude.'
     'going'='I am going to do it.'
+    'wattrel'='Wattrel.'
+    'wattrel-watch'='Watch roll.'
+    'wattrel-and'='Watch and roll.'
+    'wattrel-sentence'='Hey, watch and roll, over here.'
+    'wattrel-watt'='Watt roll.'
+    'kilowattrel'='Kilowattrel.'
+    'kilowattrel-split'='Kilo watch roll.'
+    'kilowattrel-sentence'='Hey, look at that kilo watch and roll.'
+    'vivillon-vivian'='Vivian.'
+    'vivillon-sentence'='Hey, look, there is Vivian.'
+    'vivillon-yon'='Viv ee yon.'
+    'usual-watch'='Watch the bridge and roll the dice.'
+    'usual-roll'='Roll the dice.'
+    'usual-watchword'='Watchmaker.'
+    'usual-vivid'='The colors are vivid.'
+    'usual-power'='One kilowatt hour.'
 }
 try {
     foreach ($voice in $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'en-US' }) {

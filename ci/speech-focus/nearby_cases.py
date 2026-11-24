@@ -13,6 +13,8 @@ targets = {"bulbazore": "bulbasaur", "bulbazar": "bulbasaur",
            "charmandor": "charmander", "charmendar": "charmander"}
 crowded = "lopunny lanturn nidorina nidorino charmander pikachu"
 examples = {"butterfree": "beautifly butterfree", "lilligant": "lillipup lilligant", "geodude": "graveler geodude"}
+birds = "kilowattrel wattrel"
+spoken = {"wattrel": birds, "kilowattrel": birds, "vivillon": "vibrava vivillon"}
 cases = []
 inputs = []
 for file in sorted(root.glob("near-Microsoft*.pcm")):
@@ -27,7 +29,15 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
         roster = examples["lilligant"]
     if label in ("geode", "good-dude", "going"):
         roster = examples["geodude"]
+    species = label.split("-")[0]
+    if species in spoken:
+        roster = spoken[species]
+    if label.startswith("usual-"):
+        roster = birds + " vivillon"
     trials = [(label, roster)]
+    if label in ("wattrel-and", "kilowattrel-split", "vivillon-vivian"):
+        other = {"wattrel-and": "kilowattrel", "kilowattrel-split": "wattrel", "vivillon-vivian": "vibrava"}
+        trials.append(("absent-"+label, other[label]))
     if label == "nidorine":
         trials.append(("reverse", "nidorino nidorina"))
         trials.append(("crowded", "pikachu lopunny bulbasaur nidorina nidorino ivysaur lanturn"))
@@ -40,7 +50,7 @@ for file in sorted(root.glob("near-Microsoft*.pcm")):
 subprocess.run(["javac", "--release", "21", "-cp", "ci-classes", "-d", "ci-classes",
                 "ci/speech-focus/NearbySpeechFixture.java"], check=True)
 subprocess.run(["java", "-cp", "ci-classes;src/main/resources;build/generated/offline-speech",
-                "dev.mobsear.client.NearbySpeechFixture", str(root)], check=True, timeout=180)
+                "dev.mobsear.client.NearbySpeechFixture", str(root)], check=True, timeout=240)
 actual = (root / "nearby-actual.txt").read_text().splitlines()
 hits, similar, guesses, errors = set(), set(), [], []
 failed_examples = []
@@ -64,6 +74,10 @@ for index, ((voice, test, roster), reply) in enumerate(zip(cases, actual, strict
         failed_examples.append(index)
     if test.startswith("out-") and (guessed or result not in ("neutral", targets[test[4:]])):
         errors.append((test, "redirected out-of-range speech", result))
+    species = test.split("-")[0]
+    if species in spoken and result != species or test.startswith(("usual-", "absent-")) and result != "neutral":
+        errors.append((voice, test, "spoken alternative", result))
+        failed_examples.append(index)
     if test in targets:
         if result == targets[test]:
             hits.add(voice)
