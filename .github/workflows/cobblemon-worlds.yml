@@ -11,8 +11,8 @@ jobs:
     name: Cobblemon 1.8.4 / ${{ matrix.mode }}
     runs-on: ubuntu-latest
     env:
-      MOBSEAR_POKEMON_PACK: '1'
-      MOBSEAR_ENTITY_PACK: '1'
+      MOBSEAR_POKEMON_PACK: ${{ github.ref_name == 'codex/no-mob-call-cooldowns' && '0' || '1' }}
+      MOBSEAR_ENTITY_PACK: ${{ github.ref_name == 'codex/no-mob-call-cooldowns' && '0' || '1' }}
     timeout-minutes: 44
     strategy:
       fail-fast: false
