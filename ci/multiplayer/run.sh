@@ -122,7 +122,7 @@ if [[ ${MOBSEAR_GUI_ONLY:-} == 1 ]]; then
 import hashlib, json, sys, uuid
 digest = hashlib.md5(b"OfflinePlayer:MicFixtureB").digest()
 with open(sys.argv[1], "w") as target:
-    json.dump([dict(uuid=str(uuid.UUID(bytes=digest, version=3)), name="MicFixtureB", level=4, bypassesPlayerLimit=False)], target)
+    json.dump([dict(uuid=str(uuid.UUID(bytes=digest, version=3)), name="MicFixtureB", level=3, bypassesPlayerLimit=False)], target)
 PY
   # Reuse an existing server config and exercise migration when mobCallsEnabled is absent.
   echo 'hordeEnabled = false' > "$MOBSEAR_SMOKE_DIR/server/config/mobsear-server.toml"

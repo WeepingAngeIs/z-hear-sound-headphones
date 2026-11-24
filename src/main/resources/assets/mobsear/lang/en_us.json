@@ -1,4 +1,7 @@
 {
+  "mobsear.horror.joined": "You joined Quiet Horror for this connection.",
+  "mobsear.horror.left": "You left Quiet Horror.",
+  "mobsear.horror.unavailable": "Quiet Horror is unavailable here.",
   "mobsear.settings.server.title": "Server Settings",
   "mobsear.settings.server.calls": "Mob Calls",
   "mobsear.settings.server.horror": "Horror",

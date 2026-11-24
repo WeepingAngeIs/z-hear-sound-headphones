@@ -20,7 +20,7 @@ final class ScaleRulesProof {
     private final Minecraft mc = Minecraft.getInstance();
     private static final int[][] SIZES = {{854,480,1},{640,480,2},{1280,720,3},{1280,720,0}};
     private Packets.ServerRules reply;
-    private int stage, ticks, size, verified = -1;
+    private int stage, ticks, size, scrollTries, verified = -1;
     private boolean admin, initialized;
     ScaleRulesProof() {
         NeoForge.EVENT_BUS.addListener(this::tick);
@@ -114,12 +114,20 @@ final class ScaleRulesProof {
                 check(mc.screen.width==window.getGuiScaledWidth() && mc.screen.height==window.getGuiScaledHeight(),"native coordinates");
                 noLocalSwitches();
                 var list = audio();
-                mc.screen.mouseScrolled(list.getX()+10,list.getY()+8,0,-100);
+                scrollTries = 0;
                 stage++;
             }
             case 4 -> {
                 var last = find("Motion",true);
-                check(last != null && last.getY()>=audio().getY() && last.getBottom()<=audio().getBottom(),"last scroll row unreachable");
+                var list = audio();
+                check(last != null, "missing Motion row");
+                if (scrollTries == 0 || last.getY()<list.getY() || last.getBottom()>list.getBottom() || list.getScrollAmount()==0) {
+                    boolean handled = mc.screen.mouseScrolled(list.getX()+list.getWidth()/2.0,list.getY()+list.getHeight()/2.0,0,-2);
+                    if (++scrollTries > 48) throw new AssertionError("Last row unreachable: wheel="+handled+
+                            " offset="+list.getScrollAmount()+"/"+list.getMaxScroll()+" list="+list.getY()+".."+list.getBottom()+
+                            " row="+last.getY()+".."+last.getBottom()+" scale="+mc.getWindow().getGuiScale());
+                    return;
+                }
                 String before = VoiceClient.options().effects();
                 click("Motion",true);
                 check(!before.equals(VoiceClient.options().effects()),"scrolled click missed");

@@ -61,7 +61,7 @@ public final class MobsEar {
     public static boolean mobCallsAvailable() { return SERVER_CONFIG.isLoaded() && callsEnabled.getAsBoolean(); }
 
     private static boolean canManage(ServerPlayer player) {
-        return player.hasPermissions(4) || player.serverLevel().getServer().isSingleplayerOwner(player.getGameProfile());
+        return player.hasPermissions(net.minecraft.commands.Commands.LEVEL_ADMINS) || player.serverLevel().getServer().isSingleplayerOwner(player.getGameProfile());
     }
 
     private static void replyRules(ServerPlayer player) {
@@ -103,6 +103,19 @@ public final class MobsEar {
         NamedMobReactions.register();
         container.registerConfig(ModConfig.Type.SERVER, SERVER_CONFIG);
         bus.addListener(this::register);
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.RegisterCommandsEvent event) -> {
+            var participate = net.minecraft.commands.Commands.literal("horror");
+            for (boolean join : new boolean[]{true, false}) {
+                participate.then(net.minecraft.commands.Commands.literal(join ? "join" : "leave").executes(ctx -> {
+                    var player = ctx.getSource().getPlayerOrException();
+                    boolean accepted = requestConsent(player, join);
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                            !join ? "mobsear.horror.left" : accepted ? "mobsear.horror.joined" : "mobsear.horror.unavailable"));
+                    return accepted == join ? 1 : 0;
+                }));
+            }
+            event.getDispatcher().register(net.minecraft.commands.Commands.literal("mobsear").then(participate));
+        });
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) -> {
             NearbyMics.tick(event.getServer(), radius.getAsInt());
             HordeMode.LIVE.tick(hordeRules(), radius.getAsInt(), event.getServer().getTickCount(), p -> hordeReply(p, false));
@@ -138,6 +151,19 @@ public final class MobsEar {
             lastHordeRequest.remove(player);
             if (notify && opted) hordeReply(player, false);
         }
+    }
+
+    private static boolean requestConsent(ServerPlayer player, boolean join) {
+        boolean before = HordeMode.LIVE.optedIn(player);
+        if (join) {
+            int tick = player.serverLevel().getServer().getTickCount();
+            Integer last = lastHordeRequest.get(player);
+            if (last != null && tick - last < 5) return before;
+            lastHordeRequest.put(player, tick);
+        }
+        boolean accepted = HordeMode.LIVE.consent(player, join, hordeRules());
+        if (before != accepted || accepted != join) hordeReply(player, accepted);
+        return accepted;
     }
 
     private static void hordeReply(ServerPlayer player, boolean opted) {
@@ -183,15 +209,7 @@ public final class MobsEar {
         }
         reg.playToServer(Packets.HordeOpt.TYPE, Packets.HordeOpt.CODEC, (packet, ctx) -> {
             if (ctx.player() instanceof ServerPlayer player) {
-                if (packet.optedIn()) {
-                    int tick = player.serverLevel().getServer().getTickCount();
-                    Integer last = lastHordeRequest.get(player);
-                    if (last != null && tick - last < 5) return;
-                    lastHordeRequest.put(player, tick);
-                }
-                boolean before = HordeMode.LIVE.optedIn(player);
-                boolean accepted = HordeMode.LIVE.consent(player, packet.optedIn(), hordeRules());
-                if (before != accepted || accepted != packet.optedIn()) hordeReply(player, accepted);
+                requestConsent(player, packet.optedIn());
             }
         });
         reg.playToClient(Packets.HordeState.TYPE, Packets.HordeState.CODEC, (packet, ctx) -> hordeStatus.accept(packet.optedIn()));

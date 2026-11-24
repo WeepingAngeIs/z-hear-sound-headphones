@@ -123,7 +123,6 @@ public final class VoiceSettingsScreen extends Screen {
                     refresh("backdrop");
                 }).setTooltip(Tooltip.create(t("backdrop.hint")));
 
-        audio.setScrollAmount(audioScroll);
         int listY = bodyY + sectionHeight + 1;
         double scroll = players == null ? 0 : players.getScrollAmount();
         players = new OnlineVoiceList(minecraft, rightX + 1, listY, rightWidth - 2,
@@ -136,8 +135,13 @@ public final class VoiceSettingsScreen extends Screen {
         int serverX = leftX + Math.min(96, leftWidth) + 3;
         int serverW = Math.min(98, rightX + rightWidth - doneWidth - serverX - 3);
         shownAdmin = VoiceClient.rules() != null && VoiceClient.rules().editable();
-        if (shownAdmin) addButton("server_settings", serverX, footerY, serverW, 17, t("server.title"), Style.ROW, false,
-                () -> minecraft.setScreen(new ServerSettingsScreen(this, prefs))).active = VoiceClient.canRequestRules();
+        if (shownAdmin) {
+            var server = new VoiceWidgets.Button(serverX, footerY, Math.max(1, serverW), 17, t("server.title"),
+                    colors, Style.ROW, false, null, null, () -> minecraft.setScreen(new ServerSettingsScreen(this, prefs)));
+            if (serverW < 78) addAudio("server_settings", server);
+            else add("server_settings", server);
+        }
+        audio.setScrollAmount(audioScroll);
         addButton("done", rightX + rightWidth - doneWidth, footerY, doneWidth, 17, CommonComponents.GUI_DONE,
                 Style.PRIMARY, false, this::onClose);
     }

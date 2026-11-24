@@ -14,11 +14,18 @@ public final class RuleIsolationProof {
         var world = admin.serverLevel();
         var caller = world.getServer().getPlayerList().getPlayerByName("MicFixtureA");
         caller.teleportTo(admin.getX()+3, admin.getY(), admin.getZ());
+        world.getServer().setDifficulty(net.minecraft.world.Difficulty.NORMAL, true);
+        caller.setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
         var zombie = EntityType.ZOMBIE.create(world);
         zombie.moveTo(caller.getX()+2, caller.getY(), caller.getZ());
         world.addFreshEntity(zombie);
         try {
             ServerVoice.forget(caller);
+            var commands = world.getServer().getCommands();
+            commands.performPrefixedCommand(caller.createCommandSourceStack(), "mobsear horror join");
+            if (HordeMode.LIVE.optedIn(caller) != horror) throw new AssertionError("Voluntary Horror join ignored server policy");
+            commands.performPrefixedCommand(caller.createCommandSourceStack(), "mobsear horror leave");
+            if (HordeMode.LIVE.optedIn(caller)) throw new AssertionError("Voluntary Horror leave failed");
             int[] delivered = {0};
             ServerVoice.relay(caller, new Packets.Up(new byte[Packets.FRAME_BYTES]), List.of(admin), 32,
                     (listener, frame) -> delivered[0]++);
