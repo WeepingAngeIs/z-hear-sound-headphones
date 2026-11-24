@@ -84,6 +84,20 @@ final class HudAppearanceProof {
             }
             if (stage>=2 && stage<=5 && age>=5) {
                 int i=stage-2;
+                var slider=find("Menu Background",true);
+                var list=(AbstractSelectionList<?>)mc.screen.children().stream()
+                        .filter(e->e.getClass().getSimpleName().equals("VoiceControlList")).findFirst().orElseThrow();
+                // A toggle rebuilds the list and restores keyboard focus. Scroll to the live
+                // slider entry after that rebuild, then wait for a render before clicking again.
+                if (i==0 && age==5) {
+                    int row=-1;
+                    for(int n=0;n<list.children().size();n++)
+                        if (((net.minecraft.client.gui.components.events.ContainerEventHandler)list.children().get(n)).children().contains(slider)) row=n;
+                    check(row>=0,"missing slider row");
+                    list.setScrollAmount(row*(slider.getHeight()+2)-list.getHeight()/2.0);
+                    return;
+                }
+                if (i==0 && age<12) return;
                 if (i<3) {
                     check(prefs.menuTransparency()==i*50 && !prefs.micFrame(),"live slider state "+i+" actual="+prefs.menuTransparency()+" frame="+prefs.micFrame());
                     captureMenu(i);
@@ -93,7 +107,6 @@ final class HudAppearanceProof {
                             "backdrop did not change at midpoint and endpoints");
                     System.out.println("MOBSEAR_HUD_BACKDROP_PASS live=0,50,100 unchangedDoneButtonAndLabel=true");
                 }
-                var slider=find("Menu Background",true);
                 if (i<3) click(slider,i==0?.5:i==1?1:.37);
                 else {
                     check(prefs.menuTransparency()==37 && !prefs.micFrame(),"independent settings");

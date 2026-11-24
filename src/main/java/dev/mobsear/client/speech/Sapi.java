@@ -34,7 +34,7 @@ final class Sapi implements AutoCloseable {
         return NativeLibrary.getInstance(Path.of(System.getenv("SystemRoot"), "System32", name + ".dll").toString());
     }
 
-    private static Memory guid(String id) {
+    static Memory guid(String id) {
         UUID uuid = UUID.fromString(id);
         long hi = uuid.getMostSignificantBits(), lo = uuid.getLeastSignificantBits();
         var bytes = new Memory(16);
@@ -178,6 +178,14 @@ final class Sapi implements AutoCloseable {
             ok(call(object, 8, from, to, target, 1f, null), "AddRuleTransition");
         }
         void freeWords(Pointer from, Pointer to) { branch(from, to, Pointer.createConstant(-2L)); }
+        void priority(String name,int value) {
+            var out=new PointerByReference();
+            try(var iid=guid("4B37BC9E-9ED6-44A3-93D3-18F022B79EC3")) {
+                ok(call(object,0,iid,out),"extended grammar");
+                try { ok(call(out.getValue(),6,wide(name),0,value),"command priority"); }
+                finally { release(out.getValue()); }
+            }
+        }
         void commit() { ok(call(object, 10, 0), "Commit"); }
         void active(boolean on) { ok(call(object, 18, null, null, on ? 1 : 0), "SetRuleState"); }
         void dictation() {

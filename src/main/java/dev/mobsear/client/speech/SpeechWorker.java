@@ -16,7 +16,7 @@ public final class SpeechWorker {
             "elegant","good dude","geode","slender man","huddling","jogging","logged in");
     private static final int LIMIT = 256000;
 
-    private SpeechWorker(CallVocabulary vocab,Sapi engine) {
+    SpeechWorker(CallVocabulary vocab,Sapi engine) {
         this.vocab=vocab;
         this.engine=engine;
         for (var group : List.of(List.of("enderman","ender man","ender men"),List.of("lopunny","lop bunny","la punny","lapunny","lop punny"),
@@ -45,9 +45,10 @@ public final class SpeechWorker {
         for(String word:words) grammar.word(names,null,word);
         grammar.commit();
         grammar.active(true);
+        grammar.priority("command",1);
     }
 
-    private void roster(List<String> hints,List<String> live) {
+    void roster(List<String> hints,List<String> live) {
         vocab.nearby(live);
         if (mentions!=null) { mentions.close(); mentions=null; }
         if (nearCommands!=null) { nearCommands.close(); nearCommands=null; }

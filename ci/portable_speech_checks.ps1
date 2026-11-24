@@ -20,7 +20,7 @@ if ($Check -eq 'prepare') {
         if ((Get-FileHash $file -Algorithm SHA1).Hash -ne $hash[$name]) { throw 'Unexpected launcher dependency' }
     }
     New-Item -ItemType Directory -Path ci-classes,$fixture -Force | Out-Null
-    javac --release 21 -cp $cp -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java ci/speech-focus/FocusFixture.java ci/speech-focus/current/FixtureCapture.java ci/speech-focus/NearbySpeechFixture.java
+    javac --release 21 -cp $cp -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java ci/speech-focus/FocusFixture.java ci/speech-focus/current/FixtureCapture.java ci/speech-focus/NearbySpeechFixture.java ci/speech-focus/NativeTrace.java
     MustPass
     python ci/cobblemon/stage.py build/speech-mods
     MustPass
@@ -32,6 +32,8 @@ if ($Check -eq 'prepare') {
     python ci/speech-focus/corpus.py $fixture
     MustPass
 } elseif ($Check -eq 'commands') {
+    java -cp $cp dev.mobsear.client.speech.NativeTrace $fixture
+    MustPass
     java -cp $cp dev.mobsear.client.SpeechCuesFixture --windows-speech
     MustPass
 } elseif ($Check -eq 'sentences') {
