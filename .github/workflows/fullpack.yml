@@ -1,7 +1,7 @@
 name: Public-pack Survival speech test
 on:
   push:
-    branches: [codex/proximity-voice-prototype, codex/berry-visit-source]
+    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/no-mob-call-cooldowns]
     paths: ['ci/fullpack/**', '.github/workflows/fullpack.yml']
   workflow_dispatch:
     inputs:
