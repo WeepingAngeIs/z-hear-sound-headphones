@@ -20,6 +20,7 @@ final class CallVocabulary {
             "something nothing getting looking friend bunny funny honey money lantern lanterns chair chairs " +
             "jogging logging talking morning table bridge path fence river outside another anyone holding " +
             "well really like some next have has had meet met grass house better good butterfly butterflies").split(" ")));
+    private final Set<String> compoundParts = new HashSet<>();
     private List<String> nearby = List.of();
     private final Map<String, String> readings = new LinkedHashMap<>();
 
@@ -31,6 +32,13 @@ final class CallVocabulary {
             if (code < 0 || code >= NEAR || names.put(parts[2], code) != null) throw new IOException("Invalid registry code");
             if (parts[1].equals("1")) confirm.add(parts[2]);
             if (parts[1].equals("2")) explicit.add(parts[2]);
+        }
+        for (var entry : names.entrySet()) {
+            String[] pieces=entry.getKey().split(" ");
+            for(int i=1;i<pieces.length;i++) for(String part:List.of(
+                    String.join(" ",Arrays.copyOfRange(pieces,0,i)),String.join(" ",Arrays.copyOfRange(pieces,i,pieces.length)))) {
+                if(names.containsKey(part) && !names.get(part).equals(entry.getValue())) compoundParts.add(part);
+            }
         }
         for (String bird : List.of("watt rel","wat rel","watt rul","watt roll","wat roll","watt trel","wah trel","watchroll","watch roll","watch and roll")) {
             alias(bird, "wattrel");
@@ -91,6 +99,36 @@ final class CallVocabulary {
             case "lanturn" -> s.matches(".*\\b(lanterns?|land turn)\\b.*");
             default -> false;
         };
+    }
+
+    boolean compoundPart(String label) { return compoundParts.contains(label); }
+
+    boolean partialCompound(String label,String text) {
+        if(!compoundParts.contains(label)) return false;
+        String plain=String.join(" ",words(text)).replaceFirst("^(?:hey|call) ","");
+        if(plain.equals(label)) return false;
+        int count=words(plain).size();
+        return count>0 && count<=words(label).size()+3 && !plain.matches(".*\\b(is|was|were|see|saw|here|there|near|over|ran|went|came|found|watch|beside)\\b.*");
+    }
+
+    boolean unregisteredInflection(String text) {
+        for(String word:words(text)) {
+            if(names.containsKey(word)) continue;
+            for(String suffix:List.of("y","ish","like","ness","ing")) {
+                if(word.endsWith(suffix) && word.length()-suffix.length()>=4 &&
+                        names.containsKey(word.substring(0,word.length()-suffix.length()))) return true;
+            }
+        }
+        return false;
+    }
+
+    Match spokenRecovery(String text,String independent) {
+        if(live("lopunny") && !rival("lopunny",independent)) {
+            String heard=" "+String.join(" ",words(text))+" ";
+            if(heard.matches(".*\\b(la[ph]?on[ein]+|lopon[ein]+|la punny|lop bunny|la ponee)\\b.*"))
+                return new Match("lopunny",NEAR|names.get("lopunny"));
+        }
+        return null;
     }
 
     boolean conflicts(String label,String independentlyHeard) {

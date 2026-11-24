@@ -19,10 +19,30 @@ final class WindowsSpeechWorker {
     static Process launch(boolean tracked) throws IOException {
         Path mod = installedMod;
         if (mod == null || !Files.isRegularFile(mod)) mod = location(WindowsSpeechWorker.class);
-        Path jna = location(Native.class);
+        var roots = new java.util.LinkedHashSet<Path>();
+        roots.add(mod);
+        roots.add(location(Native.class));
+        if (Files.isDirectory(mod)) {
+            // A development launch separates compiled classes from resources. Production uses one real JAR.
+            var marker = Path.of("dev", "mobsear", "client", "speech", "model", "english.vocab");
+            var asset = WindowsSpeechWorker.class.getResource("/"+marker.toString().replace(File.separatorChar,'/'));
+            if (asset != null && asset.getProtocol().equals("file")) {
+                try {
+                    Path directory=Path.of(asset.toURI());
+                    for(int i=0;i<marker.getNameCount();i++) directory=directory.getParent();
+                    roots.add(directory);
+                } catch(java.net.URISyntaxException invalid) { throw new IOException("Invalid speech data location",invalid); }
+            } else {
+                for(Path parent=mod;parent!=null;parent=parent.getParent()) {
+                    Path resources=parent.resolve("resources/main");
+                    if(Files.isRegularFile(resources.resolve(marker))) { roots.add(resources); break; }
+                }
+            }
+        }
+        String classpath=roots.stream().map(Path::toString).collect(java.util.stream.Collectors.joining(File.pathSeparator));
         var builder = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java.exe").toString(),
                 "-Xmx96m", "-XX:ActiveProcessorCount=2", "-XX:+UseSerialGC", "-cp",
-                mod + File.pathSeparator + jna, "dev.mobsear.client.speech.SpeechWorker",
+                classpath, "dev.mobsear.client.speech.SpeechWorker",
                 tracked ? "stages" : "quiet");
         // The normal Java launcher's environment may include full-game agents/VM options.
         for (String opt : java.util.List.of("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS"))

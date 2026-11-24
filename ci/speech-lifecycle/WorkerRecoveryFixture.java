@@ -8,6 +8,12 @@ import java.util.concurrent.TimeUnit;
 
 /** Deadline and recovery tests use a worker double, independent of acoustic accuracy. */
 public final class WorkerRecoveryFixture {
+    private static SpeechCues speech(java.util.function.Consumer<Cue> listener) {
+        return new SpeechCues(listener, id->{}, id->{}, null, java.util.Map.of(), java.util.Map.of(), proc->{},
+                tracked -> new ProcessBuilder(Path.of(System.getenv("SystemRoot"),"System32","WindowsPowerShell","v1.0","powershell.exe").toString(),
+                        "-NoProfile","-NonInteractive","-File",Path.of("ci/speech-lifecycle/resources/dev/mobsear/client/recognize.ps1").toAbsolutePath().toString()).start());
+    }
+
     private static void await(java.util.function.BooleanSupplier check, int seconds) throws Exception {
         long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
         while (!check.getAsBoolean() && System.nanoTime()<until) Thread.sleep(25);
@@ -30,7 +36,7 @@ public final class WorkerRecoveryFixture {
     private static void checkFeedback(Path root) throws Exception {
         Files.createFile(root.resolve("test-feedback"));
         var cues = new LinkedBlockingQueue<Cue>();
-        try (var speech = new SpeechCues(cues::add)) {
+        try (var speech = speech(cues::add)) {
             speech.setEnabled(true);
             await(() -> speech.status() == SpeechCues.Status.READY, 12);
             submit(speech);
@@ -93,7 +99,7 @@ public final class WorkerRecoveryFixture {
         if (!"github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))) throw new IllegalStateException("Hosted only");
         Path root=Path.of(System.getenv("MOBSEAR_WORKER_FIXTURE"));
         var cues=new LinkedBlockingQueue<Cue>();
-        try (var speech=new SpeechCues(cues::add)) {
+        try (var speech=speech(cues::add)) {
             speech.setEnabled(true);
             await(()->speech.status()==SpeechCues.Status.READY,10);
             submit(speech);

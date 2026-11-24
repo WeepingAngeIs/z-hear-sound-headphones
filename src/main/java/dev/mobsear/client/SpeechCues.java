@@ -32,6 +32,8 @@ public final class SpeechCues implements AutoCloseable {
     private final Consumer<String> speciesListener;
     private final Consumer<String> entityListener;
     private final Consumer<Process> configureWorker;
+    @FunctionalInterface interface WorkerLauncher { Process start(boolean tracked) throws IOException; }
+    private final WorkerLauncher launcher;
     private final Path aliasFile;
     private volatile List<String> nearbyNames = List.of();
     private volatile List<String> nearbySpecies = List.of();
@@ -67,6 +69,13 @@ public final class SpeechCues implements AutoCloseable {
     SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Consumer<String> entityListener,
                Path aliasFile, Map<String, List<String>> speciesDisplayNames, Map<String, List<String>> entityDisplayNames,
                Consumer<Process> configureWorker) {
+        this(listener,speciesListener,entityListener,aliasFile,speciesDisplayNames,entityDisplayNames,configureWorker,WindowsSpeechWorker::launch);
+    }
+
+    SpeechCues(Consumer<Cue> listener, Consumer<String> speciesListener, Consumer<String> entityListener,
+               Path aliasFile, Map<String, List<String>> speciesDisplayNames, Map<String, List<String>> entityDisplayNames,
+               Consumer<Process> configureWorker, WorkerLauncher launcher) {
+        this.launcher = Objects.requireNonNull(launcher);
         this.listener = Objects.requireNonNull(listener);
         this.speciesListener = Objects.requireNonNull(speciesListener);
         this.entityListener = Objects.requireNonNull(entityListener);
@@ -287,7 +296,7 @@ public final class SpeechCues implements AutoCloseable {
             Process child = null;
             try {
                 var grammar = new SpeechGrammar(aliasFile, registry);
-                child = launch(true);
+                child = launcher.start(true);
                 synchronized (SpeechCues.this) {
                     if (session != this) return;
                     helper = child;

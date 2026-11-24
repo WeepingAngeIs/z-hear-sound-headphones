@@ -121,6 +121,7 @@ final class Sapi implements AutoCloseable {
                     attrs = out.getValue();
                     if (call(attrs, 6, wide("Language"), out) < 0) continue;
                     for (String value : ownedString(out.getValue()).split(";")) {
+                        if (!value.trim().matches("[0-9A-Fa-f]{1,4}")) continue;
                         int lang = Integer.parseUnsignedInt(value.trim(), 16);
                         if ((lang & 0x3ff) == 9) {
                             ok(call(recognizer, 7, token), "select English recognizer");

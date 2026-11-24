@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import zipfile
 import onnx
+from audit_archive import audit
 
 OLD = "0174acc775e6e33f24ccc21f6707e28576527c63c0ab6694234f3ce36aba7708"
 OPS = {"Identity","Cast","Transpose","Conv","Erf","Mul","Add","Sub","ReduceMean","Div","Sqrt",
@@ -16,6 +17,11 @@ BASE = "dev/mobsear/client/speech/model/"
 def main(previous, current):
     raw = previous.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == OLD
+    original_report = audit(raw, "0.3.13")
+    native = {entry["entry"].rsplit("/",1)[-1] for entry in original_report["findings"] if "Windows PE" in entry["reason"]}
+    assert native == {"whisper-cli.exe","whisper.dll","ggml.dll","ggml-cpu.dll","ggml-base.dll"}
+    assert not any(entry["entry"].lower().endswith((".bat",".cmd")) for entry in original_report["findings"])
+    print("Original nested Windows PE files:", ", ".join(sorted(native)))
     with zipfile.ZipFile(io.BytesIO(raw)) as old, zipfile.ZipFile(current) as new:
         protected = [n for n in old.namelist() if n.startswith("assets/") or
                      n.endswith(".class") and n.startswith("dev/mobsear/") and

@@ -10,6 +10,18 @@ public final class NativeTrace {
         int n=1;
         for (String name:List.of("zombie","mobs","mob","enderman","ender man","spider","skeleton","creeper","pikachu","lopunny","hoglin"))
             rows.append(n++).append(":0:").append(name).append('\n');
+        var check=new CallVocabulary("1:0:nidorina\n2:0:nidorino\n3:0:wattrel\n4:0:kilowattrel\n5:0:vivillon\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        for(var ordered:List.of(List.of("nidorina","nidorino"),List.of("nidorino","nidorina"))) {
+            check.nearby(ordered);
+            if(!check.guess("I saw a Nidorine tonight","").label().equals(ordered.getFirst())
+                    || !check.guess("The Nidorino is beside me","").label().equals("nidorino")
+                    || check.guess("Nobody noticed the new notebook","")!=null) throw new AssertionError("Live spelling rank");
+        }
+        check.nearby(List.of("wattrel","vivillon"));
+        if(check.find("look there is a watch and roll",false).code()!=(CallVocabulary.NEAR|3)
+                || check.find("kilo watch and roll",false).code()!=0 || check.find("Vivian",false).code()!=(CallVocabulary.NEAR|5))
+            throw new AssertionError("Spoken names and absent evolution");
+        System.out.println("LIVE_NAME_SELECTION_PASS distance ties, stronger match, ordinary negatives, absence and whole alternatives");
         try (var engine=new Sapi();var words=new WordDecoder()) {
             words.warm();
             new SpeechWorker(new CallVocabulary(rows.toString().getBytes(java.nio.charset.StandardCharsets.US_ASCII)),engine)

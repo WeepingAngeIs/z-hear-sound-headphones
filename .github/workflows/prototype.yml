@@ -28,11 +28,10 @@ jobs:
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
-          cp build/libs/mobsear-0.3.13.jar dist/
-          sha256sum dist/mobsear-0.3.13.jar
-          jar tf dist/mobsear-0.3.13.jar > "$RUNNER_TEMP/mod-contents.txt"
-          grep -qx 'dev/mobsear/client/recognize.ps1' "$RUNNER_TEMP/mod-contents.txt"
-          grep -qx 'dev/mobsear/client/words-win-x64.zip' "$RUNNER_TEMP/mod-contents.txt"
+          cp build/libs/mobsear-0.3.14.jar dist/
+          sha256sum dist/mobsear-0.3.14.jar
+          jar tf dist/mobsear-0.3.14.jar > "$RUNNER_TEMP/mod-contents.txt"
+          python3 ci/audit_archive.py dist/*.jar --version 0.3.14
           if grep -E 'GameTest|Fixture|hearing_floor' "$RUNNER_TEMP/mod-contents.txt"; then exit 1; fi
       - name: Exercise the server in a disposable world
         shell: bash
@@ -44,13 +43,13 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mobs-hear-u
-          path: dist/mobsear-0.3.13.jar
+          path: dist/mobsear-0.3.14.jar
           if-no-files-found: error
       - name: Prepare named test JAR
         if: github.ref_name == 'codex/no-mob-call-cooldowns'
         run: |
           mkdir -p release-name
-          cp dist/mobsear-0.3.13.jar 'release-name/Mic Voice Chat - Mobs & Cobblemon Hear You.jar'
+          cp dist/mobsear-0.3.14.jar 'release-name/Mic Voice Chat - Mobs & Cobblemon Hear You.jar'
           (cd release-name && sha256sum *.jar > SHA256SUMS.txt && cat SHA256SUMS.txt)
       - name: Attach named test JAR and checksum
         if: github.ref_name == 'codex/no-mob-call-cooldowns'
@@ -89,6 +88,7 @@ jobs:
       - name: Boot and stop the exact production jar in an isolated server
         run: python3 ci/packaged_server.py ${{ matrix.loader }} dist/*.jar
   windows-speech:
+    needs: game
     name: Offline Windows speech from synthetic PCM
     runs-on: windows-2022
     timeout-minutes: 12
@@ -100,39 +100,26 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Prepare the pinned public English species vocabulary
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mobs-hear-u
+          path: dist
+      - name: Prepare exact packaged speech dependencies and generated fixture corpus
         shell: powershell
-        run: |
-          python ci/prepare_word_model.py
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python ci/cobblemon/stage.py build/speech-mods
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python ci/cobblemon/public_species.py --vocabulary build/speech-species.tsv
-      - name: Exercise the desktop recognizer in memory
+        run: ./ci/portable_speech_checks.ps1 prepare
+      - name: Exercise packaged Windows recognition from generated input
         shell: powershell
         env:
           MOBSEAR_SYNTH_PROOF_DIR: build/synthetic-speech
-          MOBSEAR_SYNTHETIC_WORKER_FAULTS: '1'
           MOBSEAR_CUE_PROOF: recognized-calls.txt
-          MOBSEAR_SPEECH_CATALOG: build/speech-species.tsv
           MOBSEAR_SPECIES_PROOF: recognized-species.txt
-        run: |
-          Add-Type -AssemblyName System.Speech
-          [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object Id,Culture
-          New-Item -ItemType Directory ci-classes | Out-Null
-          javac --release 21 --source-path src/main/java -d ci-classes src/test/java/dev/mobsear/client/SpeechCuesFixture.java
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          java -cp 'ci-classes;src/main/resources;build/generated/offline-speech' dev.mobsear.client.SpeechCuesFixture --windows-speech
-      - name: Check late decisions and bounded worker recovery with a synthetic worker
+        run: ./ci/portable_speech_checks.ps1 commands
+      - name: Check rejection feedback, bounded timeouts and recovery
         shell: powershell
-        run: |
-          $env:MOBSEAR_WORKER_FIXTURE=Join-Path $env:RUNNER_TEMP 'speech-timeout-fixture'
-          New-Item -ItemType Directory -Path $env:MOBSEAR_WORKER_FIXTURE | Out-Null
-          javac --release 21 -cp ci-classes -d ci-classes ci/speech-lifecycle/WorkerRecoveryFixture.java
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          java -cp 'ci/speech-lifecycle/resources;ci-classes;src/main/resources' dev.mobsear.client.WorkerRecoveryFixture
+        run: ./ci/portable_speech_checks.ps1 lifecycle
       - name: Keep the stock synthetic speech pitch demo
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -150,6 +137,7 @@ jobs:
             build/speech-species.tsv
           if-no-files-found: error
   sentence-speech:
+    needs: game
     name: Whole names in connected speech on Windows
     runs-on: windows-2022
     timeout-minutes: 12
@@ -161,32 +149,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Feed generated sentences through capture, segmentation and the Windows recognizer
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mobs-hear-u
+          path: dist
+      - name: Prepare exact packaged speech dependencies and generated fixture corpus
         shell: powershell
-        env:
-          MOBSEAR_SPEECH_CATALOG: build/speech-species.tsv
+        run: ./ci/portable_speech_checks.ps1 prepare
+      - name: Whole names and nearby alternatives from generated speech
+        shell: powershell
         run: |
-          python ci/prepare_word_model.py
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python ci/cobblemon/stage.py build/speech-mods
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python ci/cobblemon/speech_names.py build/speech-mods build/speech-species.tsv
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python ci/cobblemon/public_species.py --vocabulary build/speech-species.tsv
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $fixture = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'sentence-fixture')
-          ./ci/speech-focus/make.ps1 $fixture.FullName
-          python ci/speech-focus/corpus.py $fixture.FullName
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          javac --release 21 --source-path src/main/java -d ci-classes ci/speech-focus/FocusFixture.java ci/speech-focus/current/FixtureCapture.java
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          java -cp 'ci-classes;src/main/resources;build/generated/offline-speech' dev.mobsear.client.FocusFixture $fixture.FullName mentions
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ./ci/speech-focus/nearby.ps1 $fixture.FullName
-          $nearbyExit = $LASTEXITCODE
-          python ci/speech-focus/mentions.py $fixture.FullName
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          exit $nearbyExit
+          ./ci/portable_speech_checks.ps1 sentences
+          ./ci/portable_speech_checks.ps1 nearby
   focused-speech:
     name: Spoken pronunciation and false-positive comparisons
     needs: windows-speech
@@ -210,29 +187,19 @@ jobs:
           ref: c1e3a51d3c41f4e0d9a7c82cfc71ad5bb7c9fe10
           path: speech-baseline
           persist-credentials: false
-      - name: Compare spoken Enderman and Lopunny on the same generated voices
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mobs-hear-u
+          path: dist
+      - name: Prepare exact packaged speech dependencies and generated fixture corpus
         shell: powershell
-        env:
-          MOBSEAR_SPEECH_CATALOG: comparison-inputs/build/speech-species.tsv
-        run: |
-          python ci/prepare_word_model.py
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $fixtureRoot = Join-Path $env:RUNNER_TEMP 'focused-speech'
-          New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
-          ./ci/speech-focus/make.ps1 $fixtureRoot
-          python ci/speech-focus/corpus.py $fixtureRoot
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          foreach ($variant in @('baseline','candidate')) {
-            $sources = if ($variant -eq 'baseline') { 'speech-baseline/src/main' } else { 'src/main' }
-            $classes = Join-Path $fixtureRoot $variant
-            New-Item -ItemType Directory -Path $classes | Out-Null
-            $capture = if ($variant -eq 'baseline') { 'baseline' } else { 'current' }
-            javac --release 21 --source-path "$sources/java" -d $classes ci/speech-focus/FocusFixture.java "ci/speech-focus/$capture/FixtureCapture.java"
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-            java -cp "$classes;$sources/resources;build/generated/offline-speech" dev.mobsear.client.FocusFixture $fixtureRoot $variant
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          }
-          python ci/speech-focus/compare.py $fixtureRoot
+        run: ./ci/portable_speech_checks.ps1 prepare
+      - name: Compare spoken Enderman and Lopunny on identical generated input
+        shell: powershell
+        run: ./ci/portable_speech_checks.ps1 focused
   integrated:
     name: Single-player world and local connection on NeoForge 21.1.249
     needs: windows-speech

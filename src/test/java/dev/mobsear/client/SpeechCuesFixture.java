@@ -274,6 +274,17 @@ public final class SpeechCuesFixture {
                 "Global species pack display names");
         long started = System.nanoTime();
         int[] result = decisions(SpeechCues.launch(), grammar, clips);
+        String traceFolder=System.getenv("MOBSEAR_SYNTH_TRACE_DIR");
+        if(traceFolder!=null && "github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))) {
+            Path folder=Path.of(traceFolder);
+            Files.createDirectories(folder);
+            try(var pipe=new DataOutputStream(Files.newOutputStream(folder.resolve("synthetic-catalog.bin")))){grammar.writeTo(pipe);}
+            for(int i=0;i<result.length;i++) {
+                int code=result[i];
+                if(Arrays.stream(expected[i]).noneMatch(n->n==code))
+                    Files.write(folder.resolve("synthetic-catalog-"+i+".pcm"),clips[i]);
+            }
+        }
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
         for (int i = 0; i < result.length; i++) {
             int decision = result[i];
@@ -543,7 +554,7 @@ public final class SpeechCuesFixture {
                 require(input.readUnsignedShort() == expected[i], "Tester mode changed the command decision");
                 if (detail) {
                     int length = input.readUnsignedByte();
-                    require(length <= 96 && (i == 1 ? length > 0 : length == 0), "Unexpected private hint length");
+                    require(length <= 96 && (i == 1 ? length > 0 : length == 0), "Unexpected private hint length for generated case "+i+": "+length);
                     byte[] local = new byte[length];
                     input.readFully(local);
                     require(new String(local, StandardCharsets.UTF_8).length() <= 32, "Tester guess exceeded display limit");

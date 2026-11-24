@@ -128,9 +128,11 @@ public final class SpeechWorker {
         String plain=first.grammar()==dictation.id ? first.text() : "";
         CallVocabulary.Match exact=match(first.text());
         if(first.accepted() && exact!=null && first.confidence()>=.58 && !vocab.confirm.contains(exact.label())
+                && (!plain.isEmpty() || !vocab.compoundPart(exact.label()) || first.text().toLowerCase(Locale.ROOT).startsWith("call "))
+                && !vocab.partialCompound(exact.label(), first.text()) && !vocab.partialCompound(exact.label(),plain)
                 && !CallVocabulary.rival(exact.label(),plain))
             return new Reply(exact.code(),"");
-        if(REJECT.contains(plain.toLowerCase(Locale.ROOT)) && exact==null) return new Reply(0,hint);
+        if(REJECT.contains(String.join(" ",CallVocabulary.words(plain))) && exact==null) return new Reply(0,hint);
         // Independent open dictation for close registered names and conversational rivals.
         if(plain.isEmpty()) {
             commands.enabled(false);
@@ -140,13 +142,14 @@ public final class SpeechWorker {
                 plain=open.text();
                 if(hint.isEmpty() && detail) hint=plain;
                 var free=match(plain);
-                if(open.accepted() && free!=null && open.confidence()>=.58 && !CallVocabulary.rival(free.label(),plain))
+                if(open.accepted() && free!=null && open.confidence()>=.58 && !vocab.partialCompound(free.label(),plain) && !CallVocabulary.rival(free.label(),plain))
                     return new Reply(free.code(),"");
             } finally {
                 commands.enabled(true);
                 if(nearCommands!=null) nearCommands.enabled(true);
             }
         }
+        if (vocab.unregisteredInflection(plain) && match(plain)==null) return new Reply(0,hint);
         if(phonemes!=null && CallVocabulary.words(plain).size()<=3) {
             phonemes.enabled(true);
             commands.enabled(false);
@@ -169,9 +172,13 @@ public final class SpeechWorker {
                 return new Reply(65534,"");
             }
             var exactWord=match(decoded);
-            if(exactWord!=null && !vocab.conflicts(exactWord.label(),plain)) {
+            if(exactWord!=null) {
+                if(vocab.conflicts(exactWord.label(),plain) || vocab.partialCompound(exactWord.label(),decoded))
+                    return new Reply(0,hint);
                 return new Reply(exactWord.code(),"");
             }
+            var pronouncedWord=vocab.spokenRecovery(decoded,plain);
+            if(pronouncedWord!=null) return new Reply(pronouncedWord.code(),"");
             var relative=vocab.guess(decoded,plain);
             if(relative!=null) return new Reply(relative.code(),"");
             if(detail && hint.isEmpty()) hint=decoded;
@@ -197,13 +204,13 @@ public final class SpeechWorker {
             }
         }
         if(independent!=null && first.accepted()) return new Reply(independent.code(),"");
-        if(!first.accepted() || first.confidence()<.12) {
+        if(!first.accepted() || first.confidence()<.12 || plain.toLowerCase(Locale.ROOT).startsWith("call ")) {
             dictation.enabled(false);
             try {
                 var restricted=engine.recognize(pcm);
                 var m=match(restricted.text());
                 if(restricted.accepted() && restricted.confidence()>=(vocab.names.size()>256?.90:.72) && m!=null
-                        && !vocab.confirm.contains(m.label()) && !CallVocabulary.rival(m.label(),plain))
+                        && !vocab.confirm.contains(m.label()) && !vocab.partialCompound(m.label(),plain) && !CallVocabulary.rival(m.label(),plain))
                     return new Reply(m.code(),"");
             } finally { dictation.enabled(true); }
         }
