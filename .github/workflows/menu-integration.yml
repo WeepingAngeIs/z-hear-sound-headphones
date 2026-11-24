@@ -1,7 +1,7 @@
 name: Menu integration
 on:
   push:
-    branches: [codex/proximity-voice-prototype, main]
+    branches: [codex/proximity-voice-prototype, codex/gui-scale, main]
     paths: ['src/main/java/dev/mobsear/client/**', 'src/main/resources/**', 'ci/multiplayer/**', '.github/workflows/menu-integration.yml', 'build.gradle']
   workflow_dispatch:
 permissions:
@@ -20,10 +20,25 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - name: Build the production JAR on NeoForge 21.1.249
+        if: github.ref_name == 'codex/gui-scale'
+        run: |
+          bash gradlew --no-daemon build
+          mkdir -p dist
+          cp build/libs/mobsear-0.3.12.jar 'dist/Mic Voice Chat - Mobs & Cobblemon Hear You.jar'
+          sha256sum dist/*.jar
       - name: Open each original and animated menu in a modded client
         env:
           MOBSEAR_PUBLIC_MENU_STACK: '1'
+          MOBSEAR_GUI_ONLY: ${{ github.ref_name == 'codex/gui-scale' && '1' || '0' }}
         run: xvfb-run -a -s '-screen 0 1440x900x24' bash ci/multiplayer/run.sh
+      - name: Keep the verified GUI build
+        if: success() && github.ref_name == 'codex/gui-scale'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-voice-gui
+          path: dist/*.jar
+          if-no-files-found: error
       - name: Keep actual modded-client screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

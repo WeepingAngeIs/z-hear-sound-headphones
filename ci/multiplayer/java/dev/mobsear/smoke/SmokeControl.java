@@ -59,6 +59,11 @@ public final class SmokeControl {
     }
 
     private void receive(ServerPlayer player, int value) {
+        if ("1".equals(System.getenv("MOBSEAR_GUI_ONLY")) && value >= 1000 && value <= 1003) {
+            dev.mobsear.server.RuleIsolationProof.verify(player, (value & 1) != 0, (value & 2) != 0);
+            PacketDistributor.sendToPlayer(player, new Barrier(value));
+            return;
+        }
         if (DistractionSmoke.handles(value)) { DistractionSmoke.acknowledge(player,value); return; }
         if (GazeSmoke.handles(value)) { GazeSmoke.acknowledge(player, value); return; }
         var server = player.serverLevel().getServer();

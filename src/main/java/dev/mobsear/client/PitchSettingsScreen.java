@@ -18,6 +18,7 @@ public final class PitchSettingsScreen extends Screen {
     private final VoiceWidgets.Palette colors;
     private final ResourceLocation scene;
     private int x, y, widthPanel, heightPanel, controlX, controlW;
+    private VoiceControlList scrolling;
     private VoiceWidgets.Button bypass;
     private VoiceWidgets.Slider slider, reverb;
     private final Map<String, VoiceWidgets.Button> presets = new LinkedHashMap<>();
@@ -33,19 +34,22 @@ public final class PitchSettingsScreen extends Screen {
     }
 
     @Override protected void init() {
-        widthPanel = Math.min(340, width - 12);
-        heightPanel = Math.min(194, height - 8);
+        widthPanel = Math.min(274, width - 8);
+        heightPanel = Math.min(152, height - 8);
         x = (width - widthPanel) / 2;
         y = (height - heightPanel) / 2;
         controlX = x + 12;
         controlW = widthPanel - 24;
         presets.clear();
-        bypass = button(controlX, y + 34, controlW, t("pitch.title"), () -> {
+        double offset = scrolling == null ? 0 : scrolling.getScrollAmount();
+        scrolling = heightPanel < 146 ? addRenderableWidget(new VoiceControlList(minecraft, controlX,
+                y + 23, controlW, Math.max(20, heightPanel - 48), 16)) : null;
+        bypass = button(controlX, y + 24, controlW, t("pitch.title"), () -> {
             prefs.setPitchEnabled(!prefs.pitchEnabled());
             updateBypass();
         });
         updateBypass();
-        slider = addRenderableWidget(new VoiceWidgets.Slider(controlX, y + 61, controlW, 20,
+        slider = control(new VoiceWidgets.Slider(controlX, y + 45, controlW, 16,
                 t("pitch.slider"), prefs.pitchCents() + PITCH_RANGE_CENTS, 2 * PITCH_RANGE_CENTS, colors,
                 v -> t("pitch.value", amount(v)), v -> {
                     prefs.setPitchCents(v - PITCH_RANGE_CENTS);
@@ -58,7 +62,7 @@ public final class PitchSettingsScreen extends Screen {
             int end = (controlW + 2) * (i + 1) / choices.length - 2;
             preset(controlX + start, end - start, choices[i]);
         }
-        reverb = addRenderableWidget(new VoiceWidgets.Slider(controlX, y + 135, controlW, 19,
+        reverb = control(new VoiceWidgets.Slider(controlX, y + 109, controlW, 16,
                 t("pitch.reverb"), prefs.reverbAmount(), 100, colors,
                 v -> t("pitch.reverb.value", reverbLabel(v)), v -> {
                     prefs.setReverbAmount(v);
@@ -66,13 +70,14 @@ public final class PitchSettingsScreen extends Screen {
                     updateBypass();
                 }, this::reverbLabel));
         updateSelection();
-        button(controlX, y + heightPanel - 26, Math.min(125, controlW - 76), t("pitch.reset"), () -> {
+        button(controlX, y + heightPanel - 21, Math.min(125, controlW - 76), t("pitch.reset"), () -> {
             prefs.resetPitch();
             slider.showValue(PITCH_RANGE_CENTS);
             reverb.showValue(0);
             updateSelection();
         });
-        button(controlX + controlW - 67, y + heightPanel - 26, 67, CommonComponents.GUI_BACK, this::onClose);
+        if (scrolling != null) scrolling.setScrollAmount(offset);
+        addRenderableWidget(new VoiceWidgets.Button(controlX + controlW - 67, y + heightPanel - 21, 67, 16, CommonComponents.GUI_BACK, colors, VoiceWidgets.Style.ROW, false, null, null, this::onClose));
     }
 
     private Component amount(int value) {
@@ -95,7 +100,7 @@ public final class PitchSettingsScreen extends Screen {
     }
 
     private void preset(int at, int w, String key) {
-        presets.put(key, button(at, y + 111, w, t("pitch." + key), () -> {
+        presets.put(key, button(at, y + 89, w, t("pitch." + key), () -> {
             prefs.setPitchPreset(key);
             prefs.setPitchEnabled(true);
             slider.showValue(prefs.pitchCents() + PITCH_RANGE_CENTS);
@@ -104,22 +109,29 @@ public final class PitchSettingsScreen extends Screen {
     }
 
     private VoiceWidgets.Button button(int at, int top, int w, Component name, Runnable click) {
-        return addRenderableWidget(new VoiceWidgets.Button(at, top, w, 19, name, colors,
+        return control(new VoiceWidgets.Button(at, top, w, 16, name, colors,
                 VoiceWidgets.Style.ROW, false, null, null, click));
+    }
+
+    private <T extends net.minecraft.client.gui.components.AbstractWidget> T control(T widget) {
+        if (scrolling == null) return addRenderableWidget(widget);
+        scrolling.put(widget);
+        return widget;
     }
 
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partial) {
         if (minecraft.level == null) renderPanorama(g, partial);
         VoiceSettingsScreen.drawFrame(g, colors, scene, parent.sceneFrame(), font, title,
-                width, height, x, y, widthPanel, heightPanel, y + 31);
+                width, height, x, y, widthPanel, heightPanel, y + 21);
+        if (scrolling != null) return;
         int left = controlX, right = controlX + controlW;
-        g.fill(left - 3, y + 56, right + 3, y + 98, 0xab17141b);
-        int textY = y + 85;
+        g.fill(left - 3, y + 42, right + 3, y + 75, 0xab17141b);
+        int textY = y + 64;
         g.drawString(font, t("pitch.deep"), left + 2, textY, colors.text(), false);
         g.drawCenteredString(font, t("pitch.natural"), (left + right) / 2, textY, colors.text());
         var high = t("pitch.squeaky");
         g.drawString(font, high, right - font.width(high) - 2, textY, colors.text(), false);
-        g.drawString(font, t("pitch.presets"), left, y + 101, colors.text(), true);
+        g.drawString(font, t("pitch.presets"), left, y + 78, colors.text(), true);
     }
 
     @Override public boolean isPauseScreen() { return false; }

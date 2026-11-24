@@ -28,7 +28,7 @@ public final class PokemonReactions {
         Integer previous = lastQuery.get(player);
         if (previous != null && tick - previous < 8) return;
         lastQuery.put(player, tick);
-        var ids = ServerVoice.eligible(player)
+        var ids = dev.mobsear.MobsEar.mobCallsAvailable() && ServerVoice.eligible(player)
                 && !NearbyMics.inputBlocked(player) ? CobblemonCalls.nearbySpecies(player, radius) : List.<ResourceLocation>of();
         PacketDistributor.sendToPlayer(player, new Packets.NearbySpecies(player.level().dimension().location(), ids));
     }

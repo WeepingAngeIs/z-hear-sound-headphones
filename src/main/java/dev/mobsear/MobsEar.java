@@ -31,12 +31,13 @@ public final class MobsEar {
             SOUNDS.register("nom_nom", net.minecraft.sounds.SoundEvent::createVariableRangeEvent);
     private static final ModConfigSpec SERVER_CONFIG;
     private static final ModConfigSpec.IntValue radius, hordeCooldown, hordeCap;
-    private static final ModConfigSpec.BooleanValue hordeEnabled;
+    private static final ModConfigSpec.BooleanValue callsEnabled, hordeEnabled;
     private static final WeakHashMap<ServerPlayer, Integer> lastHordeRequest = new WeakHashMap<>();
     static {
         var config = new ModConfigSpec.Builder();
         radius = config.comment("Hearing distance in blocks for players and mob calls.")
                 .defineInRange("voiceRadius", 32, 1, 96);
+        callsEnabled = config.comment("Allow players to call mobs and wild Pokémon by voice.").define("mobCallsEnabled", true);
         hordeEnabled = config.comment("Offer voluntary stay-quiet encounters to players on this server.")
                 .define("hordeEnabled", false);
         hordeCooldown = config.comment("Minimum seconds between encounters for the same player.")
@@ -55,6 +56,38 @@ public final class MobsEar {
     public static Consumer<Packets.Visit> visitStatus = reply -> {};
     public static java.util.function.Predicate<java.util.UUID> localVisitor = id -> false;
     public static Consumer<Packets.MobPose> mobPose = pose -> {};
+
+    public static Consumer<Packets.ServerRules> serverRules = rules -> {};
+    public static boolean mobCallsAvailable() { return SERVER_CONFIG.isLoaded() && callsEnabled.getAsBoolean(); }
+
+    private static boolean canManage(ServerPlayer player) {
+        return player.hasPermissions(4) || player.serverLevel().getServer().isSingleplayerOwner(player.getGameProfile());
+    }
+
+    private static void replyRules(ServerPlayer player) {
+        if (player.connection.hasChannel(Packets.ServerRules.TYPE))
+            PacketDistributor.sendToPlayer(player, new Packets.ServerRules(mobCallsAvailable(), hordeAvailable(), canManage(player)));
+    }
+
+    private static void handleRules(ServerPlayer sender, Packets.RuleAction action) {
+        if (action == Packets.RuleAction.QUERY || !canManage(sender)) {
+            replyRules(sender);
+            return;
+        }
+        var setting = switch (action) {
+            case CALLS_ON, CALLS_OFF -> callsEnabled;
+            case HORROR_ON, HORROR_OFF -> hordeEnabled;
+            default -> throw new IllegalArgumentException();
+        };
+        boolean enabled = action == Packets.RuleAction.CALLS_ON || action == Packets.RuleAction.HORROR_ON;
+        if (setting.getAsBoolean() == enabled) {
+            replyRules(sender);
+            return;
+        }
+        setting.set(enabled);
+        SERVER_CONFIG.save();
+        sender.serverLevel().getServer().getPlayerList().getPlayers().forEach(MobsEar::replyRules);
+    }
 
     public static boolean hordeAvailable() { return SERVER_CONFIG.isLoaded() && hordeEnabled.getAsBoolean(); }
     /** Kept for existing integrations. Every eligible species call now requests an approach. */
@@ -80,6 +113,9 @@ public final class MobsEar {
         NeoForge.EVENT_BUS.addListener(HordeMode::experience);
         NeoForge.EVENT_BUS.addListener(HordeMode::convert);
         NeoForge.EVENT_BUS.addListener(HordeMode::travel);
+        NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent event) -> {
+            if (event.getEntity() instanceof ServerPlayer player) replyRules(player);
+        });
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> forget(event, false));
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerChangedDimensionEvent event) -> forget(event, true));
         NeoForge.EVENT_BUS.addListener((PlayerEvent.Clone event) -> {
@@ -112,6 +148,10 @@ public final class MobsEar {
 
     private void register(RegisterPayloadHandlersEvent event) {
         var reg = event.registrar("1").optional();
+        reg.playToServer(Packets.RuleRequest.TYPE, Packets.RuleRequest.CODEC, (request, ctx) -> {
+            if (ctx.player() instanceof ServerPlayer sender) handleRules(sender, request.action());
+        });
+        reg.playToClient(Packets.ServerRules.TYPE, Packets.ServerRules.CODEC, (rules, ctx) -> serverRules.accept(rules));
         reg.playToClient(Packets.MobPose.TYPE, Packets.MobPose.CODEC, (packet, context) -> mobPose.accept(packet));
         reg.playToClient(Packets.Heard.TYPE, Packets.Heard.CODEC, (packet, context) -> callHeard.accept(packet));
         reg.playToClient(Packets.CallDeclined.TYPE, Packets.CallDeclined.CODEC, (packet, context) -> callDeclined.accept(packet));

@@ -1,4 +1,8 @@
 {
+  "mobsear.settings.server.title": "Server Settings",
+  "mobsear.settings.server.calls": "Mob Calls",
+  "mobsear.settings.server.horror": "Horror",
+  "mobsear.settings.server.wait": "Loading",
   "subtitles.mobsear.nom_nom": "Pokémon munches a berry",
   "key.categories.mobsear": "Mobs Hear U",
   "mobsear.settings.title": "Proximity Voice",

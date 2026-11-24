@@ -117,11 +117,29 @@ wait_for() {
   echo "Timed out waiting for $role to report $marker" >&2
   return 1
 }
+if [[ ${MOBSEAR_GUI_ONLY:-} == 1 ]]; then
+  python3 - "$MOBSEAR_SMOKE_DIR/server/ops.json" <<'PY'
+import hashlib, json, sys, uuid
+digest = hashlib.md5(b"OfflinePlayer:MicFixtureB").digest()
+with open(sys.argv[1], "w") as target:
+    json.dump([dict(uuid=str(uuid.UUID(bytes=digest, version=3)), name="MicFixtureB", level=4, bypassesPlayerLimit=False)], target)
+PY
+  # Reuse an existing server config and exercise migration when mobCallsEnabled is absent.
+  echo 'hordeEnabled = false' > "$MOBSEAR_SMOKE_DIR/server/config/mobsear-server.toml"
+fi
 launch smokeServer
 wait_for smokeServer 'Done (' 240
 launch smokeSpeaker
 wait_for smokeSpeaker 'MOBSEAR_CLIENT_READY' 200
 launch smokeListener
+if [[ ${MOBSEAR_GUI_ONLY:-} == 1 ]]; then
+  wait_for smokeListener 'MOBSEAR_ADMIN_GUI_PASS' 300
+  grep -F 'MOBSEAR_GUI_' "$MOBSEAR_SMOKE_DIR"/{smokeSpeaker,smokeListener,smokeServer}.console
+  grep -F 'MOBSEAR_ADMIN_GUI_PASS' "$MOBSEAR_SMOKE_DIR/smokeListener.console"
+  grep -E 'mobCallsEnabled = false|hordeEnabled = true' "$MOBSEAR_SMOKE_DIR/server/config/mobsear-server.toml" | sort -u | grep -c . | grep -x 2
+  collect_images
+  exit 0
+fi
 if [[ ${MOBSEAR_PUBLIC_MENU_STACK:-} == 1 ]]; then
   wait_for smokeListener 'MOBSEAR_MENU_PASS' 500
   grep -F 'MOBSEAR_PUBLIC_MENU_STACK' "$MOBSEAR_SMOKE_DIR/smokeListener.console"

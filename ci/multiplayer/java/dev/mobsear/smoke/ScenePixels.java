@@ -22,11 +22,11 @@ final class ScenePixels {
         int matches = 0;
         for (int phase = 1; phase < 8; phase++) {
             int[] actual = pixels(ImageIO.read(dir.resolve(prefix + phase + ".png").toFile()));
-            // In this 854×480 fixture the full 192×96 art covers [10,844) × [12,468).
-            for (int y = 78; y < 466; y++) {
-                int ty = (2 * (y - 12) + 1) * 96 / (2 * 456);
-                for (int x = 12; x < 842; x++) {
-                    int tx = (2 * (x - 10) + 1) * 192 / (2 * 834);
+            // In this 854×480 fixture the full 192×96 art covers [50,802) × [34,446).
+            for (int y = 78; y < 444; y++) {
+                int ty = (2 * (y - 34) + 1) * 96 / (2 * 412);
+                for (int x = 52; x < 800; x++) {
+                    int tx = (2 * (x - 50) + 1) * 192 / (2 * 752);
                     int offset = ty * 192 + tx;
                     int initial = atlas[offset], next = atlas[phase * 192 * 96 + offset];
                     if (next == initial) continue;

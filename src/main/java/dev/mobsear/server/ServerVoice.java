@@ -44,6 +44,11 @@ public final class ServerVoice {
     private static boolean acceptCall(ServerPlayer speaker, long requestId) {
         TalkWindow window = sessions.get(speaker);
         CallFailure failure;
+        if (!MobsEar.mobCallsAvailable()) {
+            if (speaker.connection != null && speaker.connection.hasChannel(Packets.ServerRules.TYPE))
+                decline(speaker, requestId, CallFailure.SERVER_DISABLED);
+            return false;
+        }
         if (!eligible(speaker)) failure = CallFailure.GAME_MODE;
         else if (NearbyMics.inputBlocked(speaker)) failure = CallFailure.INPUT_BLOCKED;
         else failure = window == null ? CallFailure.NO_RECENT_VOICE : window.tryCue(System.nanoTime());

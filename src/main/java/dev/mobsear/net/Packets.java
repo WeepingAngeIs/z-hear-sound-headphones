@@ -33,6 +33,23 @@ public final class Packets {
         return flag == 1;
     }
 
+    public enum RuleAction { QUERY, CALLS_ON, CALLS_OFF, HORROR_ON, HORROR_OFF }
+
+    public record RuleRequest(RuleAction action) implements CustomPacketPayload {
+        public static final Type<RuleRequest> TYPE = id("server_rule_request");
+        public static final StreamCodec<FriendlyByteBuf, RuleRequest> CODEC = StreamCodec.of(
+                (buf, request) -> buf.writeEnum(request.action), buf -> new RuleRequest(buf.readEnum(RuleAction.class)));
+        @Override public Type<RuleRequest> type() { return TYPE; }
+    }
+
+    public record ServerRules(boolean calls, boolean horror, boolean editable) implements CustomPacketPayload {
+        public static final Type<ServerRules> TYPE = id("server_rules");
+        public static final StreamCodec<FriendlyByteBuf, ServerRules> CODEC = StreamCodec.of((buf, rules) -> {
+            buf.writeBoolean(rules.calls); buf.writeBoolean(rules.horror); buf.writeBoolean(rules.editable);
+        }, buf -> new ServerRules(buf.readBoolean(), buf.readBoolean(), readFlag(buf)));
+        @Override public Type<ServerRules> type() { return TYPE; }
+    }
+
     public record HordeOpt(boolean optedIn) implements CustomPacketPayload {
         public static final Type<HordeOpt> TYPE = id("horde_opt");
         public static final StreamCodec<FriendlyByteBuf, HordeOpt> CODEC =

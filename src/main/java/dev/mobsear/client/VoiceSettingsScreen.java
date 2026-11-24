@@ -1,7 +1,7 @@
 package dev.mobsear.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import dev.mobsear.MobsEar;
+import dev.mobsear.net.Packets;
 import dev.mobsear.client.VoiceWidgets.Palette;
 import dev.mobsear.client.VoiceWidgets.Style;
 import java.util.ArrayList;
@@ -28,8 +28,6 @@ public final class VoiceSettingsScreen extends Screen {
     private static final SystemToast.SystemToastId SAVE_ERROR = new SystemToast.SystemToastId();
     private final Screen parent;
     private final VoicePreferences prefs;
-    private final BooleanSupplier mobCalls;
-    private final Consumer<Boolean> changeMobCalls;
     private final Predicate<UUID> speaking;
     private final Map<String, AbstractWidget> controls = new HashMap<>();
     private List<VoicePreferences.Device> inputs, outputs;
@@ -38,8 +36,8 @@ public final class VoiceSettingsScreen extends Screen {
     private VoiceControlList audio;
     private MenuTheme theme;
     private ResourceLocation scene;
-    private boolean shownHorde;
-    private int rosterTicks;
+    private boolean shownAdmin, inlineAppearance;
+    private int rosterTicks, ruleTicks;
     private int left, top, panelWidth, panelHeight, leftX, leftWidth, rightX, rightWidth;
     private int bodyY, appearanceY, footerY, rowHeight, sectionHeight;
     private String focusAfterRefresh;
@@ -49,8 +47,6 @@ public final class VoiceSettingsScreen extends Screen {
         super(t("title"));
         this.parent = parent;
         this.prefs = prefs;
-        this.mobCalls = mobCalls;
-        this.changeMobCalls = changeMobCalls;
         this.speaking = isSpeaking;
     }
 
@@ -64,23 +60,24 @@ public final class VoiceSettingsScreen extends Screen {
         scene = theme.hasScene() ? ResourceLocation.fromNamespaceAndPath("mobsear",
                 "textures/gui/themes/" + theme.id() + ".png") : null;
         colors = Palette.forTheme(prefs.theme());
-        panelWidth = Math.min(550, Math.max(120, width - 8));
-        panelHeight = Math.min(280, Math.max(100, height - 8));
+        panelWidth = Math.min(378, width - 8);
+        panelHeight = Math.min(210, height - 8);
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
-        int inset = panelWidth >= 400 ? 10 : 6;
-        int gap = panelWidth >= 400 ? 7 : 4;
+        int inset = 6;
+        int gap = 4;
         leftX = left + inset;
         int contentWidth = panelWidth - inset * 2;
-        leftWidth = (contentWidth - gap) * 43 / 100;
+        leftWidth = (contentWidth - gap) * 48 / 100;
         rightX = leftX + leftWidth + gap;
         rightWidth = contentWidth - leftWidth - gap;
-        bodyY = top + (panelHeight < 186 ? 22 : 32);
-        footerY = top + panelHeight - (panelHeight < 186 ? 21 : 26);
-        sectionHeight = panelHeight < 186 ? 13 : 16;
-        rowHeight = Math.clamp((footerY - bodyY - sectionHeight * 2 - 20) / 7, 13, 22);
-        int themeHeight = Math.min(18, rowHeight);
-        appearanceY = footerY - sectionHeight - 3 * (themeHeight + 2) - 7;
+        bodyY = top + 21;
+        footerY = top + panelHeight - 22;
+        sectionHeight = 13;
+        rowHeight = 16;
+        int themeHeight = 14;
+        inlineAppearance = panelHeight < 168;
+        appearanceY = inlineAppearance ? footerY : footerY - sectionHeight - 3 * (themeHeight + 2) - 5;
         int x = leftX + 3, w = leftWidth - 6;
         int y = bodyY + sectionHeight + 2;
         if (inputs == null) inputs = deviceOptions(true);
@@ -101,34 +98,32 @@ public final class VoiceSettingsScreen extends Screen {
         toggle("noise", prefs.noiseSuppression(), true, prefs::setNoiseSuppression);
         toggle("meter", VoiceClient.testingMic(), VoiceClient.connected() && !prefs.muted() && !prefs.deafened(),
                 VoiceClient::setTestingMic);
-        addMobCalls(x, y, w);
         toggle("recognition_diagnostics", prefs.recognitionDiagnostics(), true, prefs::setRecognitionDiagnostics);
         toggle("call_debug_log", prefs.callDebugLog(), true, prefs::setCallDebugLog);
-        shownHorde = VoiceClient.hordeEnabled();
-        toggle("horde", shownHorde, VoiceClient.connected() && MobsEar.hordeAvailable(), VoiceClient::setHordeEnabled);
         cycle("mic_style", prefs.micStyle(), List.of("auto","uwu","emo","vanilla","amethyst"), prefs::setMicStyle);
         cycle("accent", prefs.accent(), List.of("auto","rose","gold","mint","aqua","violet"), prefs::setAccent);
         toggle("hud", prefs.hudVisible(), true, prefs::setHudVisible);
         toggle("nameplates", prefs.nameplates(), true, prefs::setNameplates);
         cycle("motion", prefs.effects(), List.of("full","reduced","off"), prefs::setEffects);
-        audio.setScrollAmount(audioScroll);
+
         int themeY = appearanceY + sectionHeight + 2;
         int half = (w - 2) / 2;
         for (int i = 0; i < THEMES.size(); i++) {
             String id = THEMES.get(i);
             int tx = x + (i % 2) * (half + 2), tw = i % 2 == 0 ? half : w - half - 2;
-            addButton(id, tx, themeY + (i / 2) * (themeHeight + 2), tw, themeHeight, t("theme." + id),
+            appearanceButton(id, tx, themeY + (i / 2) * (themeHeight + 2), tw, themeHeight, t("theme." + id),
                     Style.ROW, theme.family().equals(id), () -> {
                         prefs.selectFamily(id);
                         refresh(id);
                     });
         }
-        addButton("backdrop", x, themeY + 2 * (themeHeight + 2), w, themeHeight,
+        appearanceButton("backdrop", x, themeY + 2 * (themeHeight + 2), w, themeHeight,
                 t("backdrop", theme.label()), Style.ROW, false, () -> {
                     prefs.setTheme(theme.next().id());
                     refresh("backdrop");
                 }).setTooltip(Tooltip.create(t("backdrop.hint")));
 
+        audio.setScrollAmount(audioScroll);
         int listY = bodyY + sectionHeight + 1;
         double scroll = players == null ? 0 : players.getScrollAmount();
         players = new OnlineVoiceList(minecraft, rightX + 1, listY, rightWidth - 2,
@@ -138,8 +133,19 @@ public final class VoiceSettingsScreen extends Screen {
         int doneWidth = Math.min(72, rightWidth);
         addButton("voice_changer", leftX, footerY, Math.min(96, leftWidth), 17, t("pitch.title"),
                 Style.ROW, false, () -> minecraft.setScreen(new PitchSettingsScreen(this, prefs)));
+        int serverX = leftX + Math.min(96, leftWidth) + 3;
+        int serverW = Math.min(98, rightX + rightWidth - doneWidth - serverX - 3);
+        shownAdmin = VoiceClient.rules() != null && VoiceClient.rules().editable();
+        if (shownAdmin) addButton("server_settings", serverX, footerY, serverW, 17, t("server.title"), Style.ROW, false,
+                () -> minecraft.setScreen(new ServerSettingsScreen(this, prefs))).active = VoiceClient.canRequestRules();
         addButton("done", rightX + rightWidth - doneWidth, footerY, doneWidth, 17, CommonComponents.GUI_DONE,
                 Style.PRIMARY, false, this::onClose);
+    }
+
+    private VoiceWidgets.Button appearanceButton(String id, int x, int y, int w, int h, Component label,
+                                                  Style style, boolean selected, Runnable action) {
+        var button = new VoiceWidgets.Button(x,y,w,h,label,colors,style,selected,null,null,action);
+        return inlineAppearance ? addAudio(id,button) : add(id,button);
     }
 
     private List<VoicePreferences.Device> deviceOptions(boolean mic) {
@@ -169,18 +175,6 @@ public final class VoiceSettingsScreen extends Screen {
         widget.setTooltip(Tooltip.create(t(key, detail)));
     }
 
-    private void addMobCalls(int x, int y, int w) {
-        boolean available = changeMobCalls != null && mobCalls != null;
-        var detail = available ? (mobCalls.getAsBoolean() ? CommonComponents.OPTION_ON : CommonComponents.OPTION_OFF)
-                : t("needs_world");
-        var calls = rowButton("calls", x, y, w, t("calls", detail), t("calls.label"), detail, () -> {
-            changeMobCalls.accept(!mobCalls.getAsBoolean());
-            refresh("calls");
-        });
-        calls.active = available;
-        calls.setTooltip(Tooltip.create(available ? t("calls.hint") : t("needs_world")));
-    }
-
     private void refresh(String key) {
         focusAfterRefresh = key;
         rebuildWidgets();
@@ -204,7 +198,9 @@ public final class VoiceSettingsScreen extends Screen {
     }
 
     @Override public void tick() {
-        if (shownHorde != VoiceClient.hordeEnabled()) refresh("horde");
+        boolean admin = VoiceClient.rules() != null && VoiceClient.rules().editable();
+        if (admin != shownAdmin) rebuildWidgets();
+        if (ruleTicks++ % 100 == 0 && VoiceClient.canRequestRules()) VoiceClient.requestRule(Packets.RuleAction.QUERY);
         if (++rosterTicks >= 10) {
             rosterTicks = 0;
             players.refreshRoster();
@@ -253,17 +249,15 @@ public final class VoiceSettingsScreen extends Screen {
         if (minecraft.level == null) renderPanorama(g, partialTick);
         drawFrame(g, colors, scene, sceneFrame(), font, getTitle(), width, height, left, top, panelWidth, panelHeight, bodyY);
         section(g, leftX, bodyY, leftWidth, appearanceY - 2, t("audio"));
-        section(g, leftX, appearanceY, leftWidth, footerY - 4, t("appearance"));
+        if (!inlineAppearance) section(g, leftX, appearanceY, leftWidth, footerY - 4, t("appearance"));
         section(g, rightX, bodyY, rightWidth, footerY - 4, t("players"));
         if (VoiceClient.testingMic()) {
-            int y = footerY + 4, start = leftX + Math.min(96, leftWidth) + 6;
-            int end = rightX + rightWidth - Math.min(72, rightWidth) - 6;
-            int split = Math.min(start + 49, (start + end) / 2);
-            VoiceWidgets.text(g, font, t("meter.active"), start, split, y, colors.text(), false);
-            int x = split + 2;
-            g.fill(x, y + 2, end, y + 7, colors.control());
+            int end = leftX + leftWidth - 5;
+            int x = end - Math.min(42, leftWidth / 3);
+            int y = bodyY + 3;
+            g.fill(x, y, end, y + 5, colors.control());
             int bar = (int)((end - x) * Math.min(1, VoiceClient.inputLevel()));
-            if (bar > 0) g.fill(x, y + 2, x + bar, y + 7, colors.accent());
+            if (bar > 0) g.fill(x, y, x + bar, y + 5, colors.accent());
         }
     }
 

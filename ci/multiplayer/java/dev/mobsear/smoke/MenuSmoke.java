@@ -376,8 +376,8 @@ final class MenuSmoke {
 
     private int[] headerStamp(String suffix) throws IOException {
         var image = ImageIO.read(screenshots.resolve("menu-" + BACKDROPS[theme].id() + "-" + suffix + ".png").toFile());
-        // 854x480, GUI scale 2, fixed 4-unit panel margin. Crop inside the native header ornament.
-        return image.getRGB(738, 16, 96, 48, null, 0, 96);
+        // 854x480 at scale 2. Sample the ornament inside the centered 378x210 panel.
+        return image.getRGB(746, 40, 40, 20, null, 0, 40);
     }
 
     private boolean inSettings() {

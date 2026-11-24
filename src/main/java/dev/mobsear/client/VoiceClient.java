@@ -52,6 +52,16 @@ public final class VoiceClient {
     private Session session;
     private boolean testMic;
     private boolean horde;
+    private static Packets.ServerRules rules;
+    static Packets.ServerRules rules() { return rules; }
+    static boolean serverHorrorAvailable() { return rules == null ? MobsEar.hordeAvailable() : rules.horror(); }
+    static boolean canRequestRules() {
+        var link = Minecraft.getInstance().getConnection();
+        return link != null && link.hasChannel(Packets.RuleRequest.TYPE);
+    }
+    static void requestRule(Packets.RuleAction action) {
+        if (canRequestRules()) PacketDistributor.sendToServer(new Packets.RuleRequest(action));
+    }
     private MicPresence.Controls advertised;
     private int sinceAdvertised;
     private boolean waitForRelease;
@@ -74,6 +84,7 @@ public final class VoiceClient {
         NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> disconnect());
         MobsEar.playback = this::receive;
         MobsEar.presence = packet -> nearby.put(packet.speaker(), new Seen(packet, System.nanoTime()));
+        MobsEar.serverRules = snapshot -> rules = snapshot;
         MobsEar.hordeStatus = enabled -> horde = enabled;
         MobsEar.callHeard = VoiceClient::heard;
         MobsEar.visitStatus = packet -> {
@@ -171,7 +182,7 @@ public final class VoiceClient {
     public static boolean hordeEnabled() { return connected() && instance.horde; }
     public static void setHordeEnabled(boolean enable) {
         var link = Minecraft.getInstance().getConnection();
-        if (connected() && link != null && link.hasChannel(Packets.HordeOpt.TYPE) && (!enable || MobsEar.hordeAvailable())) {
+        if (connected() && link != null && link.hasChannel(Packets.HordeOpt.TYPE) && (!enable || serverHorrorAvailable())) {
             PacketDistributor.sendToServer(new Packets.HordeOpt(enable));
         }
     }
@@ -319,6 +330,7 @@ public final class VoiceClient {
     private void disconnect() {
         closeSession();
         connection = null;
+        rules = null;
         testMic = false;
         horde = false;
     }
