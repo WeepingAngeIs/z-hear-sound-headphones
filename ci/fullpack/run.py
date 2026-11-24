@@ -65,6 +65,38 @@ def seed_world():
     print("Fresh flat Survival save created by official Minecraft 1.21.1; hosted integrated server opens it", flush=True)
 
 
+def crash_summary():
+    # Publish a short technical signature from this generated world. Keep logs, save data,
+    # authentication, launcher arguments and message text on the disposable runner.
+    candidates = list((game/"crash-reports").glob("crash-*.txt"))
+    if candidates:
+        report = max(candidates, key=lambda f: f.stat().st_mtime)
+        print("ACOUSTIC_CRASH_REPORT present", flush=True)
+        source = report.read_text(encoding="utf8", errors="replace").splitlines()
+    else:
+        latest = game/"logs/latest.log"
+        if not latest.is_file(): return
+        print("ACOUSTIC_CRASH_REPORT absent; inspecting exception types from latest.log", flush=True)
+        source = latest.read_text(encoding="utf8", errors="replace").splitlines()[-700:]
+    types, frames, causes = [], [], []
+    for line in source:
+        kinds = re.findall(r"(?<![\w$])(?:[a-zA-Z_$][\w$]*\.)+[a-zA-Z_$][\w$]*(?:Exception|Error)(?![\w$])", line)
+        if kinds:
+            for kind in kinds:
+                if kind not in types: types.append(kind)
+            # An identifier naming a missing method/class/member is diagnostic; never print free-form messages.
+            detail = line.split(kinds[-1], 1)[-1].strip(": '")
+            identifier = re.fullmatch(r"(?:[\w/.$]+(?:[ (][\w, /.$()\[\]]{0,165})?)", detail.strip("'"))
+            if identifier and detail and any(t in kinds[-1] for t in ("Linkage", "NoSuch", "NoClass", "ClassNotFound", "IllegalAccess", "ClassCast")):
+                causes.append(detail)
+        m = re.search(r"\bat\s+([\w.$/@:+-]+)\(([\w$.-]+\.java:\d+|Native Method|Unknown Source)\)", line)
+        if m and m.group(1) not in frames:
+            frames.append(m.group(1))
+    print("ACOUSTIC_FAILURE_TYPES", ",".join(types[-22:]), flush=True)
+    for reason in list(dict.fromkeys(causes))[:6]: print("ACOUSTIC_LINKAGE",reason,flush=True)
+    for frame in frames[:24]: print("ACOUSTIC_FAILURE_FRAME",frame,flush=True)
+
+
 def progress_snapshot(pid):
     # White-list stack frames and heap sizes. Launcher arguments, player data and speech never enter the report.
     jcmd=str(Path(java).with_name("jcmd.exe"))
@@ -220,6 +252,7 @@ def run():
                     recent.append(line.strip()[:400])
             exit_code = process.wait(timeout=10)
             print(f"ACOUSTIC_PROCESS_EXIT code=0x{(exit_code & 0xffffffff):08x} completedTrials={len(observations)}",flush=True)
+            crash_summary()
             for crash in game.glob("hs_err_pid*.log"):
                 for line in crash.read_text(encoding="utf8",errors="replace").splitlines()[:30]:
                     if "EXCEPTION_" in line or re.match(r"^# [CV]\s+\[",line):
