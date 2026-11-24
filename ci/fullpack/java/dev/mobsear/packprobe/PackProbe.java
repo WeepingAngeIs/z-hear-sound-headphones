@@ -52,7 +52,16 @@ public final class PackProbe {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
         boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary").contains(recording); }
-        boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude")); }
+        boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude") || recording.equals("watch-and-roll")); }
+        boolean checkRoster() { return Set.of("Geodude","Butterfree","Lilligant","Wattrel","Kilowattrel","Vivillon").contains(name); }
+        String rival() {
+            return switch(recording) {
+                case "nearby-nidorine" -> "nidorina";
+                case "watch-and-roll" -> "kilowattrel";
+                case "kilo-watch-roll" -> "wattrel";
+                default -> null;
+            };
+        }
         String expectedName() { return recording.equals("pikachu") ? "Pikachu" : name; }
     }
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
@@ -107,6 +116,12 @@ public final class PackProbe {
             cases.add(new Trial("Butterfree", 12, false, true, true));
             cases.add(new Trial("Lilligant", 14, true, true, true));
             cases.add(new Trial("Geodude", 40, true, false, true));
+        }
+        if ("1".equals(System.getenv("MOBSEAR_TEST_WORDPLAY"))) {
+            cases.add(new Trial("Wattrel",12,false,true,true,"watch-and-roll"));
+            cases.add(new Trial("Kilowattrel",14,false,true,true,"kilo-watch-roll"));
+            cases.add(new Trial("Vivillon",12,false,true,true,"vivian-call"));
+            cases.add(new Trial("Wattrel",40,false,false,true,"watch-and-roll"));
         }
         if (testVisit) cases.add(new Trial("Lopunny",16,false,true,true));
         return cases.toArray(Trial[]::new);
@@ -278,11 +293,11 @@ public final class PackProbe {
                     observation.alolan = regional;
                 }
                 if (visitTrial && liveNearby!=null) observation.feeding=new PackVisitFeeding();
-                if (t.recording.equals("nearby-nidorine")) {
-                    var relative=PokemonProperties.Companion.parse("nidorina level=15").createEntity(level);
+                if (t.rival()!=null) {
+                    var relative=PokemonProperties.Companion.parse(t.rival()+" level=15").createEntity(level);
                     relative.moveTo(p.getX()-7,160,p.getZ()+2,90,0);
                     relative.setPersistenceRequired();
-                    if (!level.addFreshEntity(relative) || !relative.getPokemon().isWild()) throw new IllegalStateException("Missing nearer Nidorina");
+                    if (!level.addFreshEntity(relative) || !relative.getPokemon().isWild()) throw new IllegalStateException("Missing nearer "+t.rival());
                     observation.relative=relative;
                 }
                 current=observation;
@@ -290,7 +305,7 @@ public final class PackProbe {
             var o = current;
             int tick = e.getServer().getTickCount();
             boolean active = responding(o.subject);
-            if (baseCalls && Set.of("Geodude","Butterfree","Lilligant").contains(o.test.name)
+            if (baseCalls && o.test.checkRoster()
                     && !o.acceptedCue && !active && timestamp(p,"lastCue")==o.cueBefore) {
                 LiveNearbyProof.prepareIdle((PokemonEntity)o.subject,.5,.5);
                 if (o.alolan!=null) LiveNearbyProof.prepareIdle(o.alolan,.5,2.5);
@@ -514,7 +529,7 @@ public final class PackProbe {
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
-                    if (baseCalls && Set.of("Geodude","Butterfree","Lilligant").contains(o.test.name)
+                    if (baseCalls && o.test.checkRoster()
                             && LiveNearbyProof.has("cobblemon:"+o.test.name.toLowerCase(Locale.ROOT))!=o.test.hears) {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Wrong live roster for "+o.test);
                         return;
@@ -524,13 +539,10 @@ public final class PackProbe {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live Bulbasaur pool before speech");
                         return;
                     }
-                    if (o.test.recording.equals("nearby-nidorine") && (System.nanoTime()-o.seenAt<1_500_000_000L ||
-                            !LiveNearbyProof.has("cobblemon:nidorina") || !LiveNearbyProof.has("cobblemon:nidorino"))) {
-                        if (System.nanoTime()-o.seenAt>15_000_000_000L) {
-                            System.out.println("ACOUSTIC_RELATIVES_TIMEOUT nidorina="+LiveNearbyProof.has("cobblemon:nidorina")+
-                                    " nidorino="+LiveNearbyProof.has("cobblemon:nidorino"));
-                            throw new IllegalStateException("Missing live pair before generated name");
-                        }
+                    if (o.test.rival()!=null && (System.nanoTime()-o.seenAt<1_500_000_000L ||
+                            !LiveNearbyProof.has("cobblemon:"+o.test.rival()) ||
+                            LiveNearbyProof.has("cobblemon:"+o.test.name.toLowerCase(Locale.ROOT))!=o.test.hears)) {
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Incorrect live pair before "+o.test);
                         return;
                     }
                     if (o.visitTrial && !o.primed) return;
@@ -643,7 +655,7 @@ public final class PackProbe {
                     case "hold-on" -> o.guess;
                     case "fan" -> o.noMatch;
                     case "sentence-partial-mob", "sentence-ordinary" -> o.noMatch || o.guess;
-                    case "nearby-bulbazore", "geodude" -> o.recognized || o.test.outsideGuessRange() && (o.noMatch || o.guess);
+                    case "nearby-bulbazore", "geodude", "watch-and-roll" -> o.recognized || o.test.outsideGuessRange() && (o.noMatch || o.guess);
                     case "silence" -> o.waiting && !o.listening && !o.checking;
                     default -> o.recognized;
                 };

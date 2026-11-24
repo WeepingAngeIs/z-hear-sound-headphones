@@ -1,6 +1,6 @@
 {
-  "run": 45144597363,
-  "sha256": "ae5d836270d806bf66337212900957ef9df4a5fc7ae4b38a1d293016e635f879",
+  "run": 45318579581,
+  "sha256": "a701b66395f05cde0c0297a0dd8649713a1c01b0ec61032ba8e2145d1fe3853d",
   "compareReferences": false,
   "priorityControl": false,
   "graphicsControl": false,
@@ -8,6 +8,7 @@
   "testVisit": true,
   "testVisitBerries": true,
   "testBaseCalls": true,
+  "testWordplay": true,
   "testSentences": true,
   "testNearby": true,
   "testDistractions": true,
