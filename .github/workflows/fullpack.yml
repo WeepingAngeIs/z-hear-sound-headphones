@@ -1,5 +1,16 @@
 name: Public-pack Survival speech test
 on:
+  workflow_call:
+    inputs:
+      candidate_run:
+        type: string
+        required: true
+      candidate_sha256:
+        type: string
+        required: true
+      candidate_artifact:
+        type: string
+        required: true
   push:
     branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/no-mob-call-cooldowns]
     paths: ['ci/fullpack/**', '.github/workflows/fullpack.yml']
@@ -33,12 +44,17 @@ jobs:
         id: cases
         shell: python
         env:
+          PORTABLE_VERIFY: ${{ inputs.candidate_artifact == 'voice-archive-verification' }}
           SMALL_CONTROL: ${{ inputs.with_control }}
         run: |
           import json, os
           from pathlib import Path
           profiles=['public-pack']
           pin=Path('ci/fullpack/candidate.json')
+          if os.environ.get('PORTABLE_VERIFY')=='true':
+              with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as output:
+                  print('profiles='+json.dumps(profiles),file=output)
+              raise SystemExit(0)
           if pin.exists() and json.loads(pin.read_text())['compareReferences']:
               profiles.extend(['earlier-public-pack','installed-public-pack'])
           if pin.exists() and json.loads(pin.read_text()).get('priorityControl'):
@@ -78,6 +94,7 @@ jobs:
       MOBSEAR_INSTALLED_REFERENCE: ${{ matrix.profile == 'installed-public-pack' && '1' || '0' }}
       MOBSEAR_PRIORITY_CONTROL: ${{ matrix.profile == 'public-pack-helper-priority' && '1' || '0' }}
       MOBSEAR_LIGHT_GRAPHICS: ${{ matrix.profile == 'public-pack-software-renderer' && '1' || '0' }}
+      PORTABLE_VERIFY: ${{ inputs.candidate_artifact == 'voice-archive-verification' }}
       MOBSEAR_CONFIDENCE_COMPARE: ${{ (matrix.profile == 'public-pack' || matrix.profile == 'public-pack-helper-priority') && '1' || '0' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -133,7 +150,11 @@ jobs:
           berries = False
           base_calls = False
           wordplay = False
-          if os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
+          if os.environ.get('PORTABLE_VERIFY')=='true':
+              # The unchanged pack fixtures exercise recognition, dispatch, distance and confirmed behavior.
+              sentences = True
+              wordplay = True
+          elif os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
               item = json.loads(pin.read_text(encoding='utf8'))
               build, digest = str(item['run']), item['sha256']
               feedback = item.get('testFeedback',False)
@@ -166,7 +187,7 @@ jobs:
         if: steps.subject.outputs.build != ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: mobs-hear-u
+          name: ${{ inputs.candidate_artifact || 'mobs-hear-u' }}
           run-id: ${{ steps.subject.outputs.build }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/hearing-windows/candidate
@@ -189,10 +210,10 @@ jobs:
       - name: Play generated speech in disposable Survival and Creative
         run: python ci/fullpack/watch.py finish
       - name: Replay the known generated relative call if the live run failed
-        if: failure() && !cancelled() && env.MOBSEAR_TEST_NEARBY == '1'
+        if: failure() && !cancelled() && env.PORTABLE_VERIFY != 'true' && env.MOBSEAR_TEST_NEARBY == '1'
         run: python ci/fullpack/replay_relative.py
       - name: Measure first-pass and retry confidence on the shared synthetic clips
-        if: ${{ !cancelled() && env.MOBSEAR_CONFIDENCE_COMPARE == '1' && steps.subject.outputs.build != '' }}
+        if: ${{ !cancelled() && env.PORTABLE_VERIFY != 'true' && env.MOBSEAR_CONFIDENCE_COMPARE == '1' && steps.subject.outputs.build != '' }}
         shell: python
         run: |
           import os, sys

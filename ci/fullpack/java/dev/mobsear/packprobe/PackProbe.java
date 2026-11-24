@@ -717,6 +717,14 @@ public final class PackProbe {
     }
 
     private static void verifyDecoderDirectory() throws Exception {
+        var mod=Class.forName("dev.mobsear.client.SpeechCues");
+        if(mod.getResource("speech/model/encoder.onnx")!=null) {
+            if(mod.getResource("speech/model/decoder.onnx")==null || mod.getResource("recognize.ps1")!=null
+                    || mod.getResource("words-win-x64.zip")!=null)
+                throw new IllegalStateException("Unexpected packaged speech assets");
+            System.out.println("ACOUSTIC_MODEL_FILES_PASS packaged offline graphs and Java recognizer");
+            return;
+        }
         var field=Class.forName("dev.mobsear.client.OfflineWordModel").getDeclaredField("directory");
         field.setAccessible(true);
         var directory=(java.nio.file.Path)field.get(null);

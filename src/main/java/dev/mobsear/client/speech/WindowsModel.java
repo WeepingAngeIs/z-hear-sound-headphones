@@ -123,14 +123,14 @@ final class WindowsModel implements AutoCloseable {
 
     final class Context implements AutoCloseable {
         final Map<String,Pointer> tensors=new LinkedHashMap<>();
-        float[] logits(long[] tokens) {
-            int n=tokens.length;
+        float[] logits(long[] tokens,int beams) {
+            int n=tokens.length/beams;
             var positions=new long[n];var mask=new float[n*n];
             for(int i=0;i<n;i++) { positions[i]=i; Arrays.fill(mask,i*n+i+1,(i+1)*n,-10000f); }
             Pointer binding=bind(decoder),map=null,value=null,floatTensor=null,view=null;
             try {
                 tensors.forEach((name,tensor)->bind(binding,name,tensor));
-                put(binding,"tokens",new long[]{1,n},tokens,n,intFactory);
+                put(binding,"tokens",new long[]{beams,n},tokens,tokens.length,intFactory);
                 put(binding,"positions",new long[]{n},positions,n,intFactory);
                 put(binding,"mask",new long[]{1,1,n,n},mask,mask.length,floatFactory);
                 map=evaluate(decoder,binding);
@@ -140,7 +140,7 @@ final class WindowsModel implements AutoCloseable {
                 floatTensor=out.getValue();
                 Sapi.ok(Sapi.call(floatTensor,6,out),"read logits");
                 view=out.getValue();
-                float[] values=new float[51864];
+                float[] values=new float[51864*beams];
                 var count=new IntByReference();
                 Sapi.ok(Sapi.call(view,9,0,values.length,values,count),"copy logits");
                 if(count.getValue()!=values.length) throw new IllegalStateException("Incomplete token scores");

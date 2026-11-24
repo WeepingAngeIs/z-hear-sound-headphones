@@ -9,7 +9,7 @@ public final class SpeechWorker {
     private final CallVocabulary vocab;
     private final Sapi engine;
     private final Sapi.Grammar commands, dictation;
-    private Sapi.Grammar nearCommands, mentions;
+    private Sapi.Grammar nearCommands, mentions, phonemes;
     private WordDecoder words;
     private List<String> context=List.of();
     private final Map<String,String> pronounced = new LinkedHashMap<>();
@@ -33,6 +33,16 @@ public final class SpeechWorker {
         commandGrammar(commands,choices);
         dictation=engine.grammar();
         dictation.dictation();
+        if(engine.language==0x409) {
+            phonemes=engine.grammar();
+            try {
+                phonemes.phonetics(vocab.names.keySet());
+                phonemes.activate("Pronunciations");
+                phonemes.enabled(false);
+            } catch(IOException|RuntimeException unsupported) {
+                phonemes.close();phonemes=null;syntheticFault(unsupported);
+            }
+        }
     }
 
     private static void commandGrammar(Sapi.Grammar grammar,Collection<String> words) {
@@ -109,6 +119,10 @@ public final class SpeechWorker {
     private record Reply(int code,String hint) {}
 
     private Reply decode(byte[] pcm,boolean detail) {
+        boolean voiced=false;
+        for(int i=0;i+1<pcm.length;i+=2)
+            if(Math.abs((int)(short)((pcm[i]&255)|(pcm[i+1]<<8)))>128) { voiced=true;break; }
+        if(!voiced) return new Reply(0,"");
         var first=engine.recognize(pcm);
         String hint=detail?first.text():"";
         String plain=first.grammar()==dictation.id ? first.text() : "";
@@ -133,10 +147,29 @@ public final class SpeechWorker {
                 if(nearCommands!=null) nearCommands.enabled(true);
             }
         }
+        if(phonemes!=null && CallVocabulary.words(plain).size()<=3) {
+            phonemes.enabled(true);
+            commands.enabled(false);
+            if(nearCommands!=null) nearCommands.enabled(false);
+            try {
+                var pron=engine.recognize(pcm);
+                var m=match(pron.text());
+                if(pron.accepted() && pron.grammar()==phonemes.id && pron.confidence()>=.83 && m!=null &&
+                        !vocab.conflicts(m.label(),plain)) return new Reply(m.code(),"");
+            } finally {
+                phonemes.enabled(false); commands.enabled(true);
+                if(nearCommands!=null) nearCommands.enabled(true);
+            }
+        }
         if(words!=null) {
-            String decoded=words.recognize(pcm,context);
+            String decoded;
+            try { decoded=words.recognize(pcm,context); }
+            catch(RuntimeException|LinkageError failed) {
+                syntheticFault(failed);
+                return new Reply(65534,"");
+            }
             var exactWord=match(decoded);
-            if(exactWord!=null && !CallVocabulary.rival(exactWord.label(),plain)) {
+            if(exactWord!=null && !vocab.conflicts(exactWord.label(),plain)) {
                 return new Reply(exactWord.code(),"");
             }
             var relative=vocab.guess(decoded,plain);
@@ -153,7 +186,7 @@ public final class SpeechWorker {
                 if(sentence.accepted() && sentence.grammar()==mentions.id && sentence.labelConfidence()>=.58) {
                     var candidate=match(sentence.label());
                     if(candidate==null) candidate=vocab.guess(sentence.label(),plain);
-                    if(candidate!=null && !CallVocabulary.rival(candidate.label(),plain)
+                    if(candidate!=null && !vocab.conflicts(candidate.label(),plain)
                             && (!vocab.confirm.contains(candidate.label()) || independent!=null && independent.label().equals(candidate.label())))
                         return new Reply(candidate.code(),"");
                 }
@@ -233,6 +266,7 @@ public final class SpeechWorker {
                 }
                 if(service.mentions!=null) service.mentions.close();
                 if(service.nearCommands!=null) service.nearCommands.close();
+                if(service.phonemes!=null) service.phonemes.close();
                 if(service.words!=null) service.words.close();
                 service.dictation.close();service.commands.close();
             }

@@ -34,7 +34,7 @@ def audit(raw, expected_version=None):
         ext = name.suffix.lower()
         reasons = set()
         if ext in RUNNABLE:
-            reasons.add("executable or script extension " + ext)
+            reasons.add("compilable source " + ext if ext == ".cs" else "executable or script extension " + ext)
         if len(data) >= 64 and data[:2] == b"MZ":
             offset = int.from_bytes(data[60:64], "little")
             if data[offset:offset+4] == b"PE\0\0" and offset + 24 <= len(data):

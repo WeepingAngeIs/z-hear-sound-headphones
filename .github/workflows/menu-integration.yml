@@ -55,6 +55,8 @@ jobs:
 
   portable-package:
     name: Build, audit and test the packaged mod
+    outputs:
+      raw_sha: ${{ steps.package.outputs.raw_sha }}
     if: github.ref_name == 'codex/portable-speech'
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -77,6 +79,7 @@ jobs:
           github-token: ${{ github.token }}
           path: prior
       - name: Build the actual installable archive and inspect all nested content
+        id: package
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
@@ -84,6 +87,7 @@ jobs:
           python3 ci/audit_archive.py dist/*.jar --version 0.3.14 --report dist/archive-audit.json
           build/speech-graph-tools/bin/python ci/compare_portable.py prior/*.jar dist/*.jar
           (cd dist && sha256sum *.jar > SHA256SUMS.txt)
+          echo "raw_sha=$(cut -d ' ' -f1 dist/SHA256SUMS.txt)" >> "$GITHUB_OUTPUT"
       - name: Attach candidate for independent downstream verification
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -133,3 +137,12 @@ jobs:
         if: ${{ !cancelled() }}
         shell: powershell
         run: ./ci/portable_speech_checks.ps1 nearby
+  portable-game:
+    name: Packaged Windows client and integrated server
+    needs: [portable-package, portable-windows]
+    if: github.ref_name == 'codex/portable-speech'
+    uses: ./.github/workflows/fullpack.yml
+    with:
+      candidate_run: ${{ format('{0}', github.run_id) }}
+      candidate_sha256: ${{ needs.portable-package.outputs.raw_sha }}
+      candidate_artifact: voice-archive-verification

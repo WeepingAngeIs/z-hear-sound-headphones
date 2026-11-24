@@ -102,12 +102,12 @@ def run():
         print("ACOUSTIC_EARLIER original packaged 0.2.1",flush=True)
     if build or digest:
         assert build.isdigit() and re.fullmatch(r"[0-9a-f]{64}",digest)
-        checked,=(root/"candidate").glob("mobsear-*.jar")
+        checked,=(root/"candidate").glob("*.jar")
         assert hashlib.sha256(checked.read_bytes()).hexdigest()==digest, "Different candidate binary"
         with ZipFile(checked) as jar:
             assert not any("Fixture" in name or "/smoke/" in name or "packprobe" in name for name in jar.namelist())
         installed.rename(root/installed.name)
-        shutil.copy2(checked,game/"mods"/checked.name)
+        shutil.copy2(checked, game/"mods"/(checked.name if checked.name.startswith("mobsear-") else "mobsear-candidate.jar"))
         print(f"ACOUSTIC_CANDIDATE canonicalBuild={build} sha256={digest}",flush=True)
     for file in sorted((root/"synth").glob("*.pcm")):
         if file.stem in {"enderman","pikachu","lopunny","enderman-alternate","lopunny-alternate"}:
@@ -239,7 +239,10 @@ if __name__=="__main__":
             if (root/"public-registry.bin").is_file():
                 from decoder import diagnose
                 mod,=(game/"mods").glob("mobsear-*.jar")
-                diagnose(root,mod)
+                with ZipFile(mod) as packaged:
+                    legacy="dev/mobsear/client/recognize.ps1" in packaged.namelist()
+                if legacy:
+                    diagnose(root,mod)
         finally:
             (root/"result.txt").write_text("failure",encoding="ascii")
         raise

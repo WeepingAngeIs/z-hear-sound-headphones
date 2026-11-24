@@ -18,7 +18,9 @@ def main(previous, current):
     assert hashlib.sha256(raw).hexdigest() == OLD
     with zipfile.ZipFile(io.BytesIO(raw)) as old, zipfile.ZipFile(current) as new:
         protected = [n for n in old.namelist() if n.startswith("assets/") or
-                     n.endswith(".class") and n.startswith(("dev/mobsear/net/", "dev/mobsear/server/", "dev/mobsear/compat/"))]
+                     n.endswith(".class") and n.startswith("dev/mobsear/") and
+                     not n.startswith(tuple("dev/mobsear/client/"+changed for changed in
+                                            ("VoiceClient","SpeechCues","WindowsSpeechWorker","OfflineWordModel")))]
         assert protected and any(n.endswith(".png") for n in protected)
         for name in protected:
             if name == "assets/mobsear/lang/en_us.json":

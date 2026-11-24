@@ -93,6 +93,21 @@ final class CallVocabulary {
         };
     }
 
+    boolean conflicts(String label,String independentlyHeard) {
+        if (rival(label,independentlyHeard)) return true;
+        if (label.contains(" ")) return false;
+        for (String word:words(independentlyHeard)) {
+            if (word.equals(label) || word.length()<3 || Objects.equals(names.get(word), names.get(label))) continue;
+            if (word.startsWith(label) && word.length()>label.length()) return true;
+            if (word.length()==label.length() && !names.containsKey(word)) {
+                int different=0;
+                for(int i=0;i<word.length();i++) if(label.charAt(i)!=word.charAt(i)) different++;
+                if(different==1) return true;
+            }
+        }
+        return false;
+    }
+
     Match guess(String decoded,String independent) {
         List<String> tok=words(decoded);
         if (tok.size()>80) return null;

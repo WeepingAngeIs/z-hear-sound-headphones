@@ -14,7 +14,7 @@ final class WordDecoder implements AutoCloseable {
     private final String[] vocab=new String[EOT+1];
     private final Map<String,Integer> tokenIds=new HashMap<>();
     private static final Pattern PIECES=Pattern.compile("'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+");
-    private static final int[] SUPPRESS={1,2,7,8,9,10,14,25,26,27,28,29,31,58,59,60,61,62,63,90,91,92,93,357,366,438,532,685,705,796,930,1058,1220,1267,1279,1303,1343,1373,1377,1391,1635,1782,1875,2162,2361,2488,3467,4008,4211,4600,4808,5299,5855,6329,7203,9609,9959,10563,10786,11420,11709,11907,13163,13697,13700,14808,15306,16410,16791,17992,19203,19510,20724,22305,22935,27007,30109,30420,33409,34949,40283,40493,40549,47282,49146};
+    private static final int[] SUPPRESS={1,2,7,8,9,10,14,25,26,27,28,29,31,58,59,60,61,62,63,90,91,92,93,357,366,438,532,685,705,796,930,1058,1220,1267,1279,1303,1343,1377,1391,1635,1782,1875,2162,2361,2488,3467,4008,4211,4600,4808,5299,5855,6329,7203,9609,9959,10563,10786,11420,11709,11907,13163,13697,13700,14808,15306,16410,16791,17992,19203,19510,20724,22305,22935,27007,30109,30420,33409,34949,40283,40493,40549,47282,49146};
 
     WordDecoder() throws IOException {
         try(var raw=resource("mel-filters.f32"); var tokens=new DataInputStream(new BufferedInputStream(resource("english.vocab")))) {
@@ -88,7 +88,7 @@ final class WordDecoder implements AutoCloseable {
         float[] quiet=new float[80*FRAMES];
         Arrays.fill(quiet,-1.5f);
         try(var context=model.encode(quiet)) {
-            context.logits(new long[]{50257,50362});
+            context.logits(new long[]{50257,50362},1);
         }
     }
 
@@ -103,20 +103,67 @@ final class WordDecoder implements AutoCloseable {
         var words=tokenize(prompt.append('.').toString());
         ids.addAll(words.subList(Math.max(0,words.size()-80),words.size()));
         ids.add(50257);ids.add(50362);
-        int start=ids.size();var output=new StringBuilder();
+        int start=ids.size();
+        long[] seed=ids.stream().mapToLong(Integer::longValue).toArray();
+        int width=pcm.length<46080 ? 3 : 5;
+        var active=List.of(new Beam(seed,0));
+        Beam done=null;
+        long deadline=System.nanoTime()+3_150_000_000L;
         float[] features=mel(pcm);
         try(var context=model.encode(features)) {
-            for(int i=0;i<32;i++) {
-                float[] logits=context.logits(ids.stream().mapToLong(Integer::longValue).toArray());
-                for(int id:SUPPRESS) logits[id]=Float.NEGATIVE_INFINITY;
-                if(i==0) { logits[EOT]=Float.NEGATIVE_INFINITY;logits[220]=Float.NEGATIVE_INFINITY; }
-                int best=0;for(int id=1;id<=EOT;id++) if(logits[id]>logits[best]) best=id;
+            for(int step=0;step<32 && !active.isEmpty();step++) {
+                int length=active.getFirst().tokens.length;
+                long[] batch=new long[active.size()*length];
+                for(int b=0;b<active.size();b++) System.arraycopy(active.get(b).tokens,0,batch,b*length,length);
+                float[] logits=context.logits(batch,active.size());
+                var next=new ArrayList<Beam>();
+                for(int b=0;b<active.size();b++) {
+                    int offset=b*51864;
+                    for(int id:SUPPRESS) logits[offset+id]=Float.NEGATIVE_INFINITY;
+                    if(step==0) { logits[offset+EOT]=Float.NEGATIVE_INFINITY;logits[offset+220]=Float.NEGATIVE_INFINITY; }
+                    int[] best=new int[width+1]; Arrays.fill(best,-1);
+                    for(int k=0;k<=EOT;k++) {
+                        float score=logits[offset+k];
+                        if(best[width]>=0 && score<=logits[offset+best[width]]) continue;
+                        int at=width;
+                        while(at>0 && (best[at-1]<0 || score>logits[offset+best[at-1]])) {
+                            best[at]=best[at-1];at--;
+                        }
+                        best[at]=k;
+                    }
+                    double max=logits[offset+best[0]],sum=0;
+                    for(int k=0;k<=EOT;k++) sum+=Math.exp(logits[offset+k]-max);
+                    double normal=max+Math.log(sum);
+                    for(int id:best) {
+                        var parent=active.get(b);
+                        double score=parent.score+logits[offset+id]-normal;
+                        if(id==EOT) {
+                            if(step>0) {
+                                var complete=new Beam(parent.tokens,score);
+                                if(done==null || complete.normalized(start)>done.normalized(start)) done=complete;
+                            }
+                        } else {
+                            long[] child=Arrays.copyOf(parent.tokens,length+1);child[length]=id;
+                            next.add(new Beam(child,score));
+                        }
+                    }
+                }
                 Arrays.fill(logits,0);
-                if(best==EOT || ids.size()>=start+3 && best==ids.getLast() && best==ids.get(ids.size()-2) && best==ids.get(ids.size()-3)) break;
-                ids.add(best);output.append(vocab[best]);
+                next.sort(Comparator.comparingDouble(Beam::score).reversed());
+                active=next.subList(0,Math.min(width,next.size()));
+                if(done!=null && (active.isEmpty() || done.normalized(start)>=active.getFirst().normalized(start))) break;
+                if(System.nanoTime()>=deadline) break;
             }
+            Beam chosen=done!=null ? done : active.isEmpty() ? null : active.getFirst();
+            if(chosen==null) return "";
+            StringBuilder output=new StringBuilder();
+            for(int i=start;i<chosen.tokens.length;i++) output.append(vocab[(int)chosen.tokens[i]]);
             return new String(output.toString().getBytes(StandardCharsets.ISO_8859_1),StandardCharsets.UTF_8).strip();
         } finally { Arrays.fill(features,0); }
+    }
+
+    private record Beam(long[] tokens,double score) {
+        double normalized(int prefix) { return score/Math.max(1,tokens.length-prefix); }
     }
 
     @Override public void close(){model.close();}

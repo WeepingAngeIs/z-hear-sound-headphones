@@ -188,6 +188,33 @@ final class Sapi implements AutoCloseable {
         }
         void commit() { ok(call(object, 10, 0), "Commit"); }
         void activate(String name) { ok(call(object, 18, wide(name), null, 1), "activate "+name); }
+        void phonetics(java.util.Set<String> registered) throws java.io.IOException {
+            var phones=java.util.Map.of(
+                    "enderman",java.util.List.of("eh n d er m ae n","eh n d er m ax n"),
+                    "lopunny",java.util.List.of("l aa p ax n iy","l aa p ah n iy","l ow p ah n iy","l aa p b ah n iy"),
+                    "geodude",java.util.List.of("jh iy ow d uw d","jh iy ow d y uw d","jh iy ax d uw d"),
+                    "hoglin",java.util.List.of("h aa g l ih n","h ao g l ih n"),
+                    "zoglin",java.util.List.of("z aa g l ih n","z ao g l ih n"));
+            var xml=new StringBuilder("""
+                    <grammar xmlns="http://www.w3.org/2001/06/grammar" xmlns:sapi="http://schemas.microsoft.com/Speech/2002/06/SRGSExtensions"
+                      version="1.0" xml:lang="en-US" root="Pronunciations" sapi:alphabet="x-microsoft-sapi">
+                    <rule id="Pronunciations" scope="public"><one-of>
+                    """);
+            for(String ordinary:java.util.List.of("poponee","buneary","endermite","ender dragon","ender guardian",
+                    "slender man","bunny","hold on","logged in","huddling","jogging","geode","good dude"))
+                xml.append("<item>").append(ordinary).append("</item>");
+            phones.forEach((label,forms)->{
+                if(registered.contains(label)) for(String form:forms) for(String prefix:java.util.List.of("","hey ","call "))
+                    xml.append("<item>").append(prefix).append("<token sapi:pron='").append(form).append("'>")
+                            .append(label).append("</token></item>");
+            });
+            xml.append("</one-of></rule></grammar>");
+            Path path=java.nio.file.Files.createTempFile("mobsear-pronunciation-",".grxml");
+            try {
+                java.nio.file.Files.writeString(path,xml);
+                ok(call(object,13,wide(path.toString()),0),"load pronunciation grammar");
+            } finally { java.nio.file.Files.deleteIfExists(path); }
+        }
         void dictation() {
             ok(call(object, 20, null, 0), "LoadDictation");
             ok(call(object, 22, 1), "SetDictationState");

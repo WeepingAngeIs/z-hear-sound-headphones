@@ -137,7 +137,7 @@ class Graph:
         return self.op("Mul",self.op("Mul",x,self.num(.5)),self.op("Add",erf,self.num(1.)))
 
     def heads(self,x,keys=False):
-        return self.op("Transpose",self.reshape(x,[1,-1,HEADS,64]),perm=[0,2,3,1] if keys else [0,2,1,3])
+        return self.op("Transpose",self.reshape(x,[0,-1,HEADS,64]),perm=[0,2,3,1] if keys else [0,2,1,3])
 
     def attention(self,x,p,mask=None,kv=None):
         q=self.heads(self.linear(x,p+".query"))
@@ -145,7 +145,7 @@ class Graph:
         scores=self.op("Mul",self.op("MatMul",q,k),self.num(.125))
         if mask: scores=self.op("Add",scores,mask)
         values=self.op("MatMul",self.op("Softmax",scores,axis=3),v)
-        return self.linear(self.reshape(self.op("Transpose",values,perm=[0,2,1,3]),[1,-1,DIM]),p+".out")
+        return self.linear(self.reshape(self.op("Transpose",values,perm=[0,2,1,3]),[0,-1,DIM]),p+".out")
 
     def block(self,x,p,mask=None,kv=None):
         x=self.op("Add",x,self.attention(self.norm(x,p+".attn_ln"),p+".attn",mask))
@@ -177,7 +177,7 @@ def build(root):
     enc.save(root/"encoder.onnx")
 
     dec=Graph(weights)
-    tokens=dec.input("tokens",[1,"words"],T.INT64)
+    tokens=dec.input("tokens",["beams","words"],T.INT64)
     pos=dec.input("positions",["words"],T.INT64)
     mask=dec.input("mask",[1,1,"words","words"])
     emb=dec.weight("decoder.token_embedding.weight")
@@ -187,7 +187,7 @@ def build(root):
         x=dec.block(x,"decoder.blocks."+str(i),mask,(k,v))
     last=dec.op("Gather",dec.norm(x,"decoder.ln"),dec.constant("last",np.array([-1],dtype="<i8")),axis=1)
     logits=dec.op("MatMul",last,dec.op("Transpose",emb,perm=[1,0]))
-    dec.output("logits",logits,[1,1,51864])
+    dec.output("logits",logits,["beams",1,51864])
     dec.save(root/"decoder.onnx")
     for filename,url,digest in (
         ("LICENSE-Whisper.txt","openai/whisper/v20250625/LICENSE","b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"),
