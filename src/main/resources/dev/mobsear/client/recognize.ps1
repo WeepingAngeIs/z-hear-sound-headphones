@@ -116,7 +116,27 @@ try {
     $nearNames = @()
     $nearPokemon = @()
     $nearMatcher = $null
-    if ($env:MOBSEAR_NEARBY_MATCHER) { Add-Type -TypeDefinition $env:MOBSEAR_NEARBY_MATCHER }
+    $alternateCalls = $null
+    if ($env:MOBSEAR_NEARBY_MATCHER) {
+        Add-Type -TypeDefinition $env:MOBSEAR_NEARBY_MATCHER
+        $forms = [EnglishNameAlternatives]::Commands($aliases)
+        if ($forms.Length) {
+            $builder = [System.Speech.Recognition.GrammarBuilder]::new()
+            $builder.Culture = $english.Culture
+            $builder.Append([System.Speech.Recognition.Choices]::new([string[]]$forms))
+            $alternateCalls = [System.Speech.Recognition.Grammar]::new($builder)
+            $alternateCalls.Enabled = $false
+            $engine.LoadGrammar($alternateCalls)
+        }
+    }
+    function Read-NearbyAlternative([string]$text) {
+        if ($null -eq $alternateCalls -or -not $alternateCalls.Enabled) { return }
+        $target = [EnglishNameAlternatives]::Find($text,$aliases)
+        if ($target) {
+            if ($nearPokemon -contains $target) { return (32768 -bor $aliases[$target]) }
+            return 0
+        }
+    }
     # Written equivalents of the short-call pronunciation variants in the English lexicon.
     $spokenForms = @{'la punny'='lopunny'; 'lapunny'='lopunny'; 'lop bunny'='lopunny'
         'geo dude'='geodude'; 'gee oh dude'='geodude'; 'gio dude'='geodude'}
@@ -226,6 +246,8 @@ try {
             if ($text.Length -le 500) {
                 $exact = Find-WholeName $text $original $shortCode
                 if ($exact) { return $exact }
+                $alternative = Read-NearbyAlternative $text
+                if ($null -ne $alternative) { return $alternative }
                 if ($null -ne $nearMatcher) {
                     $plain = $original -join ' '
                     # Never redirect an exactly named, absent species to its local relative.
@@ -250,6 +272,10 @@ try {
     }
 
     function Read-ConnectedSpeech([byte[]]$samples, $plain, $command) {
+        if ($null -ne $plain -and $plain.Confidence -ge 0.58) {
+            $alternative = Read-NearbyAlternative $plain.Text
+            if ($null -ne $alternative) { return $alternative }
+        }
         if (-not $modelDir) { return 0 }
         $shortCode=0
         if ($null -ne $command -and $command.Grammar -eq $calls -and $command.Confidence -ge 0.80) {
@@ -305,6 +331,9 @@ try {
             $nearMatcher = if ($nearPokemon.Count -and ('NearbyPokemonWords' -as [type])) {
                 [NearbyPokemonWords]::new([string[]]$nearPokemon)
             } else { $null }
+            if ($null -ne $alternateCalls) {
+                $alternateCalls.Enabled = [EnglishNameAlternatives]::InRange([string[]]$nearPokemon)
+            }
             continue
         }
         $detail = $length -lt 0
@@ -397,6 +426,10 @@ try {
                         }
                     }
                 }
+            }
+            if ($null -ne $alternateCalls -and $null -ne $result -and $result.Grammar -eq $alternateCalls -and
+                    $result.Confidence -ge 0.58) {
+                $decision = [int](Read-NearbyAlternative $result.Text)
             }
             # A genuine multiword dictation result should not wait behind two single-name recovery passes.
             if ($sentenceFirst) {

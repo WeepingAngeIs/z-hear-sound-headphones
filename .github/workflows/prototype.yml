@@ -27,8 +27,8 @@ jobs:
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
-          cp build/libs/mobsear-0.3.10.jar dist/
-          jar tf dist/mobsear-0.3.10.jar > "$RUNNER_TEMP/mod-contents.txt"
+          cp build/libs/mobsear-0.3.11.jar dist/
+          jar tf dist/mobsear-0.3.11.jar > "$RUNNER_TEMP/mod-contents.txt"
           grep -qx 'dev/mobsear/client/recognize.ps1' "$RUNNER_TEMP/mod-contents.txt"
           grep -qx 'dev/mobsear/client/words-win-x64.zip' "$RUNNER_TEMP/mod-contents.txt"
           if grep -E 'GameTest|Fixture|hearing_floor' "$RUNNER_TEMP/mod-contents.txt"; then exit 1; fi
@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mobs-hear-u
-          path: dist/mobsear-0.3.10.jar
+          path: dist/mobsear-0.3.11.jar
           if-no-files-found: error
   packaged-server:
     name: Packaged jar on NeoForge ${{ matrix.loader }}
