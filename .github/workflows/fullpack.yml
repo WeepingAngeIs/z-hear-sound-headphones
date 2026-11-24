@@ -11,6 +11,9 @@ on:
       candidate_artifact:
         type: string
         required: true
+      with_control:
+        type: boolean
+        default: false
   push:
     branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/no-mob-call-cooldowns]
     paths: ['ci/fullpack/**', '.github/workflows/fullpack.yml']

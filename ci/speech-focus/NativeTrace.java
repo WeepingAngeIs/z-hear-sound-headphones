@@ -6,6 +6,19 @@ public final class NativeTrace {
     public static void main(String[] args) throws Exception {
         if (!"github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT"))) throw new IllegalStateException();
         Path root=Path.of(args[0]);
+        for (int frequency : new int[]{60, 100, 180}) {
+            byte[] hum = new byte[38400], voiced = new byte[38400];
+            for (int i = 0; i < 16000; i++) {
+                double phase = 2 * Math.PI * frequency * i / 16000;
+                int pure = (int) Math.round(300 * Math.sin(phase));
+                int harmonic = pure + (int) Math.round(130 * Math.sin(2 * phase));
+                hum[2*i] = (byte)pure; hum[2*i+1] = (byte)(pure >> 8);
+                voiced[2*i] = (byte)harmonic; voiced[2*i+1] = (byte)(harmonic >> 8);
+            }
+            if (!SpeechWorker.steadyHum(hum) || SpeechWorker.steadyHum(voiced))
+                throw new AssertionError("Stationary tone and harmonic voice distinction");
+        }
+        System.out.println("HUM_NO_GUESS_PASS three low tones and harmonic controls");
         var rows=new StringBuilder();
         int n=1;
         for (String name:List.of("zombie","mobs","mob","enderman","ender man","spider","skeleton","creeper","pikachu","lopunny","hoglin"))

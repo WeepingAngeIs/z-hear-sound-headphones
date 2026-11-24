@@ -123,11 +123,48 @@ public final class SpeechWorker {
 
     private record Reply(int code,String hint) {}
 
+    private static int sample(byte[] pcm, int index) {
+        return (short) ((pcm[2 * index] & 255) | (pcm[2 * index + 1] << 8));
+    }
+
+    /** A steady single-frequency hum can produce a dictation guess despite containing no speech. */
+    static boolean steadyHum(byte[] pcm) {
+        int first = -1, last = -1, crossings = 0, previous = 0;
+        for (int i = 0; i < pcm.length / 2; i++) {
+            int value = sample(pcm, i);
+            if (previous <= 0 && value > 0) {
+                if (first < 0) first = i;
+                last = i;
+                crossings++;
+            }
+            previous = value;
+        }
+        int length = last - first;
+        if (length < 3200 || crossings < 10) return false;
+        double frequency = 16000.0 * (crossings - 1) / length;
+        if (frequency < 40 || frequency > 500) return false;
+        double step = 2 * Math.PI * frequency / 16000;
+        double cos = Math.cos(step), sin = Math.sin(step), x = 1, y = 0;
+        double real = 0, imaginary = 0, energy = 0;
+        for (int i = first; i < last; i++) {
+            double value = sample(pcm, i);
+            real += value * x;
+            imaginary += value * y;
+            energy += value * value;
+            double next = x * cos - y * sin;
+            y = y * cos + x * sin;
+            x = next;
+        }
+        // Virtually all energy must be in one stationary sinusoid. Normal voiced sounds have
+        // harmonics or changing envelopes, even when they share the exact same fundamental.
+        return energy > 0 && 2 * (real * real + imaginary * imaginary) > .999 * length * energy;
+    }
+
     private Reply decode(byte[] pcm,boolean detail) {
         boolean voiced=false;
         for(int i=0;i+1<pcm.length;i+=2)
             if(Math.abs((int)(short)((pcm[i]&255)|(pcm[i+1]<<8)))>128) { voiced=true;break; }
-        if(!voiced) return new Reply(0,"");
+        if(!voiced || steadyHum(pcm)) return new Reply(0,"");
         var first=engine.recognize(pcm);
         String hint=detail?first.text():"";
         String plain=first.grammar()==dictation.id ? first.text() : "";
