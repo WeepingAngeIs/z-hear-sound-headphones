@@ -163,7 +163,7 @@ final class Sapi implements AutoCloseable {
         void reset() { ok(call(object, 3, (short) language), "ResetGrammar"); }
         Pointer rule(String name, int number, boolean top) {
             var out = new PointerByReference();
-            ok(call(object, 4, wide(name), number, top ? 33 : 32, 1, out), "GetRule");
+            ok(call(object, 4, wide(name), number, top ? 35 : 32, 1, out), "GetRule");
             return out.getValue();
         }
         Pointer state(Pointer rule) {
@@ -187,7 +187,7 @@ final class Sapi implements AutoCloseable {
             }
         }
         void commit() { ok(call(object, 10, 0), "Commit"); }
-        void active(boolean on) { ok(call(object, 18, null, null, on ? 1 : 0), "SetRuleState"); }
+        void activate(String name) { ok(call(object, 18, wide(name), null, 1), "activate "+name); }
         void dictation() {
             ok(call(object, 20, null, 0), "LoadDictation");
             ok(call(object, 22, 1), "SetDictationState");

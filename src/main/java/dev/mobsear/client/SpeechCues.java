@@ -5,7 +5,6 @@ import dev.mobsear.net.Cue;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -141,6 +140,10 @@ public final class SpeechCues implements AutoCloseable {
         if (currentTest(attempt)) testFeedback = new TestFeedback(attempt, stage, guess);
     }
 
+    public synchronized boolean desktopOnly() {
+        return status == Status.READY && session != null && session.desktopOnly;
+    }
+
     public synchronized boolean startupTimedOut() {
         return status == Status.UNAVAILABLE && session != null && session.startupExpired;
     }
@@ -246,6 +249,7 @@ public final class SpeechCues implements AutoCloseable {
         private long inputRevision;
         private volatile int startupStep;
         private volatile boolean startupExpired;
+        private boolean desktopOnly;
         private volatile boolean decodeExpired;
         private final boolean recovering;
         private List<String> sentNames = List.of();
@@ -374,7 +378,9 @@ public final class SpeechCues implements AutoCloseable {
                 try {
                     if (startupStep == 81) grammar.writeTo(output);
                     var channel = next == 82 ? input : progress;
-                    if (channel.readUnsignedByte() != next) throw new IOException("Unexpected speech startup stage");
+                    int actual = channel.readUnsignedByte();
+                    if (next == 82 && actual == 68) desktopOnly = true;
+                    else if (actual != next) throw new IOException("Unexpected speech startup stage");
                     startupStep = next;
                 } finally {
                     timeout.cancel(false);

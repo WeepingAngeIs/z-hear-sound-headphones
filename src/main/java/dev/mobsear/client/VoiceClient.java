@@ -555,7 +555,7 @@ public final class VoiceClient {
             if (!suspended) {
                 var status = speech.startupTimedOut() ? CallDebugLog.Event.STARTUP_TIMEOUT
                         : speech.decoderTimedOut() ? CallDebugLog.Event.DECODE_TIMEOUT : CallDebugLog.Event.valueOf(state.name());
-                debug.state(status);
+                debug.state(speech.desktopOnly() ? CallDebugLog.Event.WORD_DECODER_ERROR : status);
             }
             var decision = speech.lastDecision();
             if (decision != null && decision.number() != loggedDecision) {
@@ -572,6 +572,7 @@ public final class VoiceClient {
             } else if (state != previous && !suspended) {
                 previous = state;
                 String key = state.name().toLowerCase(java.util.Locale.ROOT);
+                if (speech.desktopOnly()) key = "desktop_only";
                 if (speech.startupTimedOut()) key = "startup_timeout";
                 if (speech.decoderTimedOut()) key = "decode_timeout";
                 Component status = Component.translatable("mobsear.speech." + key);

@@ -7,6 +7,17 @@ group = 'dev.mobsear'
 version = '0.3.14'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+// Generate only ML weights, vocabulary, filters and license notices. Build tools have separate outputs.
+def speechData = layout.buildDirectory.dir('generated/winml-data')
+def prepareSpeech = tasks.register('prepareSpeechData', Exec) {
+    inputs.file('ci/prepare_speech_data.py')
+    outputs.dir(speechData)
+    commandLine(System.getProperty('os.name').startsWith('Windows') ? 'python' : 'python3',
+            'ci/prepare_speech_data.py', speechData.get().asFile)
+}
+sourceSets.main.resources.srcDir(speechData)
+tasks.named('processResources') { dependsOn prepareSpeech }
+
 repositories {
     mavenCentral()
     exclusiveContent {

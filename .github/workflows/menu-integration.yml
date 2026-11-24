@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   public-client:
     name: FancyMenu and Sodium/Iris backdrop checks
@@ -20,6 +21,10 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - uses: actions/setup-python@v5
+        if: github.ref_name == 'codex/portable-speech'
+        with:
+          python-version: '3.12'
       - name: Build the production JAR on NeoForge 21.1.249
         if: github.ref_name == 'codex/gui-scale' || github.ref_name == 'codex/hud-appearance'
         run: |
@@ -62,12 +67,22 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-voice-gui
+          run-id: '45470236995'
+          github-token: ${{ github.token }}
+          path: prior
       - name: Build the actual installable archive and inspect all nested content
         run: |
           bash gradlew --no-daemon build
           mkdir -p dist
           cp build/libs/mobsear-0.3.14.jar 'dist/Mic Voice Chat - Mobs & Cobblemon Hear You.jar'
           python3 ci/audit_archive.py dist/*.jar --version 0.3.14 --report dist/archive-audit.json
+          build/speech-graph-tools/bin/python ci/compare_portable.py prior/*.jar dist/*.jar
           (cd dist && sha256sum *.jar > SHA256SUMS.txt)
       - name: Attach candidate for independent downstream verification
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -10,6 +10,8 @@ public final class SpeechWorker {
     private final Sapi engine;
     private final Sapi.Grammar commands, dictation;
     private Sapi.Grammar nearCommands, mentions;
+    private WordDecoder words;
+    private List<String> context=List.of();
     private final Map<String,String> pronounced = new LinkedHashMap<>();
     private static final Set<String> REJECT = Set.of("hey","call","pokemon","hey pokemon","call pokemon",
             "all pokemon","every pokemon","hold on","just a moment","low on money","lantern","butterfly",
@@ -44,12 +46,17 @@ public final class SpeechWorker {
         grammar.branch(prefix,null,names);
         for(String word:words) grammar.word(names,null,word);
         grammar.commit();
-        grammar.active(true);
+        grammar.activate("command");
         grammar.priority("command",1);
     }
 
     void roster(List<String> hints,List<String> live) {
         vocab.nearby(live);
+        var contextNames=new LinkedHashSet<>(live.stream().filter(vocab.confirm::contains).sorted().toList());
+        contextNames.addAll(hints);contextNames.addAll(live);
+        for(String name:List.of("enderman","lopunny","hoglin","zoglin","pikachu"))
+            if(vocab.names.containsKey(name)) contextNames.add(name);
+        context=List.copyOf(contextNames);
         if (mentions!=null) { mentions.close(); mentions=null; }
         if (nearCommands!=null) { nearCommands.close(); nearCommands=null; }
         var alternatives=new LinkedHashSet<String>();
@@ -81,7 +88,7 @@ public final class SpeechWorker {
         mentions.branch(before,null,name);
         mentions.freeWords(after,null);
         mentions.commit();
-        mentions.active(true);
+        mentions.activate("sentence");
         mentions.enabled(false);
     }
 
@@ -92,6 +99,11 @@ public final class SpeechWorker {
         if (phonetic!=null) return new CallVocabulary.Match(phonetic,vocab.names.get(phonetic));
         if (REJECT.contains(clean) && !vocab.names.containsKey(clean)) return null;
         return vocab.find(clean,clean.startsWith("call "));
+    }
+
+    private static void syntheticFault(Throwable error) {
+        if("github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT")) && "1".equals(System.getenv("MOBSEAR_SYNTHETIC_WORKER_FAULTS")))
+            error.printStackTrace(System.err);
     }
 
     private record Reply(int code,String hint) {}
@@ -120,6 +132,16 @@ public final class SpeechWorker {
                 commands.enabled(true);
                 if(nearCommands!=null) nearCommands.enabled(true);
             }
+        }
+        if(words!=null) {
+            String decoded=words.recognize(pcm,context);
+            var exactWord=match(decoded);
+            if(exactWord!=null && !CallVocabulary.rival(exactWord.label(),plain)) {
+                return new Reply(exactWord.code(),"");
+            }
+            var relative=vocab.guess(decoded,plain);
+            if(relative!=null) return new Reply(relative.code(),"");
+            if(detail && hint.isEmpty()) hint=decoded;
         }
         var independent=vocab.guess(plain,plain);
         if(mentions!=null) {
@@ -172,8 +194,16 @@ public final class SpeechWorker {
                 var service=new SpeechWorker(vocab,engine);
                 service.roster(List.of(),List.of());
                 if(stages){System.err.write(76);System.err.flush();}
+                try {
+                    service.words=new WordDecoder();
+                    service.words.warm();
+                } catch(IOException|RuntimeException|LinkageError unavailable) {
+                    if(service.words!=null) service.words.close();
+                    service.words=null;
+                    syntheticFault(unavailable);
+                }
                 engine.recognize(new byte[16000]);
-                out.writeByte(82);out.flush();
+                out.writeByte(service.words==null ? 68 : 82);out.flush();
                 for(;;) {
                     int len;
                     try { len=Integer.reverseBytes(in.readInt()); } catch(EOFException e) { break; }
@@ -203,12 +233,12 @@ public final class SpeechWorker {
                 }
                 if(service.mentions!=null) service.mentions.close();
                 if(service.nearCommands!=null) service.nearCommands.close();
+                if(service.words!=null) service.words.close();
                 service.dictation.close();service.commands.close();
             }
         } catch(Exception | LinkageError failure) {
             // Never print hypotheses or PCM. Hosted synthetic diagnostics may show a fixed ABI stage and HRESULT.
-            if("github-hosted".equals(System.getenv("RUNNER_ENVIRONMENT")) && "1".equals(System.getenv("MOBSEAR_SYNTHETIC_WORKER_FAULTS")))
-                failure.printStackTrace(System.err);
+            syntheticFault(failure);
             System.exit(1);
         }
     }
