@@ -309,9 +309,8 @@ public final class PokemonCaseClient {
 
     private ResourceLocation expectedListener() {
         if (c.nativeMimic()) return dev.mobsear.net.MobCallTypes.DUNGEON_MIMIC;
-        // In these two trials a second eligible mob actually hears the call.
+        // In this trial a different eligible mob actually hears the call.
         if (c==PokemonCase.BROAD_COW) return ResourceLocation.withDefaultNamespace("zombie");
-        if (c==PokemonCase.COOLDOWN_HELD) return c.species;
         return c.accepts() ? c.spoken() : null;
     }
     private void waitFor(String reason) {

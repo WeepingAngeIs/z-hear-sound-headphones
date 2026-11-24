@@ -1,7 +1,7 @@
 name: Prototype checks
 on:
   push:
-    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/berry-chew-pro-build, main]
+    branches: [codex/proximity-voice-prototype, codex/berry-visit-source, codex/berry-chew-pro-build, codex/no-mob-call-cooldowns, main]
     paths-ignore: ['ci/windows-world/**', '.github/workflows/windows-world.yml', 'ci/fullpack/**', '.github/workflows/fullpack.yml', 'ci/cobblemon/java/**', 'ci/cobblemon/run.py', '.github/workflows/cobblemon-worlds.yml']
   workflow_dispatch:
 permissions:
@@ -45,6 +45,20 @@ jobs:
           name: mobs-hear-u
           path: dist/mobsear-0.3.10.jar
           if-no-files-found: error
+      - name: Prepare named test JAR
+        if: github.ref_name == 'codex/no-mob-call-cooldowns'
+        run: |
+          mkdir -p release-name
+          cp dist/mobsear-0.3.10.jar 'release-name/Mic Voice Chat - Mobs & Cobblemon Hear You.jar'
+          (cd release-name && sha256sum *.jar > SHA256SUMS.txt && cat SHA256SUMS.txt)
+      - name: Attach named test JAR and checksum
+        if: github.ref_name == 'codex/no-mob-call-cooldowns'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobs-hear-u-no-mob-call-cooldowns
+          path: release-name/
+          if-no-files-found: error
+
   packaged-server:
     name: Packaged jar on NeoForge ${{ matrix.loader }}
     needs: game

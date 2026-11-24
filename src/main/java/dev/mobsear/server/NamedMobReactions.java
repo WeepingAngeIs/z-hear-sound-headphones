@@ -3,10 +3,8 @@ package dev.mobsear.server;
 import dev.mobsear.net.MobCallTypes;
 import dev.mobsear.net.Packets;
 import java.lang.reflect.Method;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.Predicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -36,14 +34,12 @@ import net.neoforged.neoforge.common.Tags;
 import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent.LivingTargetType;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /** Voice can draw an ordinary hostile's attack target. Its own AI controls pursuit and attacks. */
 public final class NamedMobReactions {
-    private static final int LOOK_TICKS = 20, COOLDOWN_TICKS = 60;
+    private static final int LOOK_TICKS = 20;
     private static final int POSE_INTERVAL = 5;
     private static final Map<Mob, Glance> active = new IdentityHashMap<>();
-    private static final Map<UUID, Long> cooldowns = new HashMap<>();
     private static final ResourceLocation HEARD_RANGE = ResourceLocation.fromNamespaceAndPath("mobsear", "heard_target_range");
     private static final Map<Mob, Pursuit> distantTargets = new IdentityHashMap<>();
 
@@ -51,12 +47,10 @@ public final class NamedMobReactions {
 
     public static void register() {
         NeoForge.EVENT_BUS.addListener(NamedMobReactions::afterLevelTick);
-        NeoForge.EVENT_BUS.addListener(NamedMobReactions::expireCooldowns);
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
             distantTargets.keySet().forEach(NamedMobReactions::restoreRange);
             distantTargets.clear();
             active.clear();
-            cooldowns.clear();
         });
     }
 
@@ -87,8 +81,7 @@ public final class NamedMobReactions {
 
     static boolean respond(ServerPlayer caller, Mob mob, double limit) {
         long now = caller.serverLevel().getServer().overworld().getGameTime();
-        if (cooldowns.getOrDefault(mob.getUUID(), 0L) > now
-                || mob instanceof Creeper creeper && (creeper.isIgnited() || creeper.getSwellDir() > 0)) return false;
+        if (mob instanceof Creeper creeper && (creeper.isIgnited() || creeper.getSwellDir() > 0)) return false;
         boolean aggro = canDrawAggro(caller, mob);
         if (aggro) {
             if (!targetCaller(mob, caller)) return false;
@@ -97,7 +90,6 @@ public final class NamedMobReactions {
         } else if (!canGlance(mob)) return false;
         var glance = new Glance(caller, caller.getEyePosition(), limit, now, mob.getYHeadRot(), mob.yBodyRot, aggro);
         active.put(mob, glance);
-        cooldowns.put(mob.getUUID(), now + (aggro ? 40 : COOLDOWN_TICKS));
         turn(mob, glance, now);
         return true;
     }
@@ -232,11 +224,6 @@ public final class NamedMobReactions {
                 return true;
             } catch (ReflectiveOperationException unavailable) { return false; }
         };
-    }
-
-    private static void expireCooldowns(ServerTickEvent.Post event) {
-        long now = event.getServer().overworld().getGameTime();
-        if (now % 20 == 0) cooldowns.values().removeIf(expiry -> expiry <= now);
     }
 
     // Apply the pose immediately after this world's native AI has updated its head and body.

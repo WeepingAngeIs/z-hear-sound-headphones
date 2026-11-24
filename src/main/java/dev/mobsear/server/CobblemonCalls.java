@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,11 +25,9 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Server-side species calls. Loaded only when Cobblemon is present. */
 final class CobblemonCalls {
     private static final int FACE_TICKS = 14;
-    private static final int COOLDOWN_TICKS = 100;
     private static final int STUCK_TICKS = 100;
     private static final float WALK_SPEED = 1.0F;
     private static final Map<PokemonEntity, Response> responses = new IdentityHashMap<>();
-    private static final Map<UUID, Long> cooldowns = new HashMap<>();
 
     private CobblemonCalls() {}
 
@@ -46,7 +43,6 @@ final class CobblemonCalls {
         NeoForge.EVENT_BUS.addListener(CobblemonCalls::tick);
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
             responses.clear();
-            cooldowns.clear();
         });
     }
 
@@ -59,8 +55,7 @@ final class CobblemonCalls {
         boolean heard = false;
         for (var mob : level.getEntitiesOfClass(PokemonEntity.class, caller.getBoundingBox().inflate(radius),
                 mob -> mob.distanceToSqr(caller) <= limit && id.equals(mob.getPokemon().getSpecies().getResourceIdentifier())
-                        && canAnswer(mob, now))) {
-            cooldowns.put(mob.getUUID(), now + COOLDOWN_TICKS);
+                        && canAnswer(mob))) {
             var response = new Response(mob, caller, limit, now);
             responses.put(mob, response);
             response.standAndFace(mob);
@@ -69,16 +64,15 @@ final class CobblemonCalls {
         return heard;
     }
 
-    private static boolean canAnswer(PokemonEntity mob, long now) {
-        return !responses.containsKey(mob) && now >= cooldowns.getOrDefault(mob.getUUID(), 0L) && available(mob);
+    private static boolean canAnswer(PokemonEntity mob) {
+        return !responses.containsKey(mob) && available(mob);
     }
 
     static List<ResourceLocation> nearbySpecies(ServerPlayer caller, int radius) {
         var level = caller.serverLevel();
-        long now = level.getServer().overworld().getGameTime();
         var nearest = new HashMap<ResourceLocation, Double>();
         for (var mob : level.getEntitiesOfClass(PokemonEntity.class, caller.getBoundingBox().inflate(radius),
-                mob -> mob.distanceToSqr(caller) <= (double) radius * radius && canAnswer(mob, now))) {
+                mob -> mob.distanceToSqr(caller) <= (double) radius * radius && canAnswer(mob))) {
             var id = mob.getPokemon().getSpecies().getResourceIdentifier();
             if (id.toString().length() <= dev.mobsear.net.Packets.MAX_CALL_ID_LENGTH)
                 nearest.merge(id, mob.distanceToSqr(caller), Math::min);
@@ -115,7 +109,6 @@ final class CobblemonCalls {
 
     private static void tick(ServerTickEvent.Post event) {
         long now = event.getServer().overworld().getGameTime();
-        if (now % 20 == 0) cooldowns.values().removeIf(expiry -> expiry <= now);
         responses.entrySet().removeIf(entry -> {
             var mob = entry.getKey();
             var response = entry.getValue();

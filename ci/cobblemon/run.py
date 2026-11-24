@@ -184,7 +184,7 @@ def run(mode):
             print(guard, flush=True)
         landed = (root/"evidence")
         expected = ["pikachu-before", "pikachu-after", "eevee-after", "lopunny-before", "lopunny-after", "look-after", "approach-after", "addon-after",
-                    "namespace-after", "near_edge-after", "blocked-after", "cooldown_prime-after", "cooldown_expired-after"]
+                    "namespace-after", "near_edge-after", "blocked-after", "repeat_first-after", "repeat_walk-after"]
         expected.extend(["walking_pikachu-after", "walking_eevee-after", "walking_lopunny-after", "interrupted-after"])
         for species in ("pikachu","eevee","lopunny"):
             for state in ("turn","beside"):

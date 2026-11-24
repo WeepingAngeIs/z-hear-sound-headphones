@@ -48,6 +48,21 @@ public final class GlanceGameTests {
         test.succeed();
     }
 
+    @GameTest(template = "hearing_floor", batch = "hostile_repeat")
+    public static void zombieRespondsToTwoCallersWithoutTargetCooldown(GameTestHelper test) {
+        var zombie = test.spawn(EntityType.ZOMBIE, 5, 2, 5);
+        var first = speaker(test, zombie.position().add(-5, 0, 0));
+        var second = speaker(test, zombie.position().add(5, 0, 0));
+        test.assertTrue(!first.getUUID().equals(second.getUUID()), "Repeat call requires two callers");
+        test.assertTrue(MobReactions.react(first, Cue.ZOMBIE, 16) != null && zombie.getTarget() == first,
+                "First zombie call did not draw its native target");
+        test.runAfterDelay(2, () -> {
+            test.assertTrue(MobReactions.react(second, Cue.ZOMBIE, 16) != null && zombie.getTarget() == second,
+                    "Previously called zombie rejected the second caller inside the former target cooldown");
+            test.succeed();
+        });
+    }
+
     private static void walking(GameTestHelper test, EntityType<? extends Mob> type, Cue named) {
         var mob = test.spawn(type, 3, 2, 5);
         var origin = mob.position();

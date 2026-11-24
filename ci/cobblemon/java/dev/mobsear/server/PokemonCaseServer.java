@@ -102,7 +102,7 @@ final class PokemonCaseServer {
             if (c==PokemonCase.OFFLINE_OWNER) checkOfflineOwner();
             if (c.ordinaryEntity()) named.arrange(c,subject,caller);
             if (deerWalk!=null) deerWalk.atCall(caller);
-            else if (!c.walking() && (c.accepts() || c==PokemonCase.COOLDOWN_HELD)) prepareIdle(subject);
+            else if (!c.walking() && (c.accepts())) prepareIdle(subject);
             if (c==PokemonCase.AGGRO) engageAggro();
             if (c==PokemonCase.APPROACH || c==PokemonCase.INTERRUPTED)
                 System.out.println("POKEMON_NATIVE_START "+c+" ground="+subject.onGround()+" navDone="+subject.getNavigation().isDone()+
@@ -151,7 +151,7 @@ final class PokemonCaseServer {
                         " mutedOrDeafened="+NearbyMics.inputBlocked(p)+" "+subjectState());
             }
             previousRequestTime=requestTime;
-            if (c==PokemonCase.COOLDOWN_PRIME) {
+            if (c==PokemonCase.REPEAT_FIRST) {
                 firstCall=now;
                 firstListener=subject;
                 firstListenerId=subject.getUUID();
@@ -161,7 +161,7 @@ final class PokemonCaseServer {
                         || !((PokemonEntity)subject).getPokemon().isWild())
                     throw PokemonProbe.fail("The repeat call did not reach the same living wild Pokémon");
                 gap=now-firstCall;
-                if ((c==PokemonCase.COOLDOWN_HELD && (gap<45 || gap>=100)) || (c==PokemonCase.COOLDOWN_EXPIRED && gap<105))
+                if ((c==PokemonCase.REPEAT_QUICK && (gap<45 || gap>=100)) || (c==PokemonCase.REPEAT_WALK && gap<105))
                     throw PokemonProbe.fail("Unexpected repeated-call interval " + gap);
             }
             if (c.walking() && (visit==null || !PokemonReactions.isReacting(subject) || !subject.getNavigation().isDone()))
@@ -208,12 +208,12 @@ final class PokemonCaseServer {
         if (!c.reusesSubject()) subject.moveTo(.5,Y,Z+.5,90,0);
         subject.setPersistenceRequired();
         if (!c.reusesSubject() && !world.addFreshEntity(subject)) throw PokemonProbe.fail("Could not spawn actual subject");
-        if (c==PokemonCase.COOLDOWN_HELD) {
+        if (c==PokemonCase.REPEAT_QUICK) {
             witness=PokemonProperties.Companion.parse("pikachu level=15").createEntity(world);
             witness.getPokemon().setSpecies(PokemonSpecies.getByIdentifier(c.species));
             witness.setPersistenceRequired();
             witness.moveTo(25.5,Y,Z+.5,90,0);
-            if (!world.addFreshEntity(witness)) throw PokemonProbe.fail("No fresh cooldown witness");
+            if (!world.addFreshEntity(witness)) throw PokemonProbe.fail("No fresh repeat-call witness");
         }
         if (c == PokemonCase.CREATIVE_GEODUDE) {
             witness = PokemonProperties.Companion.parse("geodude alolan=true level=15").createEntity(world);
@@ -304,7 +304,7 @@ final class PokemonCaseServer {
             if (age<36 || acknowledgements.size()!=count) return;
             if (c.walking()) {
                 if (visit==null) {
-                    int stroll=c==PokemonCase.COOLDOWN_EXPIRED ? (subject.getZ()>Z+.5 ? -6 : 6) : 8;
+                    int stroll=c==PokemonCase.REPEAT_WALK ? (subject.getZ()>Z+.5 ? -6 : 6) : 8;
                     visit=new CalledPokemonVisit((PokemonEntity)subject,caller,stroll);
                 }
                 if (!visit.isWandering()) {
@@ -319,7 +319,7 @@ final class PokemonCaseServer {
                     return;
                 }
             }
-            if (c==PokemonCase.COOLDOWN_EXPIRED && caller.serverLevel().getGameTime()-firstCall<110) return;
+            if (c==PokemonCase.REPEAT_WALK && caller.serverLevel().getGameTime()-firstCall<110) return;
             if (c==PokemonCase.BATTLE) engageBattle();
             if (c==PokemonCase.BATTLE || c==PokemonCase.OWNER) VisitCareProof.excluded((PokemonEntity)subject,caller,c.name());
             if (c==PokemonCase.CAPTURE) engageCapture();
@@ -419,14 +419,14 @@ final class PokemonCaseServer {
         if (c==PokemonCase.OFFLINE_OWNER && !offlineChecked) throw PokemonProbe.fail("Missing live offline owner assertion");
         if (c == PokemonCase.CREATIVE_GEODUDE && (!caller.isCreative() || !witnessReacted))
             throw PokemonProbe.fail("One Creative base-name call did not turn both forms of Geodude");
-        if (c==PokemonCase.COOLDOWN_HELD && !witnessReacted) {
+        if (c==PokemonCase.REPEAT_QUICK && !witnessReacted) {
             if (age>=50) throw PokemonProbe.fail("Fresh witness failed the accepted repeated-call interval "+gap);
             return;
         }
         if ((c==PokemonCase.INTERRUPTED || c==PokemonCase.NEW_AGGRO) && !released) return;
         if (age < (c.controlled()?45:27)) return;
-        if (c==PokemonCase.COOLDOWN_PRIME && active) {
-            // End this visit by leaving range. The follow-up measures the per-call cooldown independently.
+        if (c==PokemonCase.REPEAT_FIRST && active) {
+            // End this visit by leaving range. The next call must succeed as soon as the visit has released.
             if (caller.distanceToSqr(subject)<=32*32) caller.teleportTo(caller.getX()+48,caller.getY(),caller.getZ());
             return;
         }
@@ -453,7 +453,7 @@ final class PokemonCaseServer {
         if (c.ordinaryEntity()) named.finish(c,subject,reacted,aligned);
         if (witness!=null) { witness.discard(); witness=null; }
         if (c==PokemonCase.BLOCKED) wall(false);
-        if (c!=PokemonCase.COOLDOWN_PRIME && c!=PokemonCase.COOLDOWN_HELD) subject.discard();
+        if (c!=PokemonCase.REPEAT_FIRST && c!=PokemonCase.REPEAT_QUICK) subject.discard();
         if (ownedStore!=null) { ownedStore.remove(owned); ownedStore=null; owned=null; }
         boolean acoustic="1".equals(System.getenv("MOBSEAR_POKEMON_ACOUSTIC"));
         if (acoustic && c==PokemonCase.LOPUNNY_FAR && "1".equals(System.getenv("MOBSEAR_OWL_ACOUSTIC"))) {
