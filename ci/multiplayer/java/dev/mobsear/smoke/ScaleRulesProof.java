@@ -20,7 +20,7 @@ final class ScaleRulesProof {
     private final Minecraft mc = Minecraft.getInstance();
     private static final int[][] SIZES = {{854,480,1},{640,480,2},{1280,720,3},{1280,720,0}};
     private Packets.ServerRules reply;
-    private int stage, ticks, size, scrollTries, verified = -1;
+    private int stage, ticks, size, scrollTries, verified = -1, lastStage = -1, sameStage;
     private boolean admin, initialized;
     ScaleRulesProof() {
         NeoForge.EVENT_BUS.addListener(this::tick);
@@ -36,6 +36,15 @@ final class ScaleRulesProof {
                 initialized = true;
             }
             if (mc.player == null || mc.getConnection() == null || stage == 99 || ++ticks % 5 != 0) return;
+            if (lastStage != stage) {
+                lastStage = stage;
+                sameStage = 0;
+                System.out.println("MOBSEAR_GUI_STAGE "+stage+" index="+size);
+            } else if (++sameStage > 100) {
+                var w=mc.getWindow();
+                throw new AssertionError("Timed out at stage "+stage+" index="+size+" window="+w.getWidth()+"x"+w.getHeight()+
+                        " selected="+mc.options.guiScale().get()+" effective="+w.getGuiScale()+" screen="+mc.screen+" rules="+reply+" proof="+verified);
+            }
             if (stage == 0) {
                 admin = mc.getUser().getName().equals(SmokeControl.LISTENER);
                 GLFW.glfwFocusWindow(mc.getWindow().getWindow());
@@ -104,13 +113,18 @@ final class ScaleRulesProof {
         switch (stage) {
             case 2 -> {
                 mc.getWindow().setWindowed(target[0],target[1]);
-                mc.options.guiScale().set(target[2]);
                 stage++;
             }
             case 3 -> {
                 var window = mc.getWindow();
                 int expectedScale = target[2] == 0 ? 3 : target[2];
-                if (window.getWidth()!=target[0] || window.getHeight()!=target[1] || window.getGuiScale()!=expectedScale) return;
+                if (window.getWidth()!=target[0] || window.getHeight()!=target[1]) return;
+                // Minecraft validates the available scale choices against the current framebuffer.
+                if (mc.options.guiScale().get()!=target[2]) {
+                    mc.options.guiScale().set(target[2]);
+                    return;
+                }
+                if (window.getGuiScale()!=expectedScale) return;
                 check(mc.screen.width==window.getGuiScaledWidth() && mc.screen.height==window.getGuiScaledHeight(),"native coordinates");
                 noLocalSwitches();
                 var list = audio();
