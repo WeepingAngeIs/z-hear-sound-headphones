@@ -69,7 +69,13 @@ final class HudAppearanceProof {
                         .filter(e->e.getClass().getSimpleName().equals("VoiceControlList")).findFirst().orElseThrow();
                 var slider=find("Menu Background",true);
                 var toggle=find("Mic Frame",true);
-                if (slider.getY()<list.getY() || slider.getBottom()>list.getBottom() ||
+                // Off-screen widgets retain their last rendered rectangle. Require a real frame
+                // showing both rows at their current scroll position before dispatching test clicks.
+                if (list.getScrollAmount()==0 || age%4!=0) {
+                    if (age%4==0) mc.screen.mouseScrolled(list.getX()+15,list.getY()+12,0,-1);
+                    return;
+                }
+                if (slider.getY()==toggle.getY() || slider.getY()<list.getY() || slider.getBottom()>list.getBottom() ||
                         toggle.getY()<list.getY() || toggle.getBottom()>list.getBottom() || list.getScrollAmount()==0) {
                     mc.screen.mouseScrolled(list.getX()+15,list.getY()+12,0,-1); return;
                 }
@@ -79,7 +85,7 @@ final class HudAppearanceProof {
             if (stage>=2 && stage<=5 && age>=5) {
                 int i=stage-2;
                 if (i<3) {
-                    check(prefs.menuTransparency()==i*50 && !prefs.micFrame(),"live slider state "+i);
+                    check(prefs.menuTransparency()==i*50 && !prefs.micFrame(),"live slider state "+i+" actual="+prefs.menuTransparency()+" frame="+prefs.micFrame());
                     captureMenu(i);
                 }
                 if (i==2) {

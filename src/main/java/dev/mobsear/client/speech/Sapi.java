@@ -172,7 +172,7 @@ final class Sapi implements AutoCloseable {
             return out.getValue();
         }
         void word(Pointer from, Pointer to, String words) {
-            ok(call(object, 7, from, to, words == null ? null : wide(words), wide(" "), 0, 1f, null), "AddWordTransition");
+            ok(call(object, 7, from, to, words == null ? null : wide(words), wide(" "), 1, 1f, null), "AddWordTransition");
         }
         void branch(Pointer from, Pointer to, Pointer target) {
             ok(call(object, 8, from, to, target, 1f, null), "AddRuleTransition");
