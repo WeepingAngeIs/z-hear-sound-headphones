@@ -40,7 +40,11 @@ def main():
 def evaluate(folder, root):
     import onnxruntime as ort
     sessions = []
-    jar, = Path(folder).glob("*.jar")
+    jar = Path(folder)/"Mic Voice Chat - Mobs & Cobblemon Hear You.jar"
+    expected = (Path(folder)/"SHA256SUMS.txt").read_text().split()[0]
+    assert hashlib.sha256(jar.read_bytes()).hexdigest() == expected
+    if folder=="prior": assert expected=="a85bb6aa9666b9ca39f98c66f42ab9f9bc0c1619b025a621ca91bad8231ee4ca"
+    print("LEGACY_ARTIFACT",folder,expected,flush=True)
     for part in ["encoder","decoder"]:
         target = root / (folder + "-" + part + ".onnx")
         with zipfile.ZipFile(str(jar)) as archive:
