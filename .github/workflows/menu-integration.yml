@@ -4,11 +4,24 @@ on:
     branches: [codex/proximity-voice-prototype, codex/gui-scale, codex/hud-appearance, codex/portable-speech, main]
     paths: ['ci/**', 'src/main/java/dev/mobsear/client/**', 'src/main/resources/**', 'ci/multiplayer/**', '.github/workflows/menu-integration.yml', 'build.gradle']
   workflow_dispatch:
+    inputs:
+      join_run:
+        description: Optional existing audited build run to exercise multiplayer joins only
+        type: string
+      join_sha:
+        description: Raw SHA-256 of that existing JAR
+        type: string
+      join_fixture:
+        description: Dedicated-server pack to verify when reusing a build
+        type: choice
+        options: [both, cobblemon-control, public-pack]
+        default: both
 permissions:
   contents: read
   actions: read
 jobs:
   public-client:
+    if: inputs.join_run == ''
     name: FancyMenu and Sodium/Iris backdrop checks
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -57,7 +70,7 @@ jobs:
     name: Build, audit and test the packaged mod
     outputs:
       raw_sha: ${{ steps.package.outputs.raw_sha }}
-    if: github.ref_name == 'codex/portable-speech'
+    if: github.ref_name == 'codex/portable-speech' && inputs.join_run == ''
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -171,17 +184,17 @@ jobs:
   portable-join:
     name: Multiplayer join and normal play / ${{ matrix.pack }}
     needs: portable-package
-    if: github.ref_name == 'codex/portable-speech'
+    if: always() && !cancelled() && github.ref_name == 'codex/portable-speech' && (needs.portable-package.result == 'success' || (inputs.join_run != '' && inputs.join_sha != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 65
     strategy:
       fail-fast: false
       matrix:
-        pack: [cobblemon-control, public-pack]
+        pack: ${{ fromJSON(inputs.join_fixture == 'public-pack' && '["public-pack"]' || inputs.join_fixture == 'cobblemon-control' && '["cobblemon-control"]' || '["cobblemon-control","public-pack"]') }}
     env:
       PYTHONUNBUFFERED: '1'
       JOIN_PACK: ${{ matrix.pack }}
-      RAW_SHA: ${{ needs.portable-package.outputs.raw_sha }}
+      RAW_SHA: ${{ inputs.join_sha || needs.portable-package.outputs.raw_sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -189,7 +202,7 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
-          java-version: '21.0.9+10'
+          java-version: '21.0.9'
           cache: gradle
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
@@ -197,6 +210,8 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: voice-archive-verification
+          run-id: ${{ inputs.join_run || github.run_id }}
+          github-token: ${{ github.token }}
           path: dist
       - name: Prepare the independent gameplay observer
         run: |
