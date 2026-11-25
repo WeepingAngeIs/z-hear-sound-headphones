@@ -70,6 +70,8 @@ public final class PackProbe {
     private final boolean earlier = "1".equals(System.getenv("MOBSEAR_EARLIER"));
     private final boolean measuredDecisions = "1".equals(System.getenv("MOBSEAR_EXTRA_NAMES"));
     private final boolean testFeedback = "1".equals(System.getenv("MOBSEAR_TEST_FEEDBACK"));
+    private final boolean verifyBerryAudio = "1".equals(System.getenv("MOBSEAR_TEST_VISIT_BERRIES"))
+            && "true".equals(System.getenv("PORTABLE_VERIFY"));
     private final boolean testVisit = "1".equals(System.getenv("MOBSEAR_TEST_VISIT"));
     private final boolean testSentences = "1".equals(System.getenv("MOBSEAR_TEST_SENTENCES"));
     private final boolean baseCalls = "1".equals(System.getenv("MOBSEAR_TEST_BASE_CALLS"));
@@ -148,6 +150,7 @@ public final class PackProbe {
         volatile int alolanFacingTicks;
         volatile boolean flockReady, flockVisited;
         PackVisitFeeding feeding;
+        int eatSounds, completionCries;
         final long frameBefore, cueBefore;
         final boolean visitTrial;
         CalledPokemonVisit visit; // Server-thread observer, after native navigation becomes available.
@@ -458,6 +461,7 @@ public final class PackProbe {
                 if (earlier) {
                     if (!mc.getConnection().hasChannel(Packets.Call.TYPE)) throw new IllegalStateException("Missing original call channel");
                 } else CurrentNotices.install(this);
+                if (verifyBerryAudio) new PackBerryAudio().attach(mc, () -> current);
                 if (testSentences) {
                     if (VoiceClient.options().callDebugLog()) throw new IllegalStateException("Debug logging defaulted on");
                     LOG.info("ACOUSTIC_DEBUG_WINDOW enabled=true freshDefaultOff=true");
@@ -654,6 +658,7 @@ public final class PackProbe {
                 observationLimit=Math.max(observationLimit,Math.min(18_000_000_000L,o.dispatchedAt-o.startedAt+1_500_000_000L));
             boolean completedVisit=!o.visitTrial || o.finished && o.besideScreenshot && (o.feeding==null || o.feeding.passed());
             if (o.test.flockMember()) completedVisit &= o.flockVisited;
+            if (verifyBerryAudio && o.feeding!=null) completedVisit &= o.eatSounds>=8 && o.completionCries>=2;
             if (elapsed<observationLimit && !(o.test.hears && (earlier ? o.recognized : o.screenshot) && o.aligned>=2 && o.reaction && completedVisit)) return;
             boolean silent=o.test.recording.equals("silence");
             boolean capture=Boundary.consumed() && (silent ? Boundary.nonzeroFrames==0 : Boundary.nonzeroFrames>=2);
@@ -683,6 +688,9 @@ public final class PackProbe {
                     && o.dispatched==expectWire && o.acceptedCue==expectWire
                     && (earlier || o.confirmed==o.test.hears && o.notice==o.test.hears) && o.reaction==o.test.hears && !o.targeted
                     && (!o.test.hears || (o.facedAway && o.aligned>=2 && (earlier || o.screenshot))) && completedVisit;
+            if (verifyBerryAudio && o.feeding!=null)
+                System.out.println("ACOUSTIC_BERRY_AUDIO species="+o.test.name+" eatSounds="+o.eatSounds+
+                        " completionCries="+o.completionCries+" feedingPassed="+o.feeding.passed());
             if (o.alolan!=null) {
                 success &= o.alolanFacingTicks>=2;
                 System.out.println("ACOUSTIC_BASE_NAME name=Geodude mode=Creative forms=Normal,Alola regularFacingTicks="+o.aligned

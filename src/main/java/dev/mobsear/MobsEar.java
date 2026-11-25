@@ -25,10 +25,10 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 @Mod("mobsear")
 public final class MobsEar {
-    private static final net.neoforged.neoforge.registries.DeferredRegister<net.minecraft.sounds.SoundEvent> SOUNDS =
-            net.neoforged.neoforge.registries.DeferredRegister.create(net.minecraft.core.registries.Registries.SOUND_EVENT, "mobsear");
+    // Existing callers can still reference the client sound asset without adding a synchronized registry key.
     public static final java.util.function.Supplier<net.minecraft.sounds.SoundEvent> NOM =
-            SOUNDS.register("nom_nom", net.minecraft.sounds.SoundEvent::createVariableRangeEvent);
+            com.google.common.base.Suppliers.ofInstance(net.minecraft.sounds.SoundEvent.createVariableRangeEvent(
+                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("mobsear", "nom_nom")));
     private static final ModConfigSpec SERVER_CONFIG;
     private static final ModConfigSpec.IntValue radius, hordeCooldown, hordeCap;
     private static final ModConfigSpec.BooleanValue callsEnabled, hordeEnabled;
@@ -98,7 +98,6 @@ public final class MobsEar {
     }
 
     public MobsEar(IEventBus bus, ModContainer container) {
-        SOUNDS.register(bus);
         PokemonReactions.register();
         NamedMobReactions.register();
         container.registerConfig(ModConfig.Type.SERVER, SERVER_CONFIG);

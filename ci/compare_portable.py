@@ -43,7 +43,7 @@ def main(previous, current):
     (current.parent/"launcher-libraries.json").write_text(json.dumps(external,indent=2)+"\n",encoding="utf8")
     with zipfile.ZipFile(io.BytesIO(raw)) as old, zipfile.ZipFile(current) as new:
         protected = [n for n in old.namelist() if n.startswith("assets/") or
-                     n.endswith(".class") and n.startswith("dev/mobsear/") and
+                     n.endswith(".class") and n.startswith("dev/mobsear/") and n!="dev/mobsear/MobsEar.class" and
                      not n.startswith(tuple("dev/mobsear/client/"+changed for changed in
                                             ("VoiceClient","SpeechCues","CallDebugLog","speech/")))]
         assert protected and any(n.endswith(".png") for n in protected)
@@ -53,6 +53,9 @@ def main(previous, current):
                 assert all(new_text[k]==v for k,v in old_text.items()) and "mobsear.speech.desktop_reason" in new_text
             else:
                 assert new.read(name) == old.read(name), name
+        assert b"DeferredRegister" in old.read("dev/mobsear/MobsEar.class")
+        assert b"DeferredRegister" not in new.read("dev/mobsear/MobsEar.class")
+        assert new.read("dev/mobsear/server/VisitInteractions.class") == old.read("dev/mobsear/server/VisitInteractions.class")
         assets = {n[len(BASE):] for n in new.namelist() if n.startswith(BASE) and not n.endswith("/")}
         assert assets == {"encoder.onnx","decoder.onnx","english.vocab","mel-filters.f32","LICENSE-Whisper.txt","LICENSE-whisper.cpp.txt"}
         for asset in assets - {"encoder.onnx","decoder.onnx"}:

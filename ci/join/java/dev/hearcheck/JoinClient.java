@@ -41,6 +41,8 @@ public final class JoinClient {
                 Class.forName("dev.mobsear.client.VoiceClient",false,getClass().getClassLoader());
                 clientClass=true;
             } catch (ClassNotFoundException absent) { clientClass=false; }
+            boolean serverCommand = mc.getConnection().getCommands().getRoot().getChild("mobsear")!=null;
+            System.out.println("JOIN_PROOF serverCommandAdvertised="+serverCommand);
             System.out.println("JOIN_PROOF client "+name+" micLoaded="+loaded+" micKeys="+keys+" micChannels="+channels+" micClass="+clientClass);
             if (loaded!=present || clientClass!=present || (keys>0)!=present || channels!=(present ? JoinCase.CHANNELS.size() : 0)) {
                 finish(mc,"JOIN_INCORRECT features "+name); return;
