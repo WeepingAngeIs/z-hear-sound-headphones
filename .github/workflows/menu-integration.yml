@@ -11,6 +11,10 @@ on:
       join_sha:
         description: Raw SHA-256 of that existing JAR
         type: string
+      command_probe:
+        description: Inspect fixed generated desktop-command contrasts from this existing build instead of joining
+        type: boolean
+        default: false
       join_fixture:
         description: Dedicated-server pack to verify when reusing a build
         type: choice
@@ -184,7 +188,7 @@ jobs:
   portable-join:
     name: Multiplayer join and normal play / ${{ matrix.pack }}
     needs: portable-package
-    if: always() && !cancelled() && github.ref_name == 'codex/portable-speech' && (needs.portable-package.result == 'success' || (inputs.join_run != '' && inputs.join_sha != ''))
+    if: always() && !cancelled() && !inputs.command_probe && github.ref_name == 'codex/portable-speech' && (needs.portable-package.result == 'success' || (inputs.join_run != '' && inputs.join_sha != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 65
     strategy:
@@ -226,3 +230,52 @@ jobs:
         run: python ci/fullpack/stage.py "$RUNNER_TEMP/join-client" ${{ matrix.pack == 'cobblemon-control' && '--focused' || '' }}
       - name: Join the same production dedicated server with two real clients in turn
         run: xvfb-run -a -s '-screen 0 960x600x24' python ci/join/play.py
+
+  generated-command-contrast:
+    name: Generated Pikachu and confusable desktop commands
+    if: inputs.command_probe && inputs.join_run != '' && github.ref_name == 'codex/portable-speech'
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: voice-archive-verification
+          run-id: ${{ inputs.join_run }}
+          github-token: ${{ github.token }}
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: generated-comparison-input
+          run-id: ${{ inputs.join_run }}
+          github-token: ${{ github.token }}
+          path: evidence/input
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: published-registry-vocabulary
+          run-id: ${{ inputs.join_run }}
+          github-token: ${{ github.token }}
+          path: evidence/registry
+      - name: Compare independent readings from the actual desktop recognizer
+        env:
+          EXPECTED_JAR: ${{ inputs.join_sha }}
+        shell: pwsh
+        run: |
+          $jar=(Get-ChildItem dist -Filter '*.jar').FullName
+          if ((Get-FileHash $jar).Hash -ne $env:EXPECTED_JAR) {throw 'Unexpected raw JAR'}
+          $hash = @{'jna'='67bf3eaea4f0718cb376a181a629e5f88fa1c9dd';'jna-platform'='28934d48aed814f11e4c584da55c49fa7032b31b'}
+          foreach ($name in $hash.Keys) {
+            $file="dist/$name-5.14.0.jar"
+            Invoke-WebRequest "https://libraries.minecraft.net/net/java/dev/jna/$name/5.14.0/$name-5.14.0.jar" -OutFile $file
+            if ((Get-FileHash -Algorithm SHA1 $file).Hash -ne $hash[$name]) {throw 'Unexpected launcher library'}
+          }
+          $cp=".;dist/*"
+          javac --release 21 -cp $cp -d . ci/speech-focus/DesktopContrast.java
+          if ($LASTEXITCODE) {exit $LASTEXITCODE}
+          java -cp $cp dev.mobsear.client.speech.DesktopContrast
