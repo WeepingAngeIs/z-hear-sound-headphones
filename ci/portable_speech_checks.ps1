@@ -11,7 +11,7 @@ $fixture = Join-Path $env:RUNNER_TEMP 'portable-speech-fixtures'
 $env:MOBSEAR_SYNTH_TRACE_DIR = $fixture
 function MustPass { if ($LASTEXITCODE -ne 0) { throw "Hosted tool exited with code $LASTEXITCODE" } }
 if ($Check -eq 'prepare') {
-    python ci/audit_archive.py $jar --version 0.3.14
+    python ci/audit_archive.py $jar --version 0.3.15
     MustPass
     # The game's real 1.21.1 launcher supplies these libraries.
     $hash = @{'jna'='67bf3eaea4f0718cb376a181a629e5f88fa1c9dd';'jna-platform'='28934d48aed814f11e4c584da55c49fa7032b31b'}

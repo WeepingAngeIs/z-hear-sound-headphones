@@ -1,6 +1,7 @@
 package dev.mobsear.client;
 
 import dev.mobsear.net.Packets;
+import dev.mobsear.client.speech.ModelStartup;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -23,6 +24,7 @@ final class CallDebugLog {
     private final LinkedHashMap<Long, Pending> pending = new LinkedHashMap<>();
     private final HashMap<Event, Long> last = new HashMap<>();
     private Event state;
+    private ModelStartup modelIssue;
     private boolean enabled;
 
     CallDebugLog(BooleanSupplier preference) { this.preference = preference; }
@@ -45,7 +47,14 @@ final class CallDebugLog {
         }
     }
 
-    void clearSession() { pending.clear(); state = null; }
+    void clearSession() { pending.clear(); state = null; modelIssue = null; }
+
+    void modelStartup(ModelStartup issue) {
+        if (!enabled || !preference.getAsBoolean() || java.util.Objects.equals(issue, modelIssue)) return;
+        modelIssue = issue;
+        if (issue != null) LOG.info("MOBSEAR_MODEL_STARTUP stage={} reason={} code={}",
+                issue.stage(), issue.reason(), issue.code());
+    }
 
     void state(Event next) {
         if (!enabled || state == next) return;

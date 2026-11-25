@@ -174,7 +174,14 @@ def run():
     if not native and "--quickPlaySingleplayer" not in args:
         args.extend(["--quickPlaySingleplayer",world])
     # Command arguments can contain launcher credentials. Only fixed proof markers are published.
-    with subprocess.Popen(args,cwd=game,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,
+    child_env = os.environ.copy()
+    forced_commands = child_env.get("MOBSEAR_COMMAND_ONLY") == "1"
+    if forced_commands:
+        java_temp = root / "desktop-only-temp"
+        java_temp.mkdir()
+        (java_temp / "mobsear-winml").write_text("fixture occupies the model staging directory")
+        child_env.update(TEMP=str(java_temp), TMP=str(java_temp))
+    with subprocess.Popen(args,cwd=game,env=child_env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,
                           encoding="utf-8",errors="replace") as process:
         recent=deque(maxlen=12)
         stop=threading.Event()
@@ -227,6 +234,10 @@ def run():
                             count+=4
                         if os.environ.get("MOBSEAR_TEST_WORDPLAY")=="1":
                             count+=4
+                        if forced_commands:
+                            count = 10
+                            messages = (game/"logs/latest.log").read_text(encoding="utf8",errors="replace")
+                            assert "MOBSEAR_MODEL_STARTUP stage=ENCODER_FILE reason=FILE_EXISTS code=FILE_EXISTS" in messages, "Missing bounded local fallback diagnostic"
                         assert len(observations)==count, f"Expected {count} speech trials, observed {len(observations)}"
                         if os.getenv("MOBSEAR_TEST_SENTENCES")=="1":
                             from check_debug import verify, verify_capture

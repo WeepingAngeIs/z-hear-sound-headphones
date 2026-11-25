@@ -10,13 +10,17 @@ import java.util.regex.Pattern;
 final class WordDecoder implements AutoCloseable {
     private static final int FFT=400, BINS=201, FRAMES=1024, EOT=50256;
     private final WindowsModel model;
+    private final ModelStartup.Progress startup;
     private final float[] filters=new float[80*BINS], cosine=new float[BINS*FFT], sine=new float[BINS*FFT];
     private final String[] vocab=new String[EOT+1];
     private final Map<String,Integer> tokenIds=new HashMap<>();
     private static final Pattern PIECES=Pattern.compile("'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+");
     private static final int[] SUPPRESS={1,2,7,8,9,10,14,25,26,27,28,29,31,58,59,60,61,62,63,90,91,92,93,357,366,438,532,685,705,796,930,1058,1220,1267,1279,1303,1343,1377,1391,1635,1782,1875,2162,2361,2488,3467,4008,4211,4600,4808,5299,5855,6329,7203,9609,9959,10563,10786,11420,11709,11907,13163,13697,13700,14808,15306,16410,16791,17992,19203,19510,20724,22305,22935,27007,30109,30420,33409,34949,40283,40493,40549,47282,49146};
 
-    WordDecoder() throws IOException {
+    WordDecoder() throws IOException { this(new ModelStartup.Progress()); }
+
+    WordDecoder(ModelStartup.Progress startup) throws IOException {
+        this.startup = startup;
         try(var raw=resource("mel-filters.f32"); var tokens=new DataInputStream(new BufferedInputStream(resource("english.vocab")))) {
             var table=ByteBuffer.wrap(raw.readAllBytes()).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
             if(table.remaining()!=filters.length) throw new IOException("Invalid mel filters");
@@ -32,7 +36,8 @@ final class WordDecoder implements AutoCloseable {
             cosine[k*FFT+x]=(float)(window*Math.cos(phase));
             sine[k*FFT+x]=(float)(window*Math.sin(phase));
         }
-        model=new WindowsModel();
+        startup.stage = ModelStartup.Stage.RUNTIME;
+        model=new WindowsModel(startup);
     }
 
     private static InputStream resource(String name) throws IOException {
@@ -87,7 +92,9 @@ final class WordDecoder implements AutoCloseable {
     void warm() {
         float[] quiet=new float[80*FRAMES];
         Arrays.fill(quiet,-1.5f);
+        startup.stage = ModelStartup.Stage.ENCODER_WARMUP;
         try(var context=model.encode(quiet)) {
+            startup.stage = ModelStartup.Stage.DECODER_WARMUP;
             context.logits(new long[]{50257,50362},1);
         }
     }

@@ -53,7 +53,7 @@ public final class PackProbe {
         Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
-        boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary").contains(recording); }
+        boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary", "peek-at-you", "pick-a-shoe", "peekaboo").contains(recording); }
         boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude") || recording.equals("watch-and-roll")); }
         boolean checkRoster() { return Set.of("Geodude","Butterfree","Lilligant","Wattrel","Kilowattrel","Vivillon").contains(name); }
         boolean flockMember() { return hears && recording.equals("watch-and-roll"); }
@@ -74,9 +74,19 @@ public final class PackProbe {
     private final boolean testSentences = "1".equals(System.getenv("MOBSEAR_TEST_SENTENCES"));
     private final boolean baseCalls = "1".equals(System.getenv("MOBSEAR_TEST_BASE_CALLS"));
     private final LiveNearbyProof liveNearby = "1".equals(System.getenv("MOBSEAR_TEST_NEARBY")) ? new LiveNearbyProof() : null;
+    private final boolean commandOnly = "1".equals(System.getenv("MOBSEAR_COMMAND_ONLY"));
     private final Trial[] tests = trials();
 
     private Trial[] trials() {
+        if (commandOnly) {
+            var calls = new ArrayList<Trial>();
+            calls.add(new Trial("Pikachu",12,false,true,true));
+            calls.add(new Trial("Pikachu",12,false,true,false,"pikachu-second"));
+            for (String ordinary : List.of("peek-at-you","pick-a-shoe","peekaboo","hold-on","sentence-ordinary","fan","silence"))
+                calls.add(new Trial("Pikachu",12,false,false,false,ordinary));
+            calls.add(new Trial("Pikachu",40,false,false,true));
+            return calls.toArray(Trial[]::new);
+        }
         if (earlier) return new Trial[]{new Trial("Enderman",24,false,true,true), new Trial("Enderman",24,false,true,false)};
         var cases=new ArrayList<>(List.of(
         new Trial("Enderman", 24, false, true, true),
@@ -516,6 +526,15 @@ public final class PackProbe {
                 // Voice stays opted in through onboarding. A first-join screen intentionally
                 // suspends capture, so play comparison words only after the tutorial's Later action.
                 if (!onboarding.readyForSpeech()) return;
+                if ("true".equals(System.getenv("PORTABLE_VERIFY"))) {
+                    var speech = (dev.mobsear.client.SpeechCues)Boundary.get(Boundary.get(Boundary.client(),"session"),"speech");
+                    if (!state.equals("READY") || speech.desktopOnly()!=commandOnly)
+                        throw new IllegalStateException("Unexpected sentence model availability: " + state);
+                    var issue = speech.modelStartupIssue();
+                    if (commandOnly && (issue==null || !issue.stage().name().equals("ENCODER_FILE") || !issue.reason().name().equals("FILE_EXISTS"))
+                            || !commandOnly && issue!=null) throw new IllegalStateException("Wrong startup diagnostic " + issue);
+                    System.out.println("ACOUSTIC_MODEL commandOnly="+commandOnly+" issue="+(issue==null?"none":issue.display()));
+                }
                 if (!earlier) Files.write(home.resolve("public-registry.bin"),Boundary.publicVocabulary());
                 System.out.println("ACOUSTIC_TRIALS decoder="+state+" integrated=true mode="+mc.gameMode.getPlayerMode()+" loader="+
                         ModList.get().getModContainerById("neoforge").orElseThrow().getModInfo().getVersion()+
@@ -533,8 +552,8 @@ public final class PackProbe {
                 if (!o.started) {
                     if (o.seenAt==0) {
                         o.seenAt=System.nanoTime();
-                        if (testSentences) {
-                            boolean log = !o.test.recording.equals("lopunny-alternate");
+                        if (testSentences || commandOnly) {
+                            boolean log = commandOnly ? o.number < 2 : !o.test.recording.equals("lopunny-alternate");
                             if (log != VoiceClient.options().callDebugLog()) {
                                 LOG.info("ACOUSTIC_DEBUG_WINDOW enabled={} trial={}",log,o.number);
                                 VoiceClient.options().setCallDebugLog(log);
@@ -542,7 +561,7 @@ public final class PackProbe {
                         }
                     }
                     if (err>60) o.facedAway=true;
-                    if (testFeedback) VoiceClient.options().setRecognitionDiagnostics(o.test.detail);
+                    if (testFeedback || commandOnly) VoiceClient.options().setRecognitionDiagnostics(o.test.detail);
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;

@@ -6,12 +6,17 @@ Add-Type -AssemblyName System.Speech
 $speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer
 try {
     $english = $speaker.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq 'en' } | Select-Object -First 1
+    $second = $speaker.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq 'en' -and $_.VoiceInfo.Name -ne $english.VoiceInfo.Name } | Select-Object -First 1
+    if ($null -eq $second) { throw 'Two different English system voices are required' }
     $speaker.SelectVoice($english.VoiceInfo.Name)
     $format = [System.Speech.AudioFormat.SpeechAudioFormatInfo]::new(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
-    $alternateCalls = @{'watch-and-roll'='Watch and roll.'; 'kilo-watch-roll'='Kilo watch roll.'; 'vivian-call'='Vivian.'}
+    $alternateCalls = @{'watch-and-roll'='Watch and roll.'; 'kilo-watch-roll'='Kilo watch roll.'; 'vivian-call'='Vivian.'; 'pikachu-second'='Pikachu'; 'peek-at-you'='Peek at you.'; 'pick-a-shoe'='Pick a shoe.'; 'peekaboo'='Peekaboo.'}
     foreach ($name in (@('Enderman','Pikachu','Lopunny','Geodude','Lilligant','Butterfree','nearby-bulbazore','nearby-nidorine') + @($alternateCalls.Keys))) {
         $stream = New-Object System.IO.MemoryStream
         try {
+            if ($name -eq 'pikachu-second') { $speaker.SelectVoice($second.VoiceInfo.Name) }
+            else { $speaker.SelectVoice($english.VoiceInfo.Name) }
+            if ($name -in @('Pikachu','pikachu-second')) { Write-Output ("Generated "+$name+" with "+$speaker.Voice.Name) }
             $speaker.SetOutputToAudioStream($stream,$format)
             if ($name -eq 'nearby-bulbazore') { $speaker.Speak('There is a Bulbazore here.') }
             elseif ($name -eq 'nearby-nidorine') { $speaker.Speak('That Nidorine is standing right here.') }

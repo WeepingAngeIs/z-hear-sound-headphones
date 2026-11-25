@@ -154,8 +154,10 @@ class Graph:
         return self.op("Add",x,self.linear(self.gelu(self.linear(self.norm(x,p+".mlp_ln"),p+".mlp.0")),p+".mlp.2"))
 
     def save(self,path):
-        graph=op.make_graph(self.nodes,path.stem,self.inputs,self.outputs,initializer=list(self.constants.values()))
-        model=op.make_model(graph,opset_imports=[op.make_opsetid("",11)],ir_version=6,producer_name="Mobs Hear U")
+        # Windows 10's inbox WinML uses opset 9. IR 3 declares initializer shapes as graph inputs.
+        defaults = [op.make_tensor_value_info(t.name, t.data_type, list(t.dims)) for t in self.constants.values()]
+        graph=op.make_graph(self.nodes,path.stem,self.inputs+defaults,self.outputs,initializer=list(self.constants.values()))
+        model=op.make_model(graph,opset_imports=[op.make_opsetid("",9)],ir_version=3,producer_name="Mobs Hear U")
         onnx.checker.check_model(model)
         onnx.save(model,path)
 
@@ -185,7 +187,7 @@ def build(root):
     for i in range(4):
         k=dec.input("k"+str(i),[1,6,64,AUDIO]);v=dec.input("v"+str(i),[1,6,AUDIO,64])
         x=dec.block(x,"decoder.blocks."+str(i),mask,(k,v))
-    last=dec.op("Gather",dec.norm(x,"decoder.ln"),dec.constant("last",np.array([-1],dtype="<i8")),axis=1)
+    last=dec.op("Gather",dec.norm(x,"decoder.ln"),dec.input("last",[1],T.INT64),axis=1)
     logits=dec.op("MatMul",last,dec.op("Transpose",emb,perm=[1,0]))
     dec.output("logits",logits,["beams",1,51864])
     dec.save(root/"decoder.onnx")

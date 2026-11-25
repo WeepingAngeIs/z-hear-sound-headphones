@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'dev.mobsear'
-version = '0.3.14'
+version = '0.3.15'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 // Generate only ML weights, vocabulary, filters and license notices. Build tools have separate outputs.

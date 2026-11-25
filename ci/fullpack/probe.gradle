@@ -10,6 +10,16 @@ allprojects {
             archiveFileName = 'ci-acoustic-observer.jar'
             destinationDirectory = rootProject.layout.buildDirectory.dir('pack-probe')
         }
+        def joinProbe = sourceSets.create('micJoinProbe') {
+            java.srcDirs = [rootProject.file('ci/join/java')]
+            compileClasspath += sourceSets.main.compileClasspath
+        }
+        tasks.register('micJoinProbeJar', Jar) {
+            from joinProbe.output
+            from(rootProject.file('ci/join/neoforge.mods.toml')) { into 'META-INF' }
+            archiveFileName = 'ci-mic-join-observer.jar'
+            destinationDirectory = rootProject.layout.buildDirectory.dir('pack-probe')
+        }
         tasks.register('configtopiaPublicClasspath') {
             dependsOn('createMinecraftArtifacts')
             doLast {

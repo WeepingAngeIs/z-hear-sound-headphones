@@ -1,4 +1,4 @@
-"""Compare the final artifact against the exact 0.3.13 distribution and inspect the actual ONNX graphs."""
+"""Compare the final artifact against the exact 0.3.14 distribution and inspect the actual ONNX graphs."""
 import hashlib
 import io
 import json
@@ -9,7 +9,7 @@ import zipfile
 import onnx
 from audit_archive import audit
 
-OLD = "0174acc775e6e33f24ccc21f6707e28576527c63c0ab6694234f3ce36aba7708"
+OLD = "a85bb6aa9666b9ca39f98c66f42ab9f9bc0c1619b025a621ca91bad8231ee4ca"
 OPS = {"Identity","Cast","Transpose","Conv","Erf","Mul","Add","Sub","ReduceMean","Div","Sqrt",
        "MatMul","Reshape","Softmax","Gather"}
 BASE = "dev/mobsear/client/speech/model/"
@@ -38,32 +38,43 @@ def platform_libraries():
 def main(previous, current):
     raw = previous.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == OLD
-    original_report = audit(raw, "0.3.13")
-    native = {entry["entry"].rsplit("/",1)[-1] for entry in original_report["findings"] if "Windows PE" in entry["reason"]}
-    assert native == {"whisper-cli.exe","whisper.dll","ggml.dll","ggml-cpu.dll","ggml-base.dll"}
-    assert not any(entry["entry"].lower().endswith((".bat",".cmd")) for entry in original_report["findings"])
-    print("Original nested Windows PE files:", ", ".join(sorted(native)))
+    assert not audit(raw, "0.3.14")["findings"]
     external = platform_libraries()
     (current.parent/"launcher-libraries.json").write_text(json.dumps(external,indent=2)+"\n",encoding="utf8")
     with zipfile.ZipFile(io.BytesIO(raw)) as old, zipfile.ZipFile(current) as new:
         protected = [n for n in old.namelist() if n.startswith("assets/") or
                      n.endswith(".class") and n.startswith("dev/mobsear/") and
                      not n.startswith(tuple("dev/mobsear/client/"+changed for changed in
-                                            ("VoiceClient","SpeechCues","WindowsSpeechWorker","OfflineWordModel")))]
+                                            ("VoiceClient","SpeechCues","CallDebugLog","speech/")))]
         assert protected and any(n.endswith(".png") for n in protected)
         for name in protected:
             if name == "assets/mobsear/lang/en_us.json":
                 old_text=json.loads(old.read(name)); new_text=json.loads(new.read(name))
-                assert all(new_text[k]==v for k,v in old_text.items()) and "mobsear.speech.desktop_only" in new_text
+                assert all(new_text[k]==v for k,v in old_text.items()) and "mobsear.speech.desktop_reason" in new_text
             else:
                 assert new.read(name) == old.read(name), name
         assets = {n[len(BASE):] for n in new.namelist() if n.startswith(BASE) and not n.endswith("/")}
         assert assets == {"encoder.onnx","decoder.onnx","english.vocab","mel-filters.f32","LICENSE-Whisper.txt","LICENSE-whisper.cpp.txt"}
+        for asset in assets - {"encoder.onnx","decoder.onnx"}:
+            assert old.read(BASE+asset) == new.read(BASE+asset), asset
         for filename in ("encoder.onnx","decoder.onnx"):
             data = new.read(BASE+filename)
             model = onnx.load_model_from_string(data)
             onnx.checker.check_model(model)
-            assert [(i.domain,i.version) for i in model.opset_import] == [("",11)]
+            baseline = onnx.load_model_from_string(old.read(BASE+filename))
+            assert baseline.ir_version == 6 and [(i.domain,i.version) for i in baseline.opset_import] == [("",11)]
+            assert model.ir_version == 3 and [(i.domain,i.version) for i in model.opset_import] == [("",9)]
+            weights = lambda graph: {t.name: t.SerializeToString() for t in graph.initializer}
+            before, after = weights(baseline.graph), weights(model.graph)
+            assert all(before.get(k) == v for k,v in after.items()), filename
+            removed = list(before.keys()-after.keys())
+            assert len(removed) == (1 if filename == "decoder.onnx" else 0)
+            if removed:
+                tensor = next(t for t in baseline.graph.initializer if t.name == removed[0])
+                assert onnx.numpy_helper.to_array(tensor).tolist() == [-1]
+            inputs = {i.name for i in model.graph.input}
+            assert inputs >= after.keys()
+            assert ("last" in inputs) == (filename == "decoder.onnx")
             assert not model.functions and not model.training_info
             assert not model.graph.sparse_initializer
             assert all(not tensor.external_data and tensor.data_location==0 for tensor in model.graph.initializer)

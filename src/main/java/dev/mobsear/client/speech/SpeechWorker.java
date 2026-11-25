@@ -287,16 +287,20 @@ public final class SpeechWorker {
                 var service=new SpeechWorker(vocab,engine);
                 service.roster(List.of(),List.of());
                 if(stages){System.err.write(76);System.err.flush();}
+                var startup = new ModelStartup.Progress();
+                ModelStartup issue = null;
                 try {
-                    service.words=new WordDecoder();
+                    service.words=new WordDecoder(startup);
                     service.words.warm();
                 } catch(IOException|RuntimeException|LinkageError unavailable) {
                     if(service.words!=null) service.words.close();
                     service.words=null;
-                    syntheticFault(unavailable);
+                    issue = startup.failure(unavailable);
                 }
                 engine.recognize(new byte[16000]);
-                out.writeByte(service.words==null ? 68 : 82);out.flush();
+                out.writeByte(issue == null ? 82 : 100);
+                if (issue != null) issue.write(out);
+                out.flush();
                 for(;;) {
                     int len;
                     try { len=Integer.reverseBytes(in.readInt()); } catch(EOFException e) { break; }

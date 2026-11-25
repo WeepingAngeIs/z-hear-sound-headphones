@@ -58,7 +58,7 @@ final class Sapi implements AutoCloseable {
     }
 
     static void ok(int result, String stage) {
-        if (result < 0) throw new IllegalStateException(stage + " HRESULT 0x" + Integer.toHexString(result));
+        if (result < 0) throw new ModelStartup.WindowsError(stage, result);
     }
 
     private static Pointer create(String cls, String iid) {
@@ -195,14 +195,16 @@ final class Sapi implements AutoCloseable {
                     "lopunny",java.util.List.of("l aa p ax n iy","l aa p ah n iy","l ow p ah n iy","l aa p b ah n iy"),
                     "geodude",java.util.List.of("jh iy ow d uw d","jh iy ow d y uw d","jh iy ax d uw d"),
                     "hoglin",java.util.List.of("h aa g l ih n","h ao g l ih n"),
-                    "zoglin",java.util.List.of("z aa g l ih n","z ao g l ih n"));
+                    "zoglin",java.util.List.of("z aa g l ih n","z ao g l ih n"),
+                    "pikachu",java.util.List.of("p iy k ax ch uw","p iy k aa ch uw","p ih k ax ch uw","p iy k ah ch uw"));
             var xml=new StringBuilder("""
                     <grammar xmlns="http://www.w3.org/2001/06/grammar" xmlns:sapi="http://schemas.microsoft.com/Speech/2002/06/SRGSExtensions"
                       version="1.0" xml:lang="en-US" root="Pronunciations" sapi:alphabet="x-microsoft-sapi">
                     <rule id="Pronunciations" scope="public"><one-of>
                     """);
             for(String ordinary:java.util.List.of("poponee","buneary","endermite","ender dragon","ender guardian",
-                    "slender man","bunny","hold on","logged in","huddling","jogging","geode","good dude"))
+                    "slender man","bunny","hold on","logged in","huddling","jogging","geode","good dude",
+                    "peek at you","pick a shoe","peekaboo","Pichu","Raichu"))
                 xml.append("<item>").append(ordinary).append("</item>");
             phones.forEach((label,forms)->{
                 if(registered.contains(label)) for(String form:forms) for(String prefix:java.util.List.of("","hey ","call "))

@@ -19,14 +19,15 @@ final class WindowsModel implements AutoCloseable {
     private Pointer floatFactory,intFactory,bindingFactory,encoder,decoder;
     private boolean initialized;
 
-    WindowsModel() throws IOException {
+    WindowsModel(ModelStartup.Progress progress) throws IOException {
+        progress.stage = ModelStartup.Stage.RUNTIME;
         Sapi.ok(system("RoInitialize").invokeInt(new Object[]{1}),"RoInitialize");
         initialized=true;
         try {
             floatFactory=factory("TensorFloat",FLOATS);
             intFactory=factory("TensorInt64Bit",INTS);
             bindingFactory=factory("LearningModelBinding",BINDING);
-            encoder=load("encoder"); decoder=load("decoder");
+            encoder=load("encoder",progress); decoder=load("decoder",progress);
         } catch(IOException|RuntimeException|Error e) { close(); throw e; }
     }
 
@@ -48,21 +49,27 @@ final class WindowsModel implements AutoCloseable {
         }
     }
 
-    private Pointer load(String name) throws IOException {
+    private Pointer load(String name, ModelStartup.Progress progress) throws IOException {
         // WinML consumes the data synchronously. Only model data is copied, never samples or program code.
-        Path path=Files.createTempFile("mobsear-"+name+"-",".onnx");
+        boolean encoding = name.equals("encoder");
+        progress.stage = encoding ? ModelStartup.Stage.ENCODER_FILE : ModelStartup.Stage.DECODER_FILE;
+        Path directory = Files.createDirectories(Path.of(System.getProperty("java.io.tmpdir"), "mobsear-winml"));
+        Path path = Files.createTempFile(directory, name + "-", ".onnx");
         Pointer mf=null,sf=null,model=null;
         try {
             try(var input=Objects.requireNonNull(getClass().getResourceAsStream("model/"+name+".onnx"))) {
                 Files.copy(input,path,StandardCopyOption.REPLACE_EXISTING);
             }
+            progress.stage = encoding ? ModelStartup.Stage.ENCODER_LOAD : ModelStartup.Stage.DECODER_LOAD;
             mf=factory("LearningModel",MODEL);
-            sf=factory("LearningModelSession",SESSION);
+
             var result=new PointerByReference();
             try(var filename=new Text(path.toAbsolutePath().toString())) {
                 Sapi.ok(Sapi.call(mf,8,filename.handle,result),"load "+name);
             }
             model=result.getValue();
+            progress.stage = encoding ? ModelStartup.Stage.ENCODER_SESSION : ModelStartup.Stage.DECODER_SESSION;
+            sf=factory("LearningModelSession",SESSION);
             Sapi.ok(Sapi.call(sf,6,model,result),"create "+name+" CPU session");
             return result.getValue();
         } finally {
@@ -93,7 +100,7 @@ final class WindowsModel implements AutoCloseable {
             if(success.getValue()==0) {
                 var error=new IntByReference();
                 Sapi.ok(Sapi.call(result,7,error),"get model error");
-                throw new IllegalStateException("Windows ML evaluate HRESULT "+Integer.toHexString(error.getValue()));
+                throw new ModelStartup.WindowsError("Windows ML evaluation", error.getValue());
             }
             Sapi.ok(Sapi.call(result,9,out),"get outputs");
             return out.getValue();
@@ -132,6 +139,7 @@ final class WindowsModel implements AutoCloseable {
                 tensors.forEach((name,tensor)->bind(binding,name,tensor));
                 put(binding,"tokens",new long[]{beams,n},tokens,tokens.length,intFactory);
                 put(binding,"positions",new long[]{n},positions,n,intFactory);
+                put(binding,"last",new long[]{1},new long[]{n-1},1,intFactory);
                 put(binding,"mask",new long[]{1,1,n,n},mask,mask.length,floatFactory);
                 map=evaluate(decoder,binding);
                 value=output(map,"logits");

@@ -1,0 +1,7 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+[[mods]]
+modId="mic_join_probe"
+version="1"
+displayName="Disposable multiplayer join observer"

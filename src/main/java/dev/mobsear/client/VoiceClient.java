@@ -555,6 +555,7 @@ public final class VoiceClient {
             if (!suspended) {
                 var status = speech.startupTimedOut() ? CallDebugLog.Event.STARTUP_TIMEOUT
                         : speech.decoderTimedOut() ? CallDebugLog.Event.DECODE_TIMEOUT : CallDebugLog.Event.valueOf(state.name());
+                debug.modelStartup(speech.modelStartupIssue());
                 debug.state(speech.desktopOnly() ? CallDebugLog.Event.WORD_DECODER_ERROR : status);
             }
             var decision = speech.lastDecision();
@@ -575,7 +576,10 @@ public final class VoiceClient {
                 if (speech.desktopOnly()) key = "desktop_only";
                 if (speech.startupTimedOut()) key = "startup_timeout";
                 if (speech.decoderTimedOut()) key = "decode_timeout";
-                Component status = Component.translatable("mobsear.speech." + key);
+                var issue = speech.modelStartupIssue();
+                Component status = issue != null && key.equals("desktop_only")
+                        ? Component.translatable("mobsear.speech.desktop_reason", issue.display())
+                        : Component.translatable("mobsear.speech." + key);
                 if (state == SpeechCues.Status.READY) MobCallNotice.ready(status);
                 else MobCallNotice.show(status);
             }

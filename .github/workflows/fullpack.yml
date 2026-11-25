@@ -101,6 +101,7 @@ jobs:
       MOBSEAR_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
       MOBSEAR_EARLIER: ${{ matrix.profile == 'earlier-public-pack' && '1' || '0' }}
       MOBSEAR_INSTALLED_REFERENCE: ${{ matrix.profile == 'installed-public-pack' && '1' || '0' }}
+      MOBSEAR_COMMAND_ONLY: ${{ inputs.candidate_artifact == 'voice-archive-verification' && matrix.profile == 'focused-control' && '1' || '0' }}
       MOBSEAR_PRIORITY_CONTROL: ${{ matrix.profile == 'public-pack-helper-priority' && '1' || '0' }}
       MOBSEAR_LIGHT_GRAPHICS: ${{ matrix.profile == 'public-pack-software-renderer' && '1' || '0' }}
       PORTABLE_VERIFY: ${{ inputs.candidate_artifact == 'voice-archive-verification' }}
@@ -161,8 +162,8 @@ jobs:
           wordplay = False
           if os.environ.get('PORTABLE_VERIFY')=='true':
               # These shared capture checks include the repeat visits and the optional local feedback case.
-              feedback = visit = sentences = nearby = True
-              berries = base_calls = wordplay = distractions = True
+              feedback = visit = sentences = nearby = os.getenv("MOBSEAR_COMMAND_ONLY") != "1"
+              berries = base_calls = wordplay = distractions = feedback
           elif os.environ['GITHUB_EVENT_NAME']=='push' and pin.is_file():
               item = json.loads(pin.read_text(encoding='utf8'))
               build, digest = str(item['run']), item['sha256']
