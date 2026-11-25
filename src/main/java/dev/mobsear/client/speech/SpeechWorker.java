@@ -160,6 +160,51 @@ public final class SpeechWorker {
         return energy > 0 && 2 * (real * real + imaginary * imaginary) > .999 * length * energy;
     }
 
+    private static final Set<String> PIKACHU_RIVALS = Set.of("pick a shoe","peek at you","peekaboo");
+
+    /** A short desktop-only call must win against ordinary words as well as the species catalog. */
+    private Reply desktopPikachu(byte[] pcm,Sapi.Result first,CallVocabulary.Match initial,String hint) {
+        if (words!=null || phonemes==null || !vocab.names.containsKey("pikachu") || pcm.length>64000
+                || CallVocabulary.words(first.text()).size()>3) return null;
+        boolean proposed = initial!=null && initial.label().equals("pikachu");
+        boolean nearby = vocab.live("pikachu");
+        if (!proposed && (!nearby || initial!=null || first.accepted() && first.confidence()>=.58)) return null;
+        dictation.enabled(false);
+        commands.enabled(false);
+        if (nearCommands!=null) nearCommands.enabled(false);
+        try {
+            phonemes.enabled(true);
+            var contrast=engine.recognize(pcm);
+            String reading=String.join(" ",CallVocabulary.words(contrast.text())).replaceFirst("^(hey|call) ","");
+            if (contrast.accepted() && contrast.confidence()>=.65 && PIKACHU_RIVALS.contains(reading))
+                return new Reply(0,hint);
+            if (contrast.accepted() && contrast.confidence()>=.65 && (reading.equals("pichu") || reading.equals("raichu"))) {
+                if (!proposed) return null;
+                phonemes.enabled(false);
+                commands.enabled(true);
+                var rival=match(engine.recognize(pcm).text());
+                return rival!=null && rival.label().equals(reading) ? new Reply(rival.code(),"") : new Reply(0,hint);
+            }
+            if (contrast.grammar()!=phonemes.id || !reading.equals("pikachu") || !contrast.accepted()
+                    || contrast.confidence()<(nearby?.70:.83)) return proposed ? new Reply(0,hint) : null;
+            if (proposed) return new Reply(initial.code(),"");
+            // A weak general-dictation reading can be recovered only for a nearby Pokémon, when a
+            // second, full-catalog grammar independently nominates the same name over all other species.
+            phonemes.enabled(false);
+            commands.enabled(true);
+            var catalog=engine.recognize(pcm);
+            var choice=match(catalog.text());
+            if (catalog.grammar()==commands.id && choice!=null && choice.label().equals("pikachu"))
+                return new Reply(choice.code(),"");
+            return null;
+        } finally {
+            phonemes.enabled(false);
+            commands.enabled(true);
+            if (nearCommands!=null) nearCommands.enabled(true);
+            dictation.enabled(true);
+        }
+    }
+
     private Reply decode(byte[] pcm,boolean detail) {
         boolean voiced=false;
         for(int i=0;i+1<pcm.length;i+=2)
@@ -169,6 +214,8 @@ public final class SpeechWorker {
         String hint=detail?first.text():"";
         String plain=first.grammar()==dictation.id ? first.text() : "";
         CallVocabulary.Match exact=match(first.text());
+        var desktop=desktopPikachu(pcm,first,exact,hint);
+        if (desktop!=null) return desktop;
         if(first.accepted() && exact!=null && first.confidence()>=.58 && !vocab.confirm.contains(exact.label())
                 && (!plain.isEmpty() || !vocab.compoundPart(exact.label()) || first.text().toLowerCase(Locale.ROOT).startsWith("call "))
                 && !vocab.partialCompound(exact.label(), first.text()) && !vocab.partialCompound(exact.label(),plain)

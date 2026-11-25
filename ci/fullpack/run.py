@@ -235,7 +235,7 @@ def run():
                         if os.environ.get("MOBSEAR_TEST_WORDPLAY")=="1":
                             count+=4
                         if forced_commands:
-                            count = 10
+                            count = 13
                             messages = (game/"logs/latest.log").read_text(encoding="utf8",errors="replace")
                             assert "MOBSEAR_MODEL_STARTUP stage=ENCODER_FILE reason=FILE_EXISTS code=FILE_EXISTS" in messages, "Missing bounded local fallback diagnostic"
                         assert len(observations)==count, f"Expected {count} speech trials, observed {len(observations)}"

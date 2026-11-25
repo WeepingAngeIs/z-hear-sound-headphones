@@ -53,7 +53,7 @@ public final class PackProbe {
         Trial(String name, int range, boolean creative, boolean hears, boolean openMic) {
             this(name,range,creative,hears,openMic,name.toLowerCase(Locale.ROOT));
         }
-        boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary", "peek-at-you", "pick-a-shoe", "peekaboo").contains(recording); }
+        boolean spokenName() { return !Set.of("hold-on", "fan", "silence", "sentence-partial-mob", "sentence-ordinary", "peek-at-you", "pick-a-shoe", "peekaboo").contains(recording.replaceFirst("-second$","")); }
         boolean outsideGuessRange() { return range>32 && (recording.equals("nearby-bulbazore") || name.equals("Geodude") || recording.equals("watch-and-roll")); }
         boolean checkRoster() { return Set.of("Geodude","Butterfree","Lilligant","Wattrel","Kilowattrel","Vivillon").contains(name); }
         boolean flockMember() { return hears && recording.equals("watch-and-roll"); }
@@ -84,7 +84,7 @@ public final class PackProbe {
             var calls = new ArrayList<Trial>();
             calls.add(new Trial("Pikachu",12,false,true,true));
             calls.add(new Trial("Pikachu",12,false,true,false,"pikachu-second"));
-            for (String ordinary : List.of("peek-at-you","pick-a-shoe","peekaboo","hold-on","sentence-ordinary","fan","silence"))
+            for (String ordinary : List.of("peek-at-you","pick-a-shoe","peekaboo","pick-a-shoe-second","peek-at-you-second","peekaboo-second","hold-on","sentence-ordinary","fan","silence"))
                 calls.add(new Trial("Pikachu",12,false,false,false,ordinary));
             calls.add(new Trial("Pikachu",40,false,false,true));
             return calls.toArray(Trial[]::new);
@@ -569,6 +569,10 @@ public final class PackProbe {
                     if (!freshDefaults || o.number!=0) VoiceClient.setVoiceActivated(o.test.openMic);
                     if (!o.test.openMic) ((KeyMapping)Boundary.get(Boundary.client(),"talk")).setDown(true);
                     if (mc.player.isCreative()!=o.test.creative || System.nanoTime()-o.seenAt<350_000_000L) return;
+                    if (commandOnly && LiveNearbyProof.has("cobblemon:pikachu")!=(o.test.range<=32)) {
+                        if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Wrong desktop-call live roster");
+                        return;
+                    }
                     if (baseCalls && o.test.checkRoster()
                             && LiveNearbyProof.has("cobblemon:"+o.test.name.toLowerCase(Locale.ROOT))!=o.test.hears) {
                         if (System.nanoTime()-o.seenAt>15_000_000_000L) throw new IllegalStateException("Wrong live roster for "+o.test);
